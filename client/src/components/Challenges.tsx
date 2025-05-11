@@ -52,7 +52,7 @@ export default function Challenges({ challenges, isLoading }: ChallengesProps) {
   };
 
   return (
-    <section className="bg-white rounded-xl shadow-md p-6">
+    <section className="bg-white rounded-xl shadow-md p-6 h-full">
       <div className="flex justify-between items-center mb-6">
         <div>
           <h2 className="text-2xl font-bold text-slate-800">Active Challenges</h2>
@@ -66,7 +66,7 @@ export default function Challenges({ challenges, isLoading }: ChallengesProps) {
         </Button>
       </div>
       
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {isLoading ? (
           // Loading skeletons
           Array(3).fill(0).map((_, index) => (
