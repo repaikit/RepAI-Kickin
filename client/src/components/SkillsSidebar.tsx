@@ -133,7 +133,7 @@ export default function SkillsSidebar({
                   <p className="text-sm font-medium text-slate-800">{item.name}</p>
                   <p className="text-xs text-slate-500">Last match rating</p>
                 </div>
-                <div className={`text-lg font-bold text-${themeColor}`}>{item.value}</div>
+                <div className={`text-lg font-bold ${textColorClass}`}>{item.value}</div>
               </div>
             ))}
           </div>
