@@ -1,5 +1,8 @@
 from typing import Dict, List, Optional, Union
-from models import User, InsertUser, Player, InsertPlayer, Skills, InsertSkills, Challenge, InsertChallenge
+try:
+    from .models import User, InsertUser, Player, InsertPlayer, Skills, InsertSkills, Challenge, InsertChallenge
+except ImportError:
+    from models import User, InsertUser, Player, InsertPlayer, Skills, InsertSkills, Challenge, InsertChallenge
 
 class IStorage:
     def get_user(self, id: int) -> Optional[User]:

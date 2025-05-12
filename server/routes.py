@@ -1,5 +1,8 @@
 from flask import Flask, jsonify, request
-from storage import storage
+try:
+    from .storage import storage
+except ImportError:
+    from storage import storage
 
 def register_routes(app: Flask):
     # API routes for players
