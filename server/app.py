@@ -4,7 +4,10 @@ import time
 from datetime import datetime
 from flask import Flask, jsonify, request, send_from_directory
 from flask_cors import CORS
-from routes import register_routes
+try: 
+    from .routes import register_routes
+except ImportError:
+    from routes import register_routes
 
 app = Flask(__name__, static_folder='static')
 
