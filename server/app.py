@@ -8,10 +8,13 @@ from routes import register_routes
 
 app = Flask(__name__, static_folder='static')
 
-# Cấu hình CORS
-CORS(app, 
+# Lấy domain frontend từ biến môi trường
+frontend_url = os.environ.get("FRONTEND_URL", "http://localhost:3000")
+
+# Cấu hình CORS sử dụng biến môi trường
+CORS(app,
      resources={r"/api/*": {
-         "origins": ["http://localhost:3000", "https://*.vercel.app"],
+         "origins": [frontend_url],
          "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
          "allow_headers": ["Content-Type", "Authorization"],
          "expose_headers": ["Content-Type", "Authorization"],
@@ -28,7 +31,7 @@ def start_timer():
 def log_request(response):
     # Thêm CORS headers cho mọi response
     origin = request.headers.get('Origin')
-    if origin:
+    if origin == frontend_url:
         response.headers.add('Access-Control-Allow-Origin', origin)
         response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization')
         response.headers.add('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE,OPTIONS')
