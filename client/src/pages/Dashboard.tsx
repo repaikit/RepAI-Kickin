@@ -5,29 +5,49 @@ import Leaderboard from "@/components/Leaderboard";
 import SkillsSidebar from "@/components/SkillsSidebar";
 import Challenges from "@/components/Challenges";
 import { useRouter } from "next/router";
-import { API_BASE_URL } from "@/config/api";
+import { API_ENDPOINTS, defaultFetchOptions } from "@/config/api";
+import { useState, useEffect } from 'react';
 
 export default function Dashboard() {
   const router = useRouter();
+  
+  // Fetch players
   const { data: players, isLoading: isPlayersLoading } = useQuery<any[]>({
     queryKey: ["players"],
     queryFn: async () => {
-      const response = await fetch(`${API_BASE_URL}/players`);
-      if (!response.ok) {
-        throw new Error('Failed to fetch players');
+      try {
+        console.log('Fetching players from:', API_ENDPOINTS.players);
+        const response = await fetch(API_ENDPOINTS.players, defaultFetchOptions);
+        if (!response.ok) {
+          throw new Error(`Failed to fetch players: ${response.status} ${response.statusText}`);
+        }
+        const data = await response.json();
+        console.log('Players data:', data);
+        return data;
+      } catch (error) {
+        console.error('Error fetching players:', error);
+        throw error;
       }
-      return response.json();
     }
   });
 
+  // Fetch challenges
   const { data: challenges, isLoading: isChallengesLoading } = useQuery<any[]>({
     queryKey: ["challenges"],
     queryFn: async () => {
-      const response = await fetch(`${API_BASE_URL}/challenges`);
-      if (!response.ok) {
-        throw new Error('Failed to fetch challenges');
+      try {
+        console.log('Fetching challenges from:', API_ENDPOINTS.challenges);
+        const response = await fetch(API_ENDPOINTS.challenges, defaultFetchOptions);
+        if (!response.ok) {
+          throw new Error(`Failed to fetch challenges: ${response.status} ${response.statusText}`);
+        }
+        const data = await response.json();
+        console.log('Challenges data:', data);
+        return data;
+      } catch (error) {
+        console.error('Error fetching challenges:', error);
+        throw error;
       }
-      return response.json();
     }
   });
 
@@ -38,15 +58,25 @@ export default function Dashboard() {
   // Find a kicker player
   const kicker = players?.find((player: any) => player.position !== "Goalkeeper") || players?.[0];
 
-  // Fetch goalkeeper skills if we have the goalkeeper ID
+  // Fetch goalkeeper skills
   const { data: goalkeeperSkills, isLoading: isSkillsLoading } = useQuery<any>({
     queryKey: ["skills", goalkeeperId],
     queryFn: async () => {
-      const response = await fetch(`${API_BASE_URL}/skills/${goalkeeperId}`);
-      if (!response.ok) {
-        throw new Error('Failed to fetch skills');
+      if (!goalkeeperId) return null;
+      try {
+        const url = API_ENDPOINTS.skills(goalkeeperId);
+        console.log('Fetching skills from:', url);
+        const response = await fetch(url, defaultFetchOptions);
+        if (!response.ok) {
+          throw new Error(`Failed to fetch skills: ${response.status} ${response.statusText}`);
+        }
+        const data = await response.json();
+        console.log('Skills data:', data);
+        return data;
+      } catch (error) {
+        console.error('Error fetching skills:', error);
+        throw error;
       }
-      return response.json();
     },
     enabled: !!goalkeeperId,
   });
