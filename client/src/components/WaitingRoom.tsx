@@ -1,10 +1,9 @@
 import React from "react";
 import { Skeleton } from "@/components/ui/skeleton";
-import { type Player } from "@shared/schema";
 import { Badge } from "@/components/ui/badge";
 
 interface WaitingRoomProps {
-  players: Player[];
+  players: any[];
   isLoading: boolean;
 }
 

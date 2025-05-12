@@ -16,10 +16,9 @@ import {
 } from "@/components/ui/select";
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
-import { type Player } from "@shared/schema";
 
 interface LeaderboardProps {
-  players: Player[];
+  players: any[];
   isLoading: boolean;
 }
 
@@ -247,14 +246,15 @@ export default function Leaderboard({ players, isLoading }: LeaderboardProps) {
               getSortedPlayers().map((player, index) => (
                 <TableRow key={player.id} className="hover:bg-slate-50 transition-colors">
                   <TableCell>
-                    <span className={`inline-flex items-center justify-center w-6 h-6 rounded-full ${
-                      index < 3 
-                        ? `bg-primary${index > 0 ? "/" + (80 - index * 20) : ""} text-white` 
-                        : "bg-slate-400 text-white"
-                    } text-xs font-bold`}>
+                    <span className={
+                      index === 0 ? "inline-flex items-center justify-center w-6 h-6 rounded-full text-xs font-bold bg-yellow-500 text-white border-2 border-white" :
+                      index === 1 ? "inline-flex items-center justify-center w-6 h-6 rounded-full text-xs font-bold bg-gray-700 text-white border-2 border-white" :
+                      index === 2 ? "inline-flex items-center justify-center w-6 h-6 rounded-full text-xs font-bold bg-orange-600 text-white border-2 border-white" :
+                      "inline-flex items-center justify-center w-6 h-6 rounded-full text-xs font-bold bg-slate-600 text-white border-2 border-white"
+                    }>
                       {index + 1}
                     </span>
-                  </TableCell>
+                  </TableCell >
                   <TableCell>
                     <div className="flex items-center">
                       <img 
@@ -311,6 +311,9 @@ export default function Leaderboard({ players, isLoading }: LeaderboardProps) {
           </div>
         </div>
       )}
+
+      {/* Force Tailwind to generate these classes for leaderboard ranking colors */}
+      <div className="bg-yellow-500 bg-gray-700 bg-orange-600 bg-slate-600 text-white border-2 border-white" style={{display: 'none'}}></div>
     </section>
   );
 }
