@@ -7,7 +7,17 @@ from flask_cors import CORS
 from routes import register_routes
 
 app = Flask(__name__, static_folder='static')
-CORS(app)
+
+# Cấu hình CORS
+CORS(app, 
+     resources={r"/api/*": {
+         "origins": ["http://localhost:3000", "https://*.vercel.app"],
+         "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+         "allow_headers": ["Content-Type", "Authorization"],
+         "expose_headers": ["Content-Type", "Authorization"],
+         "supports_credentials": True
+     }},
+     allow_credentials=True)
 
 # Middleware để log các request API
 @app.before_request
@@ -16,6 +26,14 @@ def start_timer():
 
 @app.after_request
 def log_request(response):
+    # Thêm CORS headers cho mọi response
+    origin = request.headers.get('Origin')
+    if origin:
+        response.headers.add('Access-Control-Allow-Origin', origin)
+        response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization')
+        response.headers.add('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE,OPTIONS')
+        response.headers.add('Access-Control-Allow-Credentials', 'true')
+
     if request.path.startswith('/api'):
         duration = time.time() - request.start_time
         
@@ -59,8 +77,7 @@ def serve_static(path):
         return send_from_directory(app.static_folder, path)
     return send_from_directory(app.static_folder, 'index.html')
 
+# Đảm bảo app có thể chạy trên Vercel
 if __name__ == "__main__":
-    # Luôn phục vụ trên port 5000
-    port = 5000
-    print(f"{datetime.now().strftime('%I:%M:%S %p')} [express] serving on port {port}")
-    app.run(host="0.0.0.0", port=port, debug=True)
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port)
