@@ -1,0 +1,16 @@
+{
+  "name": "kickin-dashboard",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "cd client && npm run dev",
+    "build": "cd client && npm run build",
+    "start": "cd client && npm run start",
+    "lint": "cd client && npm run lint",
+    "check": "tsc"
+  },
+  "devDependencies": {
+    "@types/node": "20.16.11",
+    "typescript": "^5.6.3"
+  }
+}
