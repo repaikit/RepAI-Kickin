@@ -1,4 +1,8 @@
 # Kickin Dashboard
+## 🔗 Live
+## 🔗 Live Demo
+
+👉 [Truy cập bản demo tại đây](https://rep-ai-kickin.vercel.app)
 
 A modern dashboard application built with Next.js and Tailwind CSS.
 
