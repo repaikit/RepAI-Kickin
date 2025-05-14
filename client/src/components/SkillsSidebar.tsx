@@ -1,8 +1,6 @@
 import React from "react";
-import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { CheckCircle2, Circle } from "lucide-react";
-// import { type Player, type Skills } from "@shared/schema";
 
 interface Skill {
   _id: string;
@@ -13,38 +11,18 @@ interface Skill {
 }
 
 interface SkillsSidebarProps {
-  goalkeeper?: any;
-  skills?: Skill[];
-  userSkills?: string[]; // Array of skill names that user has learned
+  skills: Skill[];
+  userSkills: string[];
+  title: string;
   isLoading: boolean;
-  isKicker?: boolean;
-  title?: string;
 }
 
-export default function SkillsSidebar({ 
-  skills = [], 
+export default function SkillsSidebar({
+  skills = [],
   userSkills = [],
-  isLoading, 
-  isKicker = false, 
-  title = "Player Skills" 
+  title = "Player Skills",
+  isLoading
 }: SkillsSidebarProps) {
-  // Debug logs
-  console.log('SkillsSidebar props:', {
-    title,
-    skills,
-    userSkills,
-    isKicker
-  });
-
-  // Background color based on player type
-  const themeColor = isKicker ? "secondary" : "primary";
-  const bgColorClass = isKicker ? "bg-secondary/10" : "bg-primary/10";
-  const textColorClass = isKicker ? "text-secondary" : "text-primary";
-  const borderColorClass = isKicker ? "border-secondary" : "border-primary";
-
-  // Player role
-  const role = isKicker ? "Forward" : "Goalkeeper";
-
   // Check if user has learned a skill by comparing skill names
   const hasLearnedSkill = (skillName: string) => {
     return userSkills.includes(skillName);
@@ -54,7 +32,6 @@ export default function SkillsSidebar({
   const sortedSkills = [...skills].sort((a, b) => {
     const aLearned = hasLearnedSkill(a.name);
     const bLearned = hasLearnedSkill(b.name);
-    
     if (aLearned && !bLearned) return -1;
     if (!aLearned && bLearned) return 1;
     return a.name.localeCompare(b.name);
@@ -64,11 +41,7 @@ export default function SkillsSidebar({
     <div className="bg-white rounded-xl shadow-sm p-5 h-full flex flex-col">
       <div className="flex items-center justify-between mb-5">
         <h2 className="text-lg font-semibold text-slate-800">{title}</h2>
-        <div className={`${bgColorClass} ${textColorClass} px-2.5 py-1 rounded-full text-xs font-medium`}>
-          {role}
-        </div>
       </div>
-
       {/* Skills List */}
       <div className="flex-1">
         <div className="flex items-center justify-between mb-3">
@@ -87,11 +60,11 @@ export default function SkillsSidebar({
             {sortedSkills.map((skill) => {
               const isLearned = hasLearnedSkill(skill.name);
               return (
-                <div 
-                  key={skill.name} 
+                <div
+                  key={skill.name}
                   className={`flex items-center justify-between p-2 rounded-md transition-all duration-200 ${
-                    isLearned 
-                      ? "bg-green-50 border border-green-100 hover:bg-green-100/50 hover:border-green-200" 
+                    isLearned
+                      ? "bg-green-50 border border-green-100 hover:bg-green-100/50 hover:border-green-200"
                       : "bg-slate-50 border border-slate-100 hover:bg-slate-100/50 hover:border-slate-200"
                   }`}
                 >

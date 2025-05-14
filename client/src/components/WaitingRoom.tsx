@@ -4,7 +4,11 @@ import { Badge } from "@/components/ui/badge";
 import { useWaitingRoom } from "@/hooks/useWaitingRoom";
 import { useGuestUser } from "@/hooks/useGuestUser";
 
-export default function WaitingRoom() {
+interface WaitingRoomProps {
+  sessionId: string;
+}
+
+const WaitingRoom: React.FC<WaitingRoomProps> = ({ sessionId }) => {
   const { guestUser } = useGuestUser();
   const { users, isConnected, sendChallenge } = useWaitingRoom();
   const [isLoading, setIsLoading] = useState(true);
@@ -39,7 +43,7 @@ export default function WaitingRoom() {
         {isLoading ? (
           // Loading skeletons
           Array(4).fill(0).map((_, index) => (
-            <div key={index} className="flex items-center gap-4 p-4 border border-slate-200 rounded-lg">
+            <div key={`skeleton-${index}`} className="flex items-center gap-4 p-4 border border-slate-200 rounded-lg">
               <Skeleton className="h-12 w-12 rounded-full" />
               <div className="flex-1">
                 <Skeleton className="h-5 w-32 mb-1" />
@@ -60,15 +64,12 @@ export default function WaitingRoom() {
                   alt={player.name} 
                   className="h-12 w-12 rounded-full object-cover border-2 border-white shadow-sm"
                 />
-                <span className={`absolute -bottom-1 -right-1 w-4 h-4 rounded-full border-2 border-white ${
-                  player.is_ready ? 'bg-success' : 'bg-slate-300'
-                }`}></span>
               </div>
               
               <div className="flex-1">
                 <h3 className="font-medium text-slate-800">{player.name}</h3>
                 <p className="text-sm text-slate-500">
-                  {player.user_type === 'guest' ? 'Guest' : 'Player'} • {player.remaining_matches} matches left
+                  {player.remaining_matches} matches left • {player.wins}W {player.losses}L
                 </p>
               </div>
               
@@ -83,16 +84,14 @@ export default function WaitingRoom() {
         )}
       </div>
       
-      {!isLoading && waitingPlayers.length > 0 && (
-        <div className="mt-6 text-center">
-          <button className="px-6 py-2 text-primary font-medium text-sm hover:underline inline-flex items-center">
-            <span>View All Players</span>
-            <svg className="ml-2 w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-            </svg>
-          </button>
-        </div>
-      )}
+      <div className="mt-6 text-center">
+        <button className="px-6 py-2 text-primary font-medium text-sm hover:underline inline-flex items-center">
+          <span>View All Players</span>
+          <svg className="ml-2 w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+          </svg>
+        </button>
+      </div>
       
       {!isLoading && waitingPlayers.length === 0 && (
         <div className="py-16 text-center text-slate-500">
@@ -106,3 +105,5 @@ export default function WaitingRoom() {
     </section>
   );
 }
+
+export default WaitingRoom;
