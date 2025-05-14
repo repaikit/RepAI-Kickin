@@ -1,19 +1,11 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-try: 
-    from .routers import users, waitingroom_ws, skills
-    from .middleware.rate_limit import RateLimitMiddleware
-    from .middleware.database import database_middleware
-    from .utils.logger import setup_logger
-    from .database.database import init_db
-    from .config.settings import settings
-except ImportError:
-    from routers import users, waitingroom_ws, skills
-    from middleware.rate_limit import RateLimitMiddleware
-    from middleware.database import database_middleware
-    from utils.logger import setup_logger
-    from database.database import init_db
-    from config.settings import settings
+from server.routers import users, waitingroom_ws, skills
+from server.middleware.rate_limit import RateLimitMiddleware
+from server.middleware.database import database_middleware
+from server.utils.logger import setup_logger
+from server.database.database import init_db
+from server.config.settings import settings
 
 # Initialize FastAPI app
 app = FastAPI(
