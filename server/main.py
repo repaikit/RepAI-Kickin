@@ -1,3 +1,10 @@
+import sys
+import os
+
+# Add the parent directory to Python path when running locally
+if __name__ == "__main__":
+    sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from server.routers import users, waitingroom_ws, skills
@@ -49,7 +56,7 @@ if __name__ == "__main__":
     import uvicorn
     uvicorn.run(
         "main:app",
-        host=settings.HOST,
-        port=settings.PORT,
+        host="0.0.0.0",
+        port=8000,
         reload=settings.DEBUG
     ) 

@@ -1,4 +1,5 @@
 import os
+import logging
 from typing import List
 from dotenv import load_dotenv
 
@@ -13,6 +14,9 @@ class Settings:
     HOST: str = os.getenv("HOST", "0.0.0.0")
     PORT: int = int(os.getenv("PORT", "8000"))
     DEBUG: bool = os.getenv("DEBUG", "False").lower() == "true"
+    
+    # Logging Settings
+    LOG_LEVEL: int = getattr(logging, os.getenv("LOG_LEVEL", "INFO").upper())
     
     # CORS Settings
     CORS_ORIGINS: List[str] = [
