@@ -1,7 +1,7 @@
 from typing import Any
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase, AsyncIOMotorCollection
-from config.settings import settings
-from utils.logger import api_logger
+from server.config.settings import settings
+from server.utils.logger import api_logger
 
 class Database:
     client: AsyncIOMotorClient | None = None
@@ -14,7 +14,13 @@ db = Database()
 
 async def get_database() -> AsyncIOMotorDatabase:
     if db.db is None:
-        raise RuntimeError("Database not initialized")
+        try:
+            db.client = AsyncIOMotorClient(settings.MONGODB_URL)
+            db.db = db.client[settings.DATABASE_NAME]
+            api_logger.info("Connected to MongoDB")
+        except Exception as e:
+            api_logger.error(f"Failed to connect to MongoDB: {str(e)}")
+            raise
     return db.db
 
 async def get_users_collection() -> AsyncIOMotorCollection:

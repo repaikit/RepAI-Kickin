@@ -1,7 +1,7 @@
 from fastapi import Request, HTTPException
 from starlette.middleware.base import BaseHTTPMiddleware
-from config.settings import settings
-from utils.logger import api_logger
+from server.config.settings import settings
+from server.utils.logger import api_logger
 import time
 from collections import defaultdict
 import asyncio

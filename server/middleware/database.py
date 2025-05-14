@@ -1,6 +1,6 @@
 from fastapi import Request
 from starlette.middleware.base import BaseHTTPMiddleware
-from database.database import get_database
+from server.database.database import get_database
 
 async def database_middleware(request: Request, call_next):
     """
