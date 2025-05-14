@@ -7,186 +7,148 @@ import Challenges from "@/components/Challenges";
 import { useRouter } from "next/router";
 import { API_ENDPOINTS, defaultFetchOptions } from "@/config/api";
 import { useState, useEffect } from 'react';
+import { useGuestUserContext } from "@/contexts/GuestUserContext";
+import WaitingRoom from "@/components/WaitingRoom";
+import { useLeaderboard } from "@/hooks/useLeaderboard";
 
 export default function Dashboard() {
   const router = useRouter();
+  const { guestUser, isLoading: isGuestUserLoading } = useGuestUserContext();
+  const [leaderboardPosition, setLeaderboardPosition] = useState("all");
+  const [leaderboardSeason, setLeaderboardSeason] = useState("current");
+  const { data: leaderboardData, isLoading: isLeaderboardLoading } = useLeaderboard(leaderboardPosition, leaderboardSeason);
   
-  // Fetch players
-  const { data: players, isLoading: isPlayersLoading } = useQuery<any[]>({
-    queryKey: ["players"],
-    queryFn: async () => {
-      try {
-        console.log('Fetching players from:', API_ENDPOINTS.players);
-        const response = await fetch(API_ENDPOINTS.players, defaultFetchOptions);
-        if (!response.ok) {
-          throw new Error(`Failed to fetch players: ${response.status} ${response.statusText}`);
-        }
-        const data = await response.json();
-        console.log('Players data:', data);
-        return data;
-      } catch (error) {
-        console.error('Error fetching players:', error);
-        throw error;
-      }
-    }
-  });
-
-  // Fetch challenges
-  const { data: challenges, isLoading: isChallengesLoading } = useQuery<any[]>({
-    queryKey: ["challenges"],
-    queryFn: async () => {
-      try {
-        console.log('Fetching challenges from:', API_ENDPOINTS.challenges);
-        const response = await fetch(API_ENDPOINTS.challenges, defaultFetchOptions);
-        if (!response.ok) {
-          throw new Error(`Failed to fetch challenges: ${response.status} ${response.statusText}`);
-        }
-        const data = await response.json();
-        console.log('Challenges data:', data);
-        return data;
-      } catch (error) {
-        console.error('Error fetching challenges:', error);
-        throw error;
-      }
-    }
-  });
-
-  // Find the goalkeeper player
-  const goalkeeper = players?.find((player: any) => player.position === "Goalkeeper");
-  const goalkeeperId = goalkeeper?.id;
-
-  // Find a kicker player
-  const kicker = players?.find((player: any) => player.position !== "Goalkeeper") || players?.[0];
+  // Debug logs for guest user
+  useEffect(() => {
+    console.log('Dashboard - Guest User State:', {
+      guestUser,
+      isLoading: isGuestUserLoading,
+      sessionId: guestUser?.session_id,
+      kickerSkills: guestUser?.kicker_skills,
+      goalkeeperSkills: guestUser?.goalkeeper_skills
+    });
+  }, [guestUser, isGuestUserLoading]);
 
   // Fetch goalkeeper skills
-  const { data: goalkeeperSkills, isLoading: isSkillsLoading } = useQuery<any>({
-    queryKey: ["skills", goalkeeperId],
+  const { data: goalkeeperSkills, isLoading: isGoalkeeperSkillsLoading } = useQuery<any>({
+    queryKey: ["skills", "goalkeeper"],
     queryFn: async () => {
-      if (!goalkeeperId) return null;
       try {
-        const url = API_ENDPOINTS.skills(goalkeeperId);
-        console.log('Fetching skills from:', url);
+        const url = API_ENDPOINTS.skills.getByType("goalkeeper");
+        console.log('Fetching goalkeeper skills from:', url);
         const response = await fetch(url, defaultFetchOptions);
         if (!response.ok) {
-          throw new Error(`Failed to fetch skills: ${response.status} ${response.statusText}`);
+          throw new Error(`Failed to fetch goalkeeper skills: ${response.status} ${response.statusText}`);
         }
         const data = await response.json();
-        console.log('Skills data:', data);
+        console.log('Goalkeeper skills response:', data);
         return data;
       } catch (error) {
-        console.error('Error fetching skills:', error);
+        console.error('Error fetching goalkeeper skills:', error);
         throw error;
       }
     },
-    enabled: !!goalkeeperId,
+    enabled: true,
   });
+
+  // Fetch kicker skills
+  const { data: kickerSkills, isLoading: isKickerSkillsLoading } = useQuery<any>({
+    queryKey: ["skills", "kicker"],
+    queryFn: async () => {
+      try {
+        const url = API_ENDPOINTS.skills.getByType("kicker");
+        console.log('Fetching kicker skills from:', url);
+        const response = await fetch(url, defaultFetchOptions);
+        if (!response.ok) {
+          throw new Error(`Failed to fetch kicker skills: ${response.status} ${response.statusText}`);
+        }
+        const data = await response.json();
+        console.log('Kicker skills response:', data);
+        return data;
+      } catch (error) {
+        console.error('Error fetching kicker skills:', error);
+        throw error;
+      }
+    },
+    enabled: true,
+  });
+
+  useEffect(() => {
+    console.log('Dashboard - Skills State:', {
+      goalkeeperSkills,
+      kickerSkills,
+      isGoalkeeperSkillsLoading,
+      isKickerSkillsLoading,
+      guestUserSkills: {
+        kicker: guestUser?.kicker_skills,
+        goalkeeper: guestUser?.goalkeeper_skills
+      }
+    });
+  }, [goalkeeperSkills, kickerSkills, isGoalkeeperSkillsLoading, isKickerSkillsLoading, guestUser]);
+
+  if (isGuestUserLoading) {
+    return (
+      <div className="min-h-screen flex flex-col bg-slate-50">
+        <Header />
+        <main className="flex-1 container mx-auto px-4 py-6">
+          <div className="animate-pulse">
+            <div className="h-8 bg-slate-200 rounded w-1/4 mb-4"></div>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <div className="h-96 bg-slate-200 rounded"></div>
+              <div className="h-96 bg-slate-200 rounded"></div>
+            </div>
+          </div>
+        </main>
+        <Footer />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen flex flex-col bg-slate-50">
       <Header />
       
       <main className="flex-1 container mx-auto px-4 py-6 space-y-6">
-        {/* Leaderboard Section */}
         <section className="w-full">
-          <Leaderboard players={players || []} isLoading={isPlayersLoading} />
+          <Leaderboard 
+            players={leaderboardData || []} 
+            isLoading={isLeaderboardLoading}
+            onPositionChange={setLeaderboardPosition}
+            onSeasonChange={setLeaderboardSeason}
+            currentPosition={leaderboardPosition}
+            currentSeason={leaderboardSeason}
+          />
         </section>
         
         {/* Skills Section */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <SkillsSidebar 
-            goalkeeper={kicker} 
             isKicker={true}
             title="Kicker Skills"
-            skills={undefined} 
-            isLoading={isPlayersLoading} 
+            skills={kickerSkills || []} 
+            userSkills={guestUser?.kicker_skills || []}
+            isLoading={isKickerSkillsLoading} 
           />
           
           <SkillsSidebar 
-            goalkeeper={goalkeeper} 
             isKicker={false}
             title="Goalkeeper Skills"
-            skills={goalkeeperSkills} 
-            isLoading={isSkillsLoading || isPlayersLoading} 
+            skills={goalkeeperSkills || []} 
+            userSkills={guestUser?.goalkeeper_skills || []}
+            isLoading={isGoalkeeperSkillsLoading} 
           />
         </div>
         
         {/* Active Challenges */}
         <section className="w-full">
           <Challenges 
-            challenges={challenges || []} 
-            isLoading={isChallengesLoading} 
+            challenges={ []} 
+            isLoading={false} 
           />
         </section>
         
         {/* Waiting Room */}
-        <section className="w-full bg-white rounded-xl shadow-sm p-5">
-          <div className="flex justify-between items-center mb-5">
-            <div>
-              <h2 className="text-lg font-semibold text-slate-800">Waiting Room</h2>
-              <p className="text-sm text-slate-500">Players ready for matches</p>
-            </div>
-            <div className="bg-accent/10 text-accent px-2.5 py-1 rounded-full text-xs font-medium">
-              <span className="mr-1">•</span> 12 Online
-            </div>
-          </div>
-          
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            {isPlayersLoading ? (
-              Array(4).fill(0).map((_, index) => (
-                <div key={index} className="flex flex-col items-center gap-3 p-4 border border-slate-100 rounded-lg">
-                  <div className="h-16 w-16 rounded-full bg-slate-100 animate-pulse"></div>
-                  <div className="w-full text-center">
-                    <div className="h-4 w-24 mb-1 bg-slate-100 animate-pulse mx-auto"></div>
-                    <div className="h-3 w-20 bg-slate-100 animate-pulse mx-auto"></div>
-                  </div>
-                  <div className="h-7 w-20 rounded-full bg-slate-100 animate-pulse"></div>
-                </div>
-              ))
-            ) : players ? (
-              players.slice(0, 8).map((player) => (
-                <div 
-                  key={player.id} 
-                  className="flex flex-col items-center gap-3 p-4 border border-slate-100 rounded-lg hover:border-primary/50 hover:bg-slate-50 transition-colors"
-                >
-                  <div className="relative">
-                    <img 
-                      src={player.avatar} 
-                      alt={player.name} 
-                      className="h-16 w-16 rounded-full object-cover border-2 border-white shadow-sm"
-                    />
-                    <span className="absolute -bottom-1 -right-1 bg-green-500 w-3 h-3 rounded-full border-2 border-white"></span>
-                  </div>
-                  
-                  <div className="text-center">
-                    <h3 className="text-sm font-medium text-slate-800">{player.name}</h3>
-                    <p className="text-xs text-slate-500">
-                      {player.position} • Win rate: {Math.round((player.wins / (player.wins + player.losses)) * 100)}%
-                    </p>
-                  </div>
-                  
-                  <button className="px-3 py-1 bg-primary/10 text-primary text-xs font-medium rounded-full hover:bg-primary hover:text-white transition-colors">
-                    Challenge
-                  </button>
-                </div>
-              ))
-            ) : (
-              <div className="py-12 text-center text-slate-500 col-span-4">
-                <p className="text-sm font-medium">No players available</p>
-              </div>
-            )}
-          </div>
-          
-          {!isPlayersLoading && players && players.length > 0 && (
-            <div className="mt-5 text-center">
-              <button className="text-primary text-xs font-medium hover:underline inline-flex items-center">
-                <span>View All Players</span>
-                <svg className="ml-1 w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                </svg>
-              </button>
-            </div>
-          )}
-        </section>
+        <WaitingRoom />
       </main>
       
       <Footer />

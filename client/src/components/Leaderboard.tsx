@@ -20,14 +20,23 @@ import { Skeleton } from "@/components/ui/skeleton";
 interface LeaderboardProps {
   players: any[];
   isLoading: boolean;
+  onPositionChange: (position: string) => void;
+  onSeasonChange: (season: string) => void;
+  currentPosition: string;
+  currentSeason: string;
 }
 
 type SortField = "name" | "wins" | "losses" | "winRate";
 type SortDirection = "asc" | "desc";
 
-export default function Leaderboard({ players, isLoading }: LeaderboardProps) {
-  const [position, setPosition] = useState<string>("all");
-  const [season, setSeason] = useState<string>("current");
+export default function Leaderboard({ 
+  players, 
+  isLoading,
+  onPositionChange,
+  onSeasonChange,
+  currentPosition,
+  currentSeason
+}: LeaderboardProps) {
   const [sortField, setSortField] = useState<SortField>("wins");
   const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
 
@@ -44,9 +53,9 @@ export default function Leaderboard({ players, isLoading }: LeaderboardProps) {
     let filteredPlayers = [...players];
     
     // Apply position filter
-    if (position !== "all") {
+    if (currentPosition !== "all") {
       filteredPlayers = filteredPlayers.filter(player => 
-        player.position.toLowerCase() === position.toLowerCase()
+        player.position.toLowerCase() === currentPosition.toLowerCase()
       );
     }
     
@@ -147,20 +156,19 @@ export default function Leaderboard({ players, isLoading }: LeaderboardProps) {
         </div>
         
         <div className="flex space-x-2 mt-4 md:mt-0">
-          <Select value={position} onValueChange={setPosition}>
+          <Select value={currentPosition} onValueChange={onPositionChange}>
             <SelectTrigger className="w-[160px] bg-slate-100 text-slate-700">
               <SelectValue placeholder="All Positions" />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Positions</SelectItem>
+              <SelectItem value="kicker">Kickers</SelectItem>
               <SelectItem value="goalkeeper">Goalkeepers</SelectItem>
-              <SelectItem value="defender">Defenders</SelectItem>
-              <SelectItem value="midfielder">Midfielders</SelectItem>
-              <SelectItem value="forward">Forwards</SelectItem>
+              <SelectItem value="both">Both</SelectItem>
             </SelectContent>
           </Select>
           
-          <Select value={season} onValueChange={setSeason}>
+          <Select value={currentSeason} onValueChange={onSeasonChange}>
             <SelectTrigger className="w-[160px] bg-slate-100 text-slate-700">
               <SelectValue placeholder="This Season" />
             </SelectTrigger>
@@ -254,7 +262,7 @@ export default function Leaderboard({ players, isLoading }: LeaderboardProps) {
                     }>
                       {index + 1}
                     </span>
-                  </TableCell >
+                  </TableCell>
                   <TableCell>
                     <div className="flex items-center">
                       <img 
@@ -290,24 +298,7 @@ export default function Leaderboard({ players, isLoading }: LeaderboardProps) {
       {!isLoading && (
         <div className="mt-6 flex justify-between items-center">
           <div className="text-sm text-slate-500">
-            Showing {players.length} of 125 players
-          </div>
-          <div className="flex space-x-1">
-            <button className="w-8 h-8 flex items-center justify-center rounded-md bg-slate-100 text-slate-600 hover:bg-primary hover:text-white transition-colors">
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-              </svg>
-            </button>
-            <button className="w-8 h-8 flex items-center justify-center rounded-md bg-primary text-white">1</button>
-            <button className="w-8 h-8 flex items-center justify-center rounded-md bg-slate-100 text-slate-600 hover:bg-primary hover:text-white transition-colors">2</button>
-            <button className="w-8 h-8 flex items-center justify-center rounded-md bg-slate-100 text-slate-600 hover:bg-primary hover:text-white transition-colors">3</button>
-            <button className="w-8 h-8 flex items-center justify-center rounded-md bg-slate-100 text-slate-600 hover:bg-primary hover:text-white transition-colors">...</button>
-            <button className="w-8 h-8 flex items-center justify-center rounded-md bg-slate-100 text-slate-600 hover:bg-primary hover:text-white transition-colors">25</button>
-            <button className="w-8 h-8 flex items-center justify-center rounded-md bg-slate-100 text-slate-600 hover:bg-primary hover:text-white transition-colors">
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-              </svg>
-            </button>
+            Showing {players.length} of {players.length} players
           </div>
         </div>
       )}

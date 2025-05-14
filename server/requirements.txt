@@ -1,5 +1,28 @@
-flask==2.0.1
-flask-cors==3.0.10
-python-dotenv==0.19.0
-gunicorn==21.2.0
-werkzeug==2.0.1
+# FastAPI và ASGI server
+fastapi==0.109.2
+uvicorn==0.27.1
+
+# Data validation và settings
+pydantic==2.6.1
+pydantic-settings==2.1.0
+python-dotenv==1.0.1
+email-validator==2.1.0
+
+# Database
+motor==3.1.1
+pymongo==4.3.3
+
+# Authentication
+python-jose==3.3.0
+python-multipart==0.0.9
+passlib==1.7.4
+bcrypt==4.1.2
+
+# HTTP và Networking
+httpx==0.23.3
+
+# Testing
+pytest==7.3.1
+
+# Websockets
+websockets==15.0.1

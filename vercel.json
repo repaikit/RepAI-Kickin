@@ -6,14 +6,19 @@
       "use": "@vercel/next"
     },
     {
-      "src": "server/app.py",
+      "src": "server/main.py",
       "use": "@vercel/python"
     }
   ],
   "routes": [
     {
+      "src": "/api/ws/(.*)",
+      "dest": "server/main.py",
+      "continue": true
+    },
+    {
       "src": "/api/(.*)",
-      "dest": "server/app.py"
+      "dest": "server/main.py"
     },
     {
       "handle": "filesystem"
@@ -24,6 +29,7 @@
     }
   ],
   "env": {
-    "NEXT_PUBLIC_API_URL": "/api"
+    "NEXT_PUBLIC_API_URL": "/api",
+    "NEXT_PUBLIC_WS_URL": "/api/ws"
   }
 } 
