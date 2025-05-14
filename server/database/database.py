@@ -6,6 +6,10 @@ import asyncio
 from pymongo.errors import ConnectionFailure, ServerSelectionTimeoutError
 import certifi
 from functools import lru_cache
+import nest_asyncio
+
+# Apply nest_asyncio to allow nested event loops
+nest_asyncio.apply()
 
 class Database:
     client: AsyncIOMotorClient | None = None
