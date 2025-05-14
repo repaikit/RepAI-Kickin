@@ -1,18 +1,19 @@
 import sys
 import os
+from pathlib import Path
 
-# Add the parent directory to Python path when running locally
-if __name__ == "__main__":
-    sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# Add the parent directory to Python path
+ROOT_DIR = Path(__file__).resolve().parent
+sys.path.append(str(ROOT_DIR))
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
-from server.routers import users, waitingroom_ws, skills
-from server.middleware.rate_limit import RateLimitMiddleware
-from server.middleware.database import database_middleware
-from server.utils.logger import setup_logger
-from server.database.database import init_db
-from server.config.settings import settings
+from routers import users, waitingroom_ws, skills
+from middleware.rate_limit import RateLimitMiddleware
+from middleware.database import database_middleware
+from utils.logger import setup_logger
+from database.database import Database, get_database
+from config.settings import settings
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -34,15 +35,28 @@ app.add_middleware(
 app.add_middleware(RateLimitMiddleware)
 
 # Add database middleware
-app.middleware("http")(database_middleware)
+app.add_middleware(database_middleware)
 
 # Setup logging
 setup_logger()
 
+# Database dependency
+async def get_db():
+    db = await get_database()
+    try:
+        yield db
+    finally:
+        # No need to close here as middleware handles it
+        pass
+
 # Initialize database
 @app.on_event("startup")
 async def startup_event():
-    await init_db()
+    try:
+        await Database.get_instance()
+    except Exception as e:
+        print(f"Error initializing database: {str(e)}")
+        raise
 
 # Include routers
 app.include_router(users.router, prefix="/api", tags=["users"])
