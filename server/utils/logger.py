@@ -2,7 +2,7 @@ import logging
 import sys
 from logging.handlers import RotatingFileHandler
 import os
-from config.settings import settings
+from server.config.settings import settings
 
 # Create logs directory if it doesn't exist
 os.makedirs("logs", exist_ok=True)
@@ -11,7 +11,7 @@ os.makedirs("logs", exist_ok=True)
 def setup_logger(name="api"):
     # Create logger
     logger = logging.getLogger(name)
-    logger.setLevel(logging.INFO)
+    logger.setLevel(settings.LOG_LEVEL)
 
     # Create handlers
     console_handler = logging.StreamHandler(sys.stdout)
@@ -40,4 +40,17 @@ def setup_logger(name="api"):
 api_logger = setup_logger("api")
 auth_logger = setup_logger("auth")
 db_logger = setup_logger("database")
-ws_logger = setup_logger("websocket") 
+ws_logger = setup_logger("websocket")
+
+# Configure logging
+logging.basicConfig(
+    level=settings.LOG_LEVEL,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler(sys.stdout)
+    ]
+)
+
+# Create loggers
+api_logger = logging.getLogger('api')
+ws_logger = logging.getLogger('websocket') 
