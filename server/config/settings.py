@@ -11,8 +11,8 @@ class Settings:
     PROJECT_NAME: str = "Kick'in API"
     
     # Server Settings
-    HOST: str = os.getenv("HOST", "0.0.0.0")
-    PORT: int = int(os.getenv("PORT", "8000"))
+    HOST: str = os.getenv("HOST", "localhost")
+    PORT: int = int(os.getenv("PORT", "5000"))
     DEBUG: bool = os.getenv("DEBUG", "False").lower() == "true"
     
     # Logging Settings
