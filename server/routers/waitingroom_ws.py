@@ -1,170 +1,153 @@
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect, HTTPException
 from fastapi.responses import HTMLResponse
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Any
 from utils.logger import ws_logger
 from database.database import get_users_collection
 from datetime import datetime
 import json
+import asyncio
 from bson import ObjectId
+import os
 
 router = APIRouter()
 
 class ConnectionManager:
     def __init__(self):
-        self.active_connections: Dict[str, WebSocket] = {}  # ObjectId -> WebSocket
-        self.user_info: Dict[str, dict] = {}  # ObjectId -> user_info
-        self.ready_users: Dict[str, bool] = {}  # ObjectId -> ready_status
+        self.active_connections: Dict[str, WebSocket] = {}
+        self.user_info: Dict[str, Dict[str, Any]] = {}
+        self._lock = asyncio.Lock()
+        self._is_vercel = os.getenv("VERCEL") == "1"
 
-    async def connect(self, websocket: WebSocket, user_id: str):
-        await websocket.accept()
-        self.active_connections[user_id] = websocket
-        self.ready_users[user_id] = False
-        
-        # Get user info from database
-        users_collection = await get_users_collection()
-        user = await users_collection.find_one({"_id": ObjectId(user_id)})
-        if user:
-            self.user_info[user_id] = {
-                "user_id": str(user["_id"]),
-                "name": user.get("name", "Guest Player"),
-                "user_type": user.get("user_type", "guest"),
-                "kicker_skills": user.get("kicker_skills", []),
-                "goalkeeper_skills": user.get("goalkeeper_skills", []),
-                "remaining_matches": user.get("remaining_matches", 5),
-                "is_ready": False,
-                "avatar": user.get("avatar")
-            }
-            ws_logger.info(f"User {self.user_info[user_id]['name']} ({user_id}) connected to waiting room.")
-        else:
-            ws_logger.error(f"User not found for id: {user_id}")
-            await websocket.close()
+    async def connect(self, websocket: WebSocket, user_id: str, user_data: Dict[str, Any]):
+        try:
+            await websocket.accept()
+            async with self._lock:
+                self.active_connections[user_id] = websocket
+                self.user_info[user_id] = user_data
+            ws_logger.info(f"User {user_id} connected to waiting room.")
+        except Exception as e:
+            ws_logger.error(f"Error accepting WebSocket connection: {str(e)}")
+            raise
 
-    def disconnect(self, user_id: str):
-        if user_id in self.active_connections:
-            user_name = self.user_info.get(user_id, {}).get("name", user_id)
-            ws_logger.info(f"User {user_name} disconnected from waiting room.")
-            del self.active_connections[user_id]
-            del self.user_info[user_id]
-            del self.ready_users[user_id]
+    async def disconnect(self, user_id: str):
+        async with self._lock:
+            if user_id in self.active_connections:
+                try:
+                    await self.active_connections[user_id].close()
+                except Exception as e:
+                    ws_logger.error(f"Error closing WebSocket for user {user_id}: {str(e)}")
+                finally:
+                    del self.active_connections[user_id]
+                    if user_id in self.user_info:
+                        del self.user_info[user_id]
+                    ws_logger.info(f"User {user_id} disconnected from waiting room.")
 
-    async def send_personal_message(self, message: dict, user_id: str):
-        websocket = self.active_connections.get(user_id)
-        if websocket:
-            await websocket.send_json(message)
+    async def broadcast(self, message: Dict[str, Any], exclude_user: Optional[str] = None):
+        disconnected_users = []
+        for user_id, connection in self.active_connections.items():
+            if user_id != exclude_user:
+                try:
+                    # Add timestamp for Vercel compatibility
+                    if self._is_vercel:
+                        message["timestamp"] = datetime.utcnow().isoformat()
+                    await connection.send_json(message)
+                except WebSocketDisconnect:
+                    disconnected_users.append(user_id)
+                except Exception as e:
+                    ws_logger.error(f"Error broadcasting to user {user_id}: {str(e)}")
+                    disconnected_users.append(user_id)
 
-    async def broadcast(self, message: dict):
-        for ws in self.active_connections.values():
-            await ws.send_json(message)
-
-    def get_user_list(self):
-        return list(self.user_info.values())
-
-    def update_user_ready_status(self, user_id: str, is_ready: bool):
-        if user_id in self.user_info:
-            self.user_info[user_id]["is_ready"] = is_ready
-            self.ready_users[user_id] = is_ready
-
-    def get_ready_users(self):
-        return [uid for uid, ready in self.ready_users.items() if ready]
+        # Clean up disconnected users
+        for user_id in disconnected_users:
+            await self.disconnect(user_id)
 
 manager = ConnectionManager()
 
 @router.websocket("/ws/waitingroom/{user_id}")
 async def websocket_endpoint(websocket: WebSocket, user_id: str):
-    await manager.connect(websocket, user_id)
     try:
-        # Send current user list to all
-        await manager.broadcast({
-            "type": "user_list",
-            "users": manager.get_user_list()
+        # Get user data from database
+        users_collection = await get_users_collection()
+        user = await users_collection.find_one({"_id": ObjectId(user_id)})
+        
+        if not user:
+            ws_logger.error(f"User not found for id: {user_id}")
+            await websocket.close(code=1008)  # Policy Violation
+            return
+
+        # Connect to WebSocket
+        await manager.connect(websocket, user_id, {
+            "id": str(user["_id"]),
+            "name": user.get("name", "Unknown"),
+            "type": user.get("type", "unknown"),
+            "connected_at": datetime.utcnow().isoformat()
         })
 
-        while True:
-            data = await websocket.receive_json()
-            
-            # Handle different message types
-            if data.get("type") == "ready":
-                # Update user ready status
-                is_ready = data.get("is_ready", False)
-                manager.update_user_ready_status(user_id, is_ready)
-                
-                # Broadcast updated user list
-                await manager.broadcast({
-                    "type": "user_list",
-                    "users": manager.get_user_list()
-                })
-
-            elif data.get("type") == "challenge":
-                # Send challenge to selected user
-                target_id = data.get("target_user_id")
-                if target_id in manager.active_connections:
-                    await manager.send_personal_message({
-                        "type": "challenge",
-                        "from": user_id,
-                        "from_user": manager.user_info[user_id],
-                        "match_type": data.get("match_type", "friendly"),  # friendly or ranked
-                        "position": data.get("position", "both")  # kicker, goalkeeper, or both
-                    }, target_id)
-
-            elif data.get("type") == "challenge_response":
-                # Handle challenge response
-                target_id = data.get("target_user_id")
-                accepted = data.get("accepted", False)
-                
-                if accepted and target_id in manager.active_connections:
-                    # Both users are ready for match
-                    match_data = {
-                        "type": "match_ready",
-                        "players": [
-                            manager.user_info[user_id],
-                            manager.user_info[target_id]
-                        ],
-                        "match_type": data.get("match_type", "friendly"),
-                        "position": data.get("position", "both")
-                    }
-                    
-                    # Send match ready message to both users
-                    await manager.send_personal_message(match_data, user_id)
-                    await manager.send_personal_message(match_data, target_id)
-                    
-                    # Update remaining matches for both users
-                    users_collection = await get_users_collection()
-                    await users_collection.update_one(
-                        {"_id": ObjectId(user_id)},
-                        {"$inc": {"remaining_matches": -1}}
-                    )
-                    await users_collection.update_one(
-                        {"_id": ObjectId(target_id)},
-                        {"$inc": {"remaining_matches": -1}}
-                    )
-                else:
-                    # Send rejection message
-                    await manager.send_personal_message({
-                        "type": "challenge_rejected",
-                        "from": user_id,
-                        "from_user": manager.user_info[user_id]
-                    }, target_id)
-
-            elif data.get("type") == "status":
-                # Broadcast user status update
-                await manager.broadcast({
-                    "type": "status",
-                    "user_id": user_id,
-                    "user": manager.user_info[user_id],
-                    "status": data.get("status")
-                })
-
-    except WebSocketDisconnect:
-        manager.disconnect(user_id)
-        # Broadcast updated user list
-        await manager.broadcast({
+        # Send current user list to the new user
+        await websocket.send_json({
             "type": "user_list",
-            "users": manager.get_user_list()
+            "users": list(manager.user_info.values())
         })
+
+        # Broadcast user joined
+        await manager.broadcast({
+            "type": "user_joined",
+            "user": {
+                "id": str(user["_id"]),
+                "name": user.get("name", "Unknown"),
+                "type": user.get("type", "unknown"),
+                "connected_at": datetime.utcnow().isoformat()
+            }
+        }, exclude_user=user_id)
+
+        try:
+            while True:
+                # Add timeout for Vercel compatibility
+                data = await asyncio.wait_for(
+                    websocket.receive_text(),
+                    timeout=30.0  # 30 seconds timeout
+                )
+                try:
+                    message = json.loads(data)
+                    # Handle different message types here
+                    if message.get("type") == "chat":
+                        await manager.broadcast({
+                            "type": "chat",
+                            "user": {
+                                "id": str(user["_id"]),
+                                "name": user.get("name", "Unknown")
+                            },
+                            "message": message.get("message", ""),
+                            "timestamp": datetime.utcnow().isoformat()
+                        })
+                    elif message.get("type") == "ping":
+                        # Handle ping messages for keep-alive
+                        await websocket.send_json({
+                            "type": "pong",
+                            "timestamp": datetime.utcnow().isoformat()
+                        })
+                except json.JSONDecodeError:
+                    ws_logger.error(f"Invalid JSON received from user {user_id}")
+                    continue
+
+        except asyncio.TimeoutError:
+            ws_logger.info(f"WebSocket timeout for user {user_id}")
+        except WebSocketDisconnect:
+            ws_logger.info(f"WebSocket disconnected for user {user_id}")
+        except Exception as e:
+            ws_logger.error(f"WebSocket error: {str(e)}")
+        finally:
+            await manager.disconnect(user_id)
+            # Broadcast user left
+            await manager.broadcast({
+                "type": "user_left",
+                "user_id": user_id,
+                "timestamp": datetime.utcnow().isoformat()
+            })
+
     except Exception as e:
-        ws_logger.error(f"WebSocket error: {str(e)}")
-        manager.disconnect(user_id)
-        await manager.broadcast({
-            "type": "user_list",
-            "users": manager.get_user_list()
-        }) 
+        ws_logger.error(f"Error in WebSocket connection: {str(e)}")
+        try:
+            await websocket.close(code=1011)  # Internal Error
+        except:
+            pass 
