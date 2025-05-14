@@ -8,16 +8,22 @@
     "start": "cd client && npm run start",
     "lint": "cd client && npm run lint",
     "check": "tsc",
-    "backend:dev": "cd server && python app.py",
+    "backend:dev": "cd server && python main.py",
     "backend:test": "cd server && python -m pytest",
     "backend:lint": "cd server && flake8 .",
     "dev:all": "concurrently \"npm run dev\" \"npm run backend:dev\"",
     "build:all": "concurrently \"npm run build\" \"cd server && pip install -r requirements.txt\"",
-    "start:all": "concurrently \"cd client && npm run dev\" \"cd server && python app.py\""
+    "start:all": "concurrently \"cd client && npm run dev\" \"cd server && python main.py\""
   },
   "devDependencies": {
+    "@types/debug": "^4.1.12",
     "@types/node": "20.16.11",
     "concurrently": "^8.2.2",
     "typescript": "^5.6.3"
+  },
+  "dependencies": {
+    "@coinbase/wallet-sdk": "^4.3.2",
+    "@privy-io/react-auth": "^2.13.1",
+    "clsx": "^2.1.1"
   }
 }

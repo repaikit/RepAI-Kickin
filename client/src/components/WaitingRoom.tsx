@@ -1,15 +1,27 @@
-import React from "react";
+import React, { useState } from "react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
+import { useWaitingRoom } from "@/hooks/useWaitingRoom";
+import { useGuestUser } from "@/hooks/useGuestUser";
 
-interface WaitingRoomProps {
-  players: any[];
-  isLoading: boolean;
-}
+export default function WaitingRoom() {
+  const { guestUser } = useGuestUser();
+  const { users, isConnected, sendChallenge } = useWaitingRoom();
+  const [isLoading, setIsLoading] = useState(true);
 
-export default function WaitingRoom({ players, isLoading }: WaitingRoomProps) {
-  // Filter players for the waiting room (let's show all players for now)
-  const waitingPlayers = players.slice(0, 4); // Just show first 4 players
+  // Simulate loading state for initial data fetch
+  React.useEffect(() => {
+    if (users.length > 0) {
+      setIsLoading(false);
+    }
+  }, [users]);
+
+  // Filter out current user from the list
+  const waitingPlayers = users.filter(user => user.user_id !== guestUser?._id).slice(0, 4);
+
+  const handleChallenge = (targetUserId: string) => {
+    sendChallenge(targetUserId);
+  };
 
   return (
     <section className="bg-white rounded-xl shadow-md p-6 h-full">
@@ -19,7 +31,7 @@ export default function WaitingRoom({ players, isLoading }: WaitingRoomProps) {
           <p className="text-slate-500">Players ready for matches</p>
         </div>
         <Badge variant="outline" className="bg-accent/10 text-accent border-accent/20 px-3 py-1">
-          <span className="mr-1">•</span> 12 Online
+          <span className="mr-1">•</span> {users.length} Online
         </Badge>
       </div>
       
@@ -39,26 +51,31 @@ export default function WaitingRoom({ players, isLoading }: WaitingRoomProps) {
         ) : (
           waitingPlayers.map((player) => (
             <div 
-              key={player.id} 
+              key={player.user_id} 
               className="flex items-center gap-4 p-4 border border-slate-200 rounded-lg hover:border-primary/50 hover:bg-slate-50 transition-colors"
             >
               <div className="relative">
                 <img 
-                  src={player.avatar} 
+                  src={player.avatar || 'https://via.placeholder.com/150'}
                   alt={player.name} 
                   className="h-12 w-12 rounded-full object-cover border-2 border-white shadow-sm"
                 />
-                <span className="absolute -bottom-1 -right-1 bg-success w-4 h-4 rounded-full border-2 border-white"></span>
+                <span className={`absolute -bottom-1 -right-1 w-4 h-4 rounded-full border-2 border-white ${
+                  player.is_ready ? 'bg-success' : 'bg-slate-300'
+                }`}></span>
               </div>
               
               <div className="flex-1">
                 <h3 className="font-medium text-slate-800">{player.name}</h3>
                 <p className="text-sm text-slate-500">
-                  {player.position} • Win rate: {Math.round((player.wins / (player.wins + player.losses)) * 100)}%
+                  {player.user_type === 'guest' ? 'Guest' : 'Player'} • {player.remaining_matches} matches left
                 </p>
               </div>
               
-              <button className="px-4 py-1.5 bg-primary/10 text-primary font-medium text-sm rounded-full hover:bg-primary hover:text-white transition-colors">
+              <button 
+                onClick={() => handleChallenge(player.user_id)}
+                className="px-4 py-1.5 bg-primary/10 text-primary font-medium text-sm rounded-full hover:bg-primary hover:text-white transition-colors"
+              >
                 Challenge
               </button>
             </div>

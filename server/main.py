@@ -1,26 +1,55 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.api.routes import router as api_router
-from app.core.config import settings
+from routers import users, waitingroom_ws, skills
+from middleware.rate_limit import RateLimitMiddleware
+from middleware.database import database_middleware
+from utils.logger import setup_logger
+from database.database import init_db
+from config.settings import settings
 
+# Initialize FastAPI app
 app = FastAPI(
-    title="Kickin Dashboard API",
-    description="API for Kickin Dashboard",
+    title="Kick'in API",
+    description="Backend API for Kick'in game",
     version="1.0.0"
 )
 
-# Configure CORS
+# Setup CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],  # Frontend URL
+    allow_origins=settings.CORS_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Include API routes
-app.include_router(api_router, prefix="/api")
+# Add rate limiting middleware
+app.add_middleware(RateLimitMiddleware)
 
-@app.get("/")
-async def root():
-    return {"message": "Welcome to Kickin Dashboard API"} 
+# Add database middleware
+app.middleware("http")(database_middleware)
+
+# Setup logging
+setup_logger()
+
+# Initialize database
+@app.on_event("startup")
+async def startup_event():
+    await init_db()
+
+# Include routers
+app.include_router(users.router, prefix="/api", tags=["users"])
+app.include_router(skills.router, prefix="/api", tags=["skills"])
+app.include_router(waitingroom_ws.router, prefix="/api", tags=["websocket"])
+
+# Add WebSocket route directly
+app.websocket("/api/ws/waitingroom/{user_id}")(waitingroom_ws.websocket_endpoint)
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(
+        "main:app",
+        host=settings.HOST,
+        port=settings.PORT,
+        reload=settings.DEBUG
+    ) 
