@@ -4,6 +4,8 @@ from server.config.settings import settings
 from server.utils.logger import api_logger
 import asyncio
 from pymongo.errors import ConnectionFailure, ServerSelectionTimeoutError
+import certifi
+from functools import lru_cache
 
 class Database:
     client: AsyncIOMotorClient | None = None
@@ -11,58 +13,76 @@ class Database:
     _users_collection: AsyncIOMotorCollection | None = None
     _matches_collection: AsyncIOMotorCollection | None = None
     _skills_collection: AsyncIOMotorCollection | None = None
-    _connection_retries: int = 3
-    _retry_delay: int = 2  # seconds
 
 db = Database()
 
+@lru_cache()
+def get_motor_client() -> AsyncIOMotorClient:
+    """Create a new Motor client with caching."""
+    return AsyncIOMotorClient(
+        settings.MONGODB_URL,
+        serverSelectionTimeoutMS=5000,
+        connectTimeoutMS=5000,
+        tls=True,
+        tlsCAFile=certifi.where(),
+        tlsAllowInvalidCertificates=False,
+        retryWrites=True,
+        w="majority"
+    )
+
 async def get_database() -> AsyncIOMotorDatabase:
-    if db.db is None:
-        for attempt in range(db._connection_retries):
-            try:
-                db.client = AsyncIOMotorClient(
-                    settings.MONGODB_URL,
-                    serverSelectionTimeoutMS=5000,  # 5 seconds timeout
-                    connectTimeoutMS=5000
-                )
-                # Test the connection
-                await db.client.admin.command('ping')
-                db.db = db.client[settings.DATABASE_NAME]
-                api_logger.info("Connected to MongoDB successfully")
-                return db.db
-            except (ConnectionFailure, ServerSelectionTimeoutError) as e:
-                api_logger.error(f"Failed to connect to MongoDB (attempt {attempt + 1}/{db._connection_retries}): {str(e)}")
-                if attempt < db._connection_retries - 1:
-                    await asyncio.sleep(db._retry_delay)
-                else:
-                    raise Exception(f"Could not connect to MongoDB after {db._connection_retries} attempts")
-            except Exception as e:
-                api_logger.error(f"Unexpected error connecting to MongoDB: {str(e)}")
-                raise
-    return db.db
+    """Get database instance with connection management for serverless."""
+    try:
+        if db.db is None:
+            client = get_motor_client()
+            db.client = client
+            db.db = client[settings.DATABASE_NAME]
+            # Test the connection
+            await db.client.admin.command('ping')
+            api_logger.info("Connected to MongoDB successfully")
+        return db.db
+    except Exception as e:
+        api_logger.error(f"Database connection error: {str(e)}")
+        raise
 
 async def get_users_collection() -> AsyncIOMotorCollection:
-    if db._users_collection is None:
-        if db.db is None:
-            await get_database()
-        db._users_collection = db.db.users
-    return db._users_collection
+    """Get users collection with connection management."""
+    try:
+        if db._users_collection is None:
+            if db.db is None:
+                await get_database()
+            db._users_collection = db.db.users
+        return db._users_collection
+    except Exception as e:
+        api_logger.error(f"Error getting users collection: {str(e)}")
+        raise
 
 async def get_matches_collection() -> AsyncIOMotorCollection:
-    if db._matches_collection is None:
-        if db.db is None:
-            await get_database()
-        db._matches_collection = db.db.matches
-    return db._matches_collection
+    """Get matches collection with connection management."""
+    try:
+        if db._matches_collection is None:
+            if db.db is None:
+                await get_database()
+            db._matches_collection = db.db.matches
+        return db._matches_collection
+    except Exception as e:
+        api_logger.error(f"Error getting matches collection: {str(e)}")
+        raise
 
 async def get_skills_collection() -> AsyncIOMotorCollection:
-    if db._skills_collection is None:
-        if db.db is None:
-            await get_database()
-        db._skills_collection = db.db.skills
-    return db._skills_collection
+    """Get skills collection with connection management."""
+    try:
+        if db._skills_collection is None:
+            if db.db is None:
+                await get_database()
+            db._skills_collection = db.db.skills
+        return db._skills_collection
+    except Exception as e:
+        api_logger.error(f"Error getting skills collection: {str(e)}")
+        raise
 
 async def init_db() -> None:
+    """Initialize database connection and indexes."""
     try:
         await get_database()
         
@@ -78,6 +98,7 @@ async def init_db() -> None:
         raise
 
 async def create_indexes() -> None:
+    """Create database indexes."""
     try:
         if db.db is None:
             raise RuntimeError("Database not initialized")
@@ -119,6 +140,7 @@ async def create_indexes() -> None:
         raise
 
 async def close_db() -> None:
+    """Close database connection."""
     if db.client:
         try:
             db.client.close()
