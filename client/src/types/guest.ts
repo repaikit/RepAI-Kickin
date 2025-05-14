@@ -4,6 +4,7 @@ export interface DeviceInfo {
 }
 
 export interface GuestUser {
+  _id: string;
   user_type: 'guest';
   session_id: string;
   remaining_matches: number;
@@ -18,7 +19,7 @@ export interface GuestUser {
   is_verified: boolean;
   trend: 'neutral' | 'up' | 'down';
   name: string;
-  avatar: string | null;
+  avatar: string;
   kicker_skills: string[];
   goalkeeper_skills: string[];
   point: number;
@@ -34,5 +35,4 @@ export interface GuestUser {
   converted_to_user: boolean;
   converted_at: string | null;
   device_info: DeviceInfo;
-  _id: string;
 } 

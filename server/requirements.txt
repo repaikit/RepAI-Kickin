@@ -11,13 +11,13 @@ email-validator==2.1.0
 # Database
 motor==3.1.1
 pymongo==4.3.3
-nest-asyncio==1.6.0
+nest-asyncio==1.5.8
 
 # Authentication
-python-jose[cryptography]==3.3.0
+python-jose==3.3.0
 python-multipart==0.0.6
-passlib[bcrypt]==1.7.4
-bcrypt==4.1.2
+passlib==1.7.4
+bcrypt==4.0.1
 
 # HTTP và Networking
 httpx==0.23.3
@@ -26,7 +26,12 @@ httpx==0.23.3
 pytest==7.3.1
 
 # Websockets
-websockets==15.0.1
+websockets==12.0
 
 # Additional package
-certifi==2024.2.2
+certifi==2023.11.17
+
+# New dependencies
+tenacity==8.2.3
+cachetools==5.3.2
+prometheus-client==0.19.0

@@ -80,6 +80,10 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str):
             "id": str(user["_id"]),
             "name": user.get("name", "Unknown"),
             "type": user.get("type", "unknown"),
+            "avatar": user.get("avatar", ""),
+            "remaining_matches": user.get("remaining_matches", 0),
+            "wins": user.get("wins", 0),
+            "losses": user.get("losses", 0),
             "connected_at": datetime.utcnow().isoformat()
         })
 
@@ -96,6 +100,10 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str):
                 "id": str(user["_id"]),
                 "name": user.get("name", "Unknown"),
                 "type": user.get("type", "unknown"),
+                "avatar": user.get("avatar", ""),
+                "remaining_matches": user.get("remaining_matches", 0),
+                "wins": user.get("wins", 0),
+                "losses": user.get("losses", 0),
                 "connected_at": datetime.utcnow().isoformat()
             }
         }, exclude_user=user_id)

@@ -1,39 +1,69 @@
 import os
-import logging
+from pydantic_settings import BaseSettings
 from typing import List
 from dotenv import load_dotenv
 
+# Load environment variables from .env file
 load_dotenv()
 
-class Settings:
-    # API Settings
-    API_V1_STR: str = "/api/v1"
+class Settings(BaseSettings):
+    # Application settings
+    DEBUG: bool = os.getenv("DEBUG", "False").lower() == "true"
+    ENVIRONMENT: str = os.getenv("ENVIRONMENT", "development")
+    
+    # API settings
+    API_V1_STR: str = "/api"
     PROJECT_NAME: str = "Kick'in API"
     
-    # Server Settings
-    HOST: str = os.getenv("HOST", "localhost")
-    PORT: int = int(os.getenv("PORT", "5000"))
-    DEBUG: bool = os.getenv("DEBUG", "False").lower() == "true"
-    
-    # Logging Settings
-    LOG_LEVEL: int = getattr(logging, os.getenv("LOG_LEVEL", "INFO").upper())
-    
-    # CORS Settings
+    # CORS settings - hardcoded values
     CORS_ORIGINS: List[str] = [
-        origin.strip() 
-        for origin in os.getenv("CORS_ORIGINS", "http://localhost:3000").split(",")
+        "http://localhost:3000",
+        "http://localhost:8000",
+        "https://rep-ai-kickin.vercel.app",
+        "https://kickin-game.vercel.app"
     ]
     
-    # Database Settings
-    MONGODB_URL: str = os.getenv("MONGODB_URL", "mongodb+srv://repaikickin:repaikickin@repai-kickin.cubmquz.mongodb.net/")
-    DATABASE_NAME: str = os.getenv("DATABASE_NAME", "repai_kickin")
+    # Database settings
+    MONGODB_URL: str = os.getenv("MONGODB_URL", "mongodb://localhost:27017")
+    DATABASE_NAME: str = os.getenv("DATABASE_NAME", "kickin")
     
-    # Rate Limiting
+    # Rate limiting
     RATE_LIMIT_PER_MINUTE: int = int(os.getenv("RATE_LIMIT_PER_MINUTE", "60"))
     
-    # JWT Settings
-    JWT_SECRET_KEY: str = os.getenv("JWT_SECRET_KEY", "your-secret-key")
-    JWT_ALGORITHM: str = "HS256"
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
+    # JWT settings
+    SECRET_KEY: str = os.getenv("JWT_SECRET_KEY", "your-secret-key")
+    ALGORITHM: str = os.getenv("JWT_ALGORITHM", "HS256")
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "30"))
+    
+    # WebSocket settings
+    WS_PING_INTERVAL: int = 20
+    WS_PING_TIMEOUT: int = 20
+    WS_CLOSE_TIMEOUT: int = 20
+    
+    # Cache settings
+    CACHE_ENABLED: bool = True
+    CACHE_MAX_SIZE: int = 1000
+    CACHE_TTL: int = 300
+    CACHE_EXCLUDED_PATHS: List[str] = [
+        "/api/ws/waitingroom/{user_id}",
+        "/api/users/me",
+        "/api/matches/active"
+    ]
+    
+    # Monitoring settings
+    ENABLE_METRICS: bool = True
+    METRICS_PORT: int = 8000
+    
+    # Logging settings
+    LOG_LEVEL: str = "INFO"
+    LOG_FORMAT: str = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    
+    model_config = {
+        "case_sensitive": True,
+        "env_file": ".env",
+        "env_file_encoding": "utf-8",
+        "extra": "ignore"
+    }
 
+# Create settings instance
 settings = Settings() 

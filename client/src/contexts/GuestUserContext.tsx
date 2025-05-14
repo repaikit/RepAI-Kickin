@@ -5,7 +5,7 @@ import { GuestUser } from '@/types/guest';
 interface GuestUserContextType {
   guestUser: GuestUser | null;
   isLoading: boolean;
-  error: Error | null;
+  error: string | null;
 }
 
 const GuestUserContext = createContext<GuestUserContextType | undefined>(undefined);

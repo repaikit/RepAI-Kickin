@@ -5,12 +5,12 @@ import { WS_BASE_URL } from '@/config/api';
 interface WaitingRoomUser {
   user_id: string;
   name: string;
-  user_type: string;
-  kicker_skills: string[];
-  goalkeeper_skills: string[];
+  type: string;
+  avatar: string;
+  wins: number;
+  losses: number;
+  connected_at: string;
   remaining_matches: number;
-  is_ready: boolean;
-  avatar?: string;
 }
 
 export const useWaitingRoom = () => {
@@ -22,6 +22,9 @@ export const useWaitingRoom = () => {
   useEffect(() => {
     if (!guestUser?._id) return;
 
+    let pingInterval: NodeJS.Timeout;
+    let reconnectTimeout: NodeJS.Timeout;
+
     const connectWebSocket = () => {
       const ws = new WebSocket(`${WS_BASE_URL}/api/ws/waitingroom/${guestUser._id}`);
       wsRef.current = ws;
@@ -29,37 +32,78 @@ export const useWaitingRoom = () => {
       ws.onopen = () => {
         console.log('WebSocket connected');
         setIsConnected(true);
+        
+        // Start ping interval
+        pingInterval = setInterval(() => {
+          if (ws.readyState === WebSocket.OPEN) {
+            sendMessage({ type: 'ping' });
+          }
+        }, 15000); // Send ping every 15 seconds
       };
 
       ws.onmessage = (event) => {
         const data = JSON.parse(event.data);
         console.log('WebSocket message received:', data);
 
+        // Handle pong message
+        if (data.type === 'pong') {
+          return;
+        }
+
         switch (data.type) {
-          case 'user_list':
-            console.log('Received user list:', data.users);
-            setUsers(data.users);
+          case 'user_list': {
+            // Map backend fields to WaitingRoomUser
+            const mappedUsers = (data.users || []).map((u: any) => ({
+              user_id: u.id || u.user_id || u._id,
+              name: u.name,
+              type: u.type,
+              avatar: u.avatar || 'https://via.placeholder.com/150',
+              wins: u.wins ?? 0,
+              losses: u.losses ?? 0,
+              connected_at: u.connected_at || '',
+              remaining_matches: u.remaining_matches ?? 0,
+            }));
+            console.log('Mapped user list:', mappedUsers);
+            setUsers(mappedUsers);
             break;
+          }
+          case 'user_joined': {
+            const newUser = {
+              user_id: data.user.id,
+              name: data.user.name,
+              type: data.user.type,
+              avatar: data.user.avatar || 'https://via.placeholder.com/150',
+              wins: data.user.wins ?? 0,
+              losses: data.user.losses ?? 0,
+              connected_at: data.user.connected_at,
+              remaining_matches: data.user.remaining_matches ?? 0,
+            };
+            setUsers(prevUsers => {
+              if (prevUsers.some(u => u.user_id === newUser.user_id)) return prevUsers;
+              return [...prevUsers, newUser];
+            });
+            break;
+          }
+          case 'user_left': {
+            setUsers(prevUsers => prevUsers.filter(user => user.user_id !== data.user_id));
+            break;
+          }
           case 'status':
-            console.log('Received status update:', data);
-            setUsers(prevUsers => 
-              prevUsers.map(user => 
-                user.user_id === data.user_id 
+            setUsers(prevUsers =>
+              prevUsers.map(user =>
+                user.user_id === data.user_id
                   ? { ...user, ...data.user }
                   : user
               )
             );
             break;
           case 'challenge':
-            // Handle challenge request
             console.log('Challenge received:', data);
             break;
           case 'challenge_rejected':
-            // Handle challenge rejection
             console.log('Challenge rejected:', data);
             break;
           case 'match_ready':
-            // Handle match ready
             console.log('Match ready:', data);
             break;
         }
@@ -68,18 +112,36 @@ export const useWaitingRoom = () => {
       ws.onclose = () => {
         console.log('WebSocket disconnected');
         setIsConnected(false);
-        // Try to reconnect after 3 seconds
-        setTimeout(connectWebSocket, 3000);
+        
+        // Clear ping interval
+        if (pingInterval) {
+          clearInterval(pingInterval);
+        }
+        
+        // Clear any existing reconnect timeout
+        if (reconnectTimeout) {
+          clearTimeout(reconnectTimeout);
+        }
+        
+        // Attempt to reconnect after 3 seconds
+        reconnectTimeout = setTimeout(connectWebSocket, 3000);
       };
 
       ws.onerror = (error) => {
         console.error('WebSocket error:', error);
+        ws.close(); // Close the connection on error to trigger reconnect
       };
     };
 
     connectWebSocket();
 
     return () => {
+      if (pingInterval) {
+        clearInterval(pingInterval);
+      }
+      if (reconnectTimeout) {
+        clearTimeout(reconnectTimeout);
+      }
       if (wsRef.current) {
         wsRef.current.close();
       }
