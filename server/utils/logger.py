@@ -1,7 +1,7 @@
 import logging
 import sys
 import os
-from server.config.settings import settings
+from config.settings import settings
 
 # Configure logging
 def setup_logger(name="api"):

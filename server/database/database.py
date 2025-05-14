@@ -1,56 +1,77 @@
-from typing import Any
+from typing import Any, Optional, Dict
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase, AsyncIOMotorCollection
-from server.config.settings import settings
-from server.utils.logger import api_logger
+from config.settings import settings
+from utils.logger import api_logger
 import asyncio
 from pymongo.errors import ConnectionFailure, ServerSelectionTimeoutError
 import certifi
 from functools import lru_cache
 import nest_asyncio
+import sys
+from pathlib import Path
+
+# Add the parent directory to Python path
+ROOT_DIR = Path(__file__).resolve().parent.parent
+if str(ROOT_DIR) not in sys.path:
+    sys.path.append(str(ROOT_DIR))
 
 # Apply nest_asyncio to allow nested event loops
 nest_asyncio.apply()
 
 class Database:
-    _instance = None
-    _client = None
-    _db = None
+    _instance: Optional['Database'] = None
+    _client: Optional[AsyncIOMotorClient] = None
+    _db: Optional[AsyncIOMotorDatabase] = None
+    _lock: asyncio.Lock = asyncio.Lock()
+    _connection_pool: Dict[asyncio.AbstractEventLoop, AsyncIOMotorClient] = {}
 
     @classmethod
     async def get_instance(cls) -> 'Database':
         if cls._instance is None:
-            cls._instance = cls()
+            async with cls._lock:
+                if cls._instance is None:
+                    cls._instance = cls()
         return cls._instance
 
     async def get_client(self) -> AsyncIOMotorClient:
-        if self._client is None:
-            self._client = AsyncIOMotorClient(
-                settings.MONGODB_URL,
-                serverSelectionTimeoutMS=5000,
-                connectTimeoutMS=5000,
-                tls=True,
-                tlsCAFile=certifi.where(),
-                tlsAllowInvalidCertificates=False,
-                retryWrites=True,
-                w="majority"
-            )
-            # Test the connection
-            await self._client.admin.command('ping')
-            api_logger.info("Connected to MongoDB successfully")
-        return self._client
+        # Get current event loop
+        loop = asyncio.get_running_loop()
+        
+        # Check if we have a client for this loop
+        if loop not in self._connection_pool:
+            async with self._lock:
+                if loop not in self._connection_pool:
+                    client = AsyncIOMotorClient(
+                        settings.MONGODB_URL,
+                        serverSelectionTimeoutMS=5000,
+                        connectTimeoutMS=5000,
+                        tls=True,
+                        tlsCAFile=certifi.where(),
+                        tlsAllowInvalidCertificates=False,
+                        retryWrites=True,
+                        w="majority",
+                        maxPoolSize=50,
+                        minPoolSize=10
+                    )
+                    # Test the connection
+                    await client.admin.command('ping')
+                    self._connection_pool[loop] = client
+                    api_logger.info(f"Created new MongoDB connection for loop {id(loop)}")
+        
+        return self._connection_pool[loop]
 
     async def get_database(self) -> AsyncIOMotorDatabase:
-        if self._db is None:
-            client = await self.get_client()
-            self._db = client[settings.DATABASE_NAME]
-        return self._db
+        client = await self.get_client()
+        return client[settings.DATABASE_NAME]
 
-    async def close(self):
-        if self._client:
-            self._client.close()
-            self._client = None
-            self._db = None
-            api_logger.info("Closed MongoDB connection successfully")
+    async def close(self) -> None:
+        loop = asyncio.get_running_loop()
+        if loop in self._connection_pool:
+            async with self._lock:
+                if loop in self._connection_pool:
+                    client = self._connection_pool.pop(loop)
+                    client.close()
+                    api_logger.info(f"Closed MongoDB connection for loop {id(loop)}")
 
 async def get_database() -> AsyncIOMotorDatabase:
     """Get database instance with connection management for serverless."""
@@ -92,7 +113,6 @@ async def init_db() -> None:
     """Initialize database connection and indexes."""
     try:
         db = await get_database()
-        
         # Create indexes
         await create_indexes()
     except Exception as e:

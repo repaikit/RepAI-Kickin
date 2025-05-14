@@ -1,9 +1,9 @@
 from fastapi import APIRouter, HTTPException
 from typing import List
-from server.models.skill import Skill, SkillCreate, SkillUpdate
-from server.database.database import get_skills_collection
+from models.skill import Skill, SkillCreate, SkillUpdate
+from database.database import get_skills_collection
 from bson import ObjectId
-from server.utils.logger import api_logger
+from utils.logger import api_logger
 from enum import Enum
 
 class SkillType(str, Enum):

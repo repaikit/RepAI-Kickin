@@ -1,9 +1,9 @@
 from fastapi import APIRouter, HTTPException
 from typing import List
-from server.models.match import Match, MatchCreate, MatchUpdate
-from server.database.database import get_matches_collection, get_users_collection
+from models.match import Match, MatchCreate, MatchUpdate
+from database.database import get_matches_collection, get_users_collection
 from bson import ObjectId
-from server.utils.logger import api_logger
+from utils.logger import api_logger
 from datetime import datetime
 
 router = APIRouter()
