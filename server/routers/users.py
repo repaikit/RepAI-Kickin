@@ -1,9 +1,9 @@
 from fastapi import APIRouter, HTTPException, Depends, Request, Query
 from typing import List, Optional
 from server.models.user import User, UserCreate, UserUpdate
-from database.database import get_users_collection, get_skills_collection
+from server.database.database import get_users_collection, get_skills_collection
 from bson import ObjectId
-from utils.logger import api_logger
+from server.utils.logger import api_logger
 from datetime import datetime, timedelta
 import uuid
 import random

@@ -1,8 +1,8 @@
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse
 from typing import List, Dict, Optional
-from utils.logger import ws_logger
-from database.database import get_users_collection
+from server.utils.logger import ws_logger
+from server.database.database import get_users_collection
 from datetime import datetime
 import json
 from bson import ObjectId
