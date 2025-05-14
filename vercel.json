@@ -7,7 +7,11 @@
     },
     {
       "src": "server/main.py",
-      "use": "@vercel/python"
+      "use": "@vercel/python",
+      "config": {
+        "runtime": "python3.9",
+        "maxLambdaSize": "15mb"
+      }
     }
   ],
   "routes": [
