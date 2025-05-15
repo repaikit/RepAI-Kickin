@@ -38,7 +38,7 @@ export const useWaitingRoom = () => {
           if (ws.readyState === WebSocket.OPEN) {
             sendMessage({ type: 'ping' });
           }
-        }, 15000); // Send ping every 15 seconds
+        }, 5000); // Gửi ping mỗi 5 giây
       };
 
       ws.onmessage = (event) => {
@@ -113,23 +113,21 @@ export const useWaitingRoom = () => {
         console.log('WebSocket disconnected');
         setIsConnected(false);
         
-        // Clear ping interval
         if (pingInterval) {
           clearInterval(pingInterval);
         }
         
-        // Clear any existing reconnect timeout
         if (reconnectTimeout) {
           clearTimeout(reconnectTimeout);
         }
         
-        // Attempt to reconnect after 3 seconds
-        reconnectTimeout = setTimeout(connectWebSocket, 3000);
+        // Thử kết nối lại sau 5 giây
+        reconnectTimeout = setTimeout(connectWebSocket, 5000);
       };
 
       ws.onerror = (error) => {
-        console.error('WebSocket error:', error);
-        ws.close(); // Close the connection on error to trigger reconnect
+        console.error('WebSocket error details:', error);
+        ws.close(); // Đóng kết nối để kích hoạt kết nối lại
       };
     };
 
