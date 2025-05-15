@@ -1,19 +1,16 @@
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
-import { usePrivy } from '@privy-io/react-auth';
-import { useGuestUserContext } from "@/contexts/GuestUserContext";
+import { useAuth } from "@/contexts/AuthContext";
 import { API_ENDPOINTS, defaultFetchOptions } from "@/config/api";
 import { Skeleton } from "@/components/ui/skeleton";
+import { usePrivy } from "@privy-io/react-auth";
 
 export default function Header() {
-  const { login, logout, user, ready, authenticated } = usePrivy();
-  const { guestUser } = useGuestUserContext();
+  const { user, isAuthenticated, isLoading, logout, checkAuth } = useAuth();
+  const { login, user: privyUser, ready } = usePrivy();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const [isConverting, setIsConverting] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
-  const [hasTriedConvert, setHasTriedConvert] = useState(false);
+  const [isPrivyLoading, setIsPrivyLoading] = useState(false);
 
-  // Close menu when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       const target = event.target as HTMLElement;
@@ -26,119 +23,74 @@ export default function Header() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const handleLogin = async () => {
+  const handlePrivyLogin = async () => {
+    if (isPrivyLoading) return;
+    
+    setIsPrivyLoading(true);
     try {
-      setIsLoading(true);
+      console.log('Starting Privy login...');
       await login();
-      
-      // Wait for Privy to update user data
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      if (guestUser?.session_id && guestUser?.user_type === 'guest') {
-        console.log('Converting guest user to regular user...');
-        await convertGuestUser();
-      }
     } catch (error) {
       console.error('Login error:', error);
+      alert('Login failed: ' + (error instanceof Error ? error.message : 'Unknown error'));
     } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const convertGuestUser = async () => {
-    if (!guestUser?.session_id || !user?.id) {
-      console.log('Missing required data for conversion:', {
-        sessionId: guestUser?.session_id,
-        privyId: user?.id
-      });
-      return;
-    }
-
-    try {
-      setIsConverting(true);
-      console.log('Starting guest user conversion...', {
-        sessionId: guestUser.session_id,
-        privyId: user.id,
-        email: user.email?.address,
-        wallet: user.wallet?.address
-      });
-      
-      const response = await fetch(API_ENDPOINTS.users.convertGuest, {
-        ...defaultFetchOptions,
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-        },
-        body: JSON.stringify({
-          session_id: guestUser.session_id,
-          privy_info: {
-            privy_id: user.id,
-            email: user.email?.address,
-            wallet: user.wallet?.address,
-            name: user.email?.address?.split('@')[0] || 'User',
-            is_verified: true
-          }
-        })
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.detail || `Failed to convert guest user: ${response.status} ${response.statusText}`);
-      }
-
-      const data = await response.json();
-      console.log('Guest user converted successfully:', data);
-      
-      // Reload page to update user state
-      window.location.reload();
-    } catch (error) {
-      console.error('Error converting guest user:', error);
-    } finally {
-      setIsConverting(false);
+      setIsPrivyLoading(false);
+      setIsMenuOpen(false);
     }
   };
 
   useEffect(() => {
-    if (
-      authenticated &&
-      user?.id &&
-      guestUser?.session_id &&
-      !isConverting &&
-      guestUser?.user_type === 'guest' &&
-      !hasTriedConvert
-    ) {
-      setHasTriedConvert(true);
-      convertGuestUser();
-    }
-    // Nếu đã là user thì reset hasTriedConvert để lần sau login lại guest có thể convert tiếp
-    if (guestUser?.user_type !== 'guest' && hasTriedConvert) {
-      setHasTriedConvert(false);
-    }
-  }, [authenticated, user, guestUser, isConverting, hasTriedConvert]);
+    if (ready && privyUser?.id && user?.user_type === 'guest') {
+      (async () => {
+        try {
+          const token = localStorage.getItem('access_token');
+          if (!token) {
+            console.error('No access token found');
+            return;
+          }
 
-  const handleLogout = async () => {
-    try {
-      setIsLoading(true);
-      await logout();
-      window.location.reload();
-    } catch (error) {
-      console.error('Logout error:', error);
-    } finally {
-      setIsLoading(false);
+          const requestData = {
+            privy_id: privyUser.id,
+            email: privyUser.email?.address || null,
+            wallet: privyUser.wallet?.address || null,
+            name: privyUser.email?.address?.split('@')[0] || 'Player'
+          };
+
+          console.log('Upgrading guest account with data:', requestData);
+
+          const response = await fetch(API_ENDPOINTS.users.upgradeGuest, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
+              'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify(requestData)
+          });
+
+          if (!response.ok) {
+            const errorData = await response.json();
+            console.error('Upgrade error:', errorData);
+            throw new Error(errorData.detail || 'Failed to upgrade account');
+          }
+
+          const userData = await response.json();
+          console.log('Account upgraded successfully:', userData);
+
+          // Refresh auth state
+          await checkAuth();
+        } catch (error) {
+          console.error('Upgrade process error:', error);
+          alert('Failed to upgrade account: ' + (error instanceof Error ? error.message : 'Unknown error'));
+        }
+      })();
     }
-  };
+  }, [privyUser, ready, user?.user_type]);
 
-  const isAuthenticated = !!user;
-  const displayName = user?.email?.address?.split('@')[0] || user?.wallet?.address?.slice(0, 6) || 'Guest';
-  const avatarInitial = displayName[0].toUpperCase();
-
-  const getAvatarUrl = () => {
-    if (guestUser?.avatar) return guestUser.avatar;
-    if (user && 'picture' in user && user.picture) return user.picture as string;
-    if (user && 'avatar' in user && user.avatar) return user.avatar as string;
-    return undefined;
-  };
+  const displayName = user?.name || user?.email || 'Guest';
+  const avatarInitial = displayName[0]?.toUpperCase() || 'G';
+  const getAvatarUrl = () => user?.avatar;
+  const isGuestUser = user?.user_type === 'guest';
 
   return (
     <header className="bg-white shadow-md">
@@ -165,14 +117,14 @@ export default function Header() {
           </button>
           
           <div className="relative profile-menu">
-            {!ready ? (
+            {isLoading ? (
               <Skeleton className="w-10 h-10 rounded-full" />
             ) : (
               <div className="relative">
                 <button
                   onClick={() => setIsMenuOpen(!isMenuOpen)}
                   className="flex items-center space-x-2 focus:outline-none hover:opacity-80 transition-opacity"
-                  disabled={isConverting || isLoading}
+                  disabled={isLoading}
                 >
                   <div className="w-10 h-10 rounded-full border-2 border-primary overflow-hidden">
                     {getAvatarUrl() ? (
@@ -189,24 +141,10 @@ export default function Header() {
                   </div>
                   <span className="absolute bottom-0 right-0 w-3 h-3 bg-success rounded-full border-2 border-white"></span>
                 </button>
-
                 {isMenuOpen && (
                   <div className="absolute right-0 mt-2 w-72 bg-white rounded-xl shadow-xl py-2 z-50 border border-slate-100">
-                    {isAuthenticated ? (
+                    {isAuthenticated && !isGuestUser ? (
                       <>
-                        <div className="px-4 py-3 border-b border-slate-100">
-                          <div className="flex items-center space-x-3">
-                            <div className="w-12 h-12 rounded-full bg-primary flex items-center justify-center text-white font-medium text-lg">
-                              {avatarInitial}
-                            </div>
-                            <div className="flex-1 min-w-0">
-                              <p className="font-semibold text-slate-900 truncate">{displayName}</p>
-                              <p className="text-sm text-slate-500 truncate">
-                                {user?.email?.address || user?.wallet?.address}
-                              </p>
-                            </div>
-                          </div>
-                        </div>
                         <div className="py-1">
                           <Link 
                             href="/profile" 
@@ -219,7 +157,7 @@ export default function Header() {
                             Profile Settings
                           </Link>
                           <button
-                            onClick={handleLogout}
+                            onClick={logout}
                             disabled={isLoading}
                             className="flex items-center w-full px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                           >
@@ -233,38 +171,23 @@ export default function Header() {
                     ) : (
                       <div className="py-1">
                         <div className="px-4 py-3 border-b border-slate-100">
-                          <p className="text-sm text-slate-500">Connect your wallet to access all features</p>
+                          <p className="text-sm text-slate-500">
+                            {isGuestUser 
+                              ? 'Sign in to save progress and use full features'
+                              : 'Please login to use full features'
+                            }
+                          </p>
                         </div>
                         <div className="p-4">
                           <button
-                            onClick={handleLogin}
-                            disabled={isConverting || isLoading}
+                            onClick={handlePrivyLogin}
+                            disabled={isPrivyLoading}
                             className="w-full flex items-center justify-center px-4 py-2.5 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                           >
-                            {isConverting ? (
-                              <>
-                                <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
-                                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                                </svg>
-                                Converting...
-                              </>
-                            ) : isLoading ? (
-                              <>
-                                <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
-                                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                                </svg>
-                                Connecting...
-                              </>
-                            ) : (
-                              <>
-                                <svg className="w-4 h-4 mr-2" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                  <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm-2-9.4l1.93 1.93c.39.39 1.02.39 1.41 0L17 8.75l-1.38-1.38-3.07 3.07L9.8 7.68 8.42 9.06l1.58 1.54z" fill="currentColor"/>
-                                </svg>
-                                Connect with Privy
-                              </>
-                            )}
+                            <svg className="w-4 h-4 mr-2" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                              <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm-2-9.4l1.93 1.93c.39.39 1.02.39 1.41 0L17 8.75l-1.38-1.38-3.07 3.07L9.8 7.68 8.42 9.06l1.58 1.54z" fill="currentColor"/>
+                            </svg>
+                            {isPrivyLoading ? 'Connecting...' : 'Login'}
                           </button>
                         </div>
                       </div>

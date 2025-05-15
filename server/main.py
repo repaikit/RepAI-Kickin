@@ -12,10 +12,11 @@ from fastapi.responses import JSONResponse, Response
 from contextlib import asynccontextmanager
 
 # Import routers using absolute imports
-from routers import users, matches, skills
+from routers import users, matches, skills, ws_handlers
 from middleware.database import database_middleware, DatabaseMiddleware
 from middleware.rate_limit import RateLimitMiddleware
 from middleware.cache import InMemoryCacheMiddleware
+from middleware.jwt_auth import JWTAuthMiddleware
 from utils.logger import api_logger, setup_logger
 from database.database import init_db, close_db, Database, get_database
 from config.settings import settings
@@ -89,6 +90,9 @@ app.add_middleware(
     excluded_paths=set(settings.CACHE_EXCLUDED_PATHS)
 )
 
+# Add JWT auth middleware
+app.add_middleware(JWTAuthMiddleware)
+
 # Setup logging
 setup_logger()
 
@@ -102,10 +106,10 @@ async def get_db():
         pass
 
 # Include routers
-app.include_router(users.router, prefix=settings.API_V1_STR)
-app.include_router(matches.router, prefix=settings.API_V1_STR)
-app.include_router(skills.router, prefix=settings.API_V1_STR)
-
+app.include_router(users.router, prefix="/api", tags=["users"])
+app.include_router(matches.router, prefix="/api", tags=["matches"])
+app.include_router(skills.router, prefix="/api", tags=["skills"])
+app.include_router(ws_handlers.router, tags=["ws_handlers"])
 
 @app.middleware("http")
 async def metrics_middleware(request: Request, call_next):
@@ -160,6 +164,14 @@ async def health_check():
         "version": "1.0.0",
         "environment": "production" if not settings.DEBUG else "development"
     }
+
+@app.on_event("startup")
+async def startup_event():
+    await init_db()
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    await close_db()
 
 if __name__ == "__main__":
     import uvicorn

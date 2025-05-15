@@ -103,6 +103,11 @@ async def get_users_collection():
     db = await get_database()
     return db.users
 
+async def get_online_users_collection():
+    """Get online users collection."""
+    db = await get_database()
+    return db.online_users
+
 async def get_matches_collection():
     """Get matches collection."""
     db = await get_database()

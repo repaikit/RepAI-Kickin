@@ -1,357 +1,338 @@
-from fastapi import APIRouter, HTTPException, Depends, Request, Query
-from typing import List, Optional
+from fastapi import APIRouter, HTTPException, Request, Depends, Body
+from typing import Optional, List
 from models.user import User, UserCreate, UserUpdate
 from database.database import get_users_collection, get_skills_collection
-from bson import ObjectId
-from utils.logger import api_logger
-from datetime import datetime, timedelta
+from datetime import datetime
 import uuid
 import random
-from fastapi.responses import JSONResponse
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel
+from utils.logger import api_logger
+from utils.jwt import create_access_token
+from bson import ObjectId
 
-class PrivyUserInfo(BaseModel):
+router = APIRouter()
+
+# Helper: random skill
+async def get_random_skill(skills_collection, skill_type: str) -> str:
+    skills = await skills_collection.find({"type": skill_type}).to_list(length=None)
+    if not skills:
+        raise HTTPException(status_code=500, detail=f"No {skill_type} skills found in database")
+    return random.choice(skills)["name"]
+
+@router.post("/guest")
+async def create_guest_user(request: Request):
+    """Tạo guest user với 5 lượt chơi và random 1 kỹ năng mỗi loại"""
+    users_collection = await get_users_collection()
+    skills_collection = await get_skills_collection()
+    session_id = str(uuid.uuid4())
+    kicker_skill = await get_random_skill(skills_collection, "kicker")
+    goalkeeper_skill = await get_random_skill(skills_collection, "goalkeeper")
+    avatar_seed = str(uuid.uuid4())
+    avatar_url = f"https://api.dicebear.com/7.x/adventurer/svg?seed={avatar_seed}"
+    guest_user = UserCreate(
+        user_type="guest",
+        session_id=session_id,
+        remaining_matches=5,
+        kicker_skills=[kicker_skill],
+        goalkeeper_skills=[goalkeeper_skill],
+        avatar=avatar_url,
+        created_at=datetime.utcnow(),
+        updated_at=datetime.utcnow(),
+    ).dict(by_alias=True)
+    result = await users_collection.insert_one(guest_user)
+    created_user = await users_collection.find_one({"_id": result.inserted_id})
+    # Generate JWT for guest user
+    token = create_access_token({"_id": str(created_user["_id"])})
+    return {
+        "user": User(**created_user),
+        "access_token": token,
+        "token_type": "bearer"
+    }
+
+class UpgradeGuestRequest(BaseModel):
+    email: Optional[str] = None
+    wallet: Optional[str] = None
+    privy_id: Optional[str] = None
+    name: Optional[str] = None
+
+@router.post("/upgrade", response_model=User)
+async def upgrade_guest_to_user(
+    request: Request,
+    data: UpgradeGuestRequest
+):  
+    user = getattr(request.state, "user", None)
+    if not user:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    users_collection = await get_users_collection()
+    user_id = user.get("_id")
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Invalid user data")
+
+    user = await users_collection.find_one({"_id": ObjectId(user_id), "user_type": "guest"})
+    if not user:
+        raise HTTPException(status_code=404, detail="Guest user not found")
+
+    update_data = {
+        "user_type": "user", 
+        "updated_at": datetime.utcnow()
+    }
+    if data.email:
+        update_data["email"] = data.email
+    if data.wallet:
+        update_data["wallet"] = data.wallet
+    if data.privy_id:
+        update_data["privy_id"] = data.privy_id
+    if data.name:
+        update_data["name"] = data.name
+
+    await users_collection.update_one(
+        {"_id": ObjectId(user_id)}, 
+        {"$set": update_data}
+    )
+    updated_user = await users_collection.find_one({"_id": ObjectId(user_id)})
+    return User(**updated_user)
+
+@router.get("/me")
+async def get_current_user(request: Request):
+    """Lấy thông tin user hiện tại từ JWT"""
+    user = getattr(request.state, "user", None)
+    if not user:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    user["_id"] = str(user["_id"])
+    return user
+
+class PlayRequest(BaseModel):
+    session_id: str
+    mode: str
+    win: bool
+
+@router.post("/play", response_model=User)
+async def play_and_update(data: PlayRequest):
+    session_id = data.session_id
+    mode = data.mode
+    win = data.win
+    users_collection = await get_users_collection()
+    user = await users_collection.find_one({"session_id": session_id})
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    update_data = {"updated_at": datetime.utcnow()}
+    # Trừ lượt chơi
+    if user.get("remaining_matches", 0) <= 0:
+        raise HTTPException(status_code=400, detail="No remaining matches")
+    update_data["remaining_matches"] = user["remaining_matches"] - 1
+    # Cập nhật thống kê
+    if mode == "kicker":
+        update_data["total_kicked"] = user.get("total_kicked", 0) + 1
+        if win:
+            update_data["kicked_win"] = user.get("kicked_win", 0) + 1
+    elif mode == "goalkeeper":
+        update_data["total_keep"] = user.get("total_keep", 0) + 1
+        if win:
+            update_data["keep_win"] = user.get("keep_win", 0) + 1
+    elif mode == "extra_skill":
+        if not user.get("is_pro", False):
+            raise HTTPException(status_code=403, detail="Only Pro users can use extra skill")
+        update_data["total_extra_skill"] = user.get("total_extra_skill", 0) + 1
+        if win:
+            update_data["extra_skill_win"] = user.get("extra_skill_win", 0) + 1
+    else:
+        raise HTTPException(status_code=400, detail="Invalid mode")
+    await users_collection.update_one({"session_id": session_id}, {"$set": update_data})
+    updated_user = await users_collection.find_one({"session_id": session_id})
+    return User(**updated_user)
+
+# API lấy leaderboard
+@router.get("/leaderboard", response_model=List[User])
+async def get_leaderboard(limit: int = 10):
+    users_collection = await get_users_collection()
+    users = await users_collection.find({"user_type": "user"}).sort("kicked_win", -1).limit(limit).to_list(length=None)
+    return [User(**u) for u in users]
+
+# API xóa user
+@router.delete("/me")
+async def delete_user(session_id: str):
+    users_collection = await get_users_collection()
+    user = await users_collection.find_one({"session_id": session_id})
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    await users_collection.delete_one({"session_id": session_id})
+    return {"message": "User deleted successfully"}
+
+class PrivyAuthRequest(BaseModel):
     privy_id: str
     email: Optional[str] = None
     wallet: Optional[str] = None
     name: Optional[str] = None
-    is_verified: bool = True  # Frontend đã xác thực qua Privy
+    avatar: Optional[str] = None
 
-class UserResponse(BaseModel):
-    total: int
-    users: List[User]
-    page: int
-    size: int
-
-class ConvertGuestRequest(BaseModel):
-    session_id: str
-    privy_info: PrivyUserInfo
-
-router = APIRouter()
-
-@router.post("/guest", response_model=User)
-async def create_guest_user(request: Request):
-    """Create a new guest user with random skills"""
+@router.post("/auth/privy/register")
+async def register_with_privy(data: PrivyAuthRequest):
+    """Đăng ký tài khoản mới với Privy"""
     try:
-        # Generate session ID
-        session_id = str(uuid.uuid4())
-        
-        # Get random kicker and goalkeeper skills
+        api_logger.info(f"Received Privy registration request for privy_id: {data.privy_id}")
         users_collection = await get_users_collection()
         skills_collection = await get_skills_collection()
         
-        kicker_skills = await skills_collection.find({"type": "kicker"}).to_list(length=None)
-        goalkeeper_skills = await skills_collection.find({"type": "goalkeeper"}).to_list(length=None)
+        # Kiểm tra email đã tồn tại chưa
+        if data.email:
+            existing_user = await users_collection.find_one({"email": data.email})
+            if existing_user:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Email already registered. Please login instead."
+                )
         
-        if not kicker_skills or not goalkeeper_skills:
-            raise HTTPException(status_code=500, detail="No skills found in database")
+        # Tạo user mới
+        session_id = str(uuid.uuid4())
+        kicker_skill = await get_random_skill(skills_collection, "kicker")
+        goalkeeper_skill = await get_random_skill(skills_collection, "goalkeeper")
         
-        # Select random skills
-        random_kicker = random.choice(kicker_skills)
-        random_goalkeeper = random.choice(goalkeeper_skills)
-        
-        # Generate random avatar using Dicebear
-        avatar_seed = str(uuid.uuid4())
-        avatar_url = f"https://api.dicebear.com/7.x/adventurer/svg?seed={avatar_seed}"
-        
-        # Create guest user
-        guest_user_data = UserCreate(
+        new_user = UserCreate(
+            user_type="user",
             session_id=session_id,
-            guest_created_at=datetime.utcnow(),
-            expires_at=datetime.utcnow() + timedelta(days=7),  # Guest user expires in 7 days
-            kicker_skills=[random_kicker["name"]],
-            goalkeeper_skills=[random_goalkeeper["name"]],
-            avatar=avatar_url,
-            device_info={
-                "user_agent": request.headers.get("user-agent"),
-                "ip": request.client.host if request.client else None
-            }
+            privy_id=data.privy_id,
+            email=data.email,
+            wallet=data.wallet,
+            name=data.name or "Player",
+            avatar=data.avatar,
+            kicker_skills=[kicker_skill],
+            goalkeeper_skills=[goalkeeper_skill],
+            created_at=datetime.utcnow(),
+            updated_at=datetime.utcnow(),
+            last_login=datetime.utcnow()
         ).dict(by_alias=True)
         
-        # Insert into database
-        result = await users_collection.insert_one(guest_user_data)
-        
-        # Get created user
+        result = await users_collection.insert_one(new_user)
         created_user = await users_collection.find_one({"_id": result.inserted_id})
-        return User(**created_user)
-    except Exception as e:
-        api_logger.error(f"Error creating guest user: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-@router.get("/guest/{session_id}", response_model=User)
-async def get_guest_user(session_id: str):
-    """Get guest user by session ID"""
-    try:
-        users_collection = await get_users_collection()
-        user = await users_collection.find_one({"session_id": session_id})
+        api_logger.info(f"Created new user with id: {created_user['_id']}")
         
-        if not user:
-            raise HTTPException(status_code=404, detail="Guest user not found")
-            
-        return User(**user)
-    except Exception as e:
-        api_logger.error(f"Error getting guest user: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-@router.post("/convert-guest", response_model=User)
-async def convert_guest_to_user(request: ConvertGuestRequest):
-    """Convert guest user to regular user using Privy info from frontend"""
-    try:
-        users_collection = await get_users_collection()
-        
-        # Find guest user
-        guest_user = await users_collection.find_one({"session_id": request.session_id})
-        if not guest_user:
-            raise HTTPException(status_code=404, detail="Guest user not found")
-            
-        # Check if user already exists with same Privy ID
-        existing_user = await users_collection.find_one({"privy_id": request.privy_info.privy_id})
-        if existing_user:
-            raise HTTPException(status_code=400, detail="User already registered with this Privy ID")
-        
-        # Update user with Privy info
-        update_data = {
-            "user_type": "user",
-            "converted_to_user": True,
-            "converted_at": datetime.utcnow(),
-            "privy_id": request.privy_info.privy_id,
-            "is_verified": request.privy_info.is_verified
+        token = create_access_token({"_id": str(created_user["_id"])})
+        return {
+            "access_token": token, 
+            "token_type": "bearer",
+            "user": {
+                "id": str(created_user["_id"]),
+                "email": created_user.get("email"),
+                "name": created_user.get("name"),
+                "type": created_user.get("user_type"),
+                "avatar": created_user.get("avatar"),
+                "remaining_matches": created_user.get("remaining_matches", 0),
+                "wins": created_user.get("wins", 0),
+                "losses": created_user.get("losses", 0)
+            }
         }
         
-        if request.privy_info.email:
-            update_data["email"] = request.privy_info.email
-        if request.privy_info.wallet:
-            update_data["wallet"] = request.privy_info.wallet
-        if request.privy_info.name:
-            update_data["name"] = request.privy_info.name
-            
-        await users_collection.update_one(
-            {"session_id": request.session_id},
-            {"$set": update_data}
+    except Exception as e:
+        api_logger.error(f"Error in Privy registration: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Registration failed: {str(e)}"
         )
-        
-        # Get updated user
-        updated_user = await users_collection.find_one({"session_id": request.session_id})
-        return User(**updated_user)
-    except Exception as e:
-        api_logger.error(f"Error converting guest user: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
 
-@router.get("/me", response_model=User)
-async def get_current_user(session_id: str):
-    """Get current user by session ID"""
+@router.post("/auth/privy/login")
+async def login_with_privy(data: PrivyAuthRequest):
+    """Đăng nhập với Privy"""
     try:
-        users_collection = await get_users_collection()
-        user = await users_collection.find_one({"session_id": session_id})
-        
-        if not user:
-            raise HTTPException(status_code=404, detail="User not found")
-            
-        return User(**user)
-    except Exception as e:
-        api_logger.error(f"Error getting current user: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-@router.put("/me", response_model=User)
-async def update_user(session_id: str, user_update: UserUpdate):
-    """Update user information"""
-    try:
+        api_logger.info(f"Received Privy login request for privy_id: {data.privy_id}")
         users_collection = await get_users_collection()
         
-        # Find user
-        user = await users_collection.find_one({"session_id": session_id})
-        if not user:
-            raise HTTPException(status_code=404, detail="User not found")
-            
-        # Update user
-        update_data = user_update.dict(exclude_unset=True)
-        update_data["updated_at"] = datetime.utcnow()
-        
-        await users_collection.update_one(
-            {"session_id": session_id},
-            {"$set": update_data}
-        )
-        
-        # Get updated user
-        updated_user = await users_collection.find_one({"session_id": session_id})
-        return User(**updated_user)
-    except Exception as e:
-        api_logger.error(f"Error updating user: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-@router.delete("/me")
-async def delete_user(session_id: str):
-    """Delete user account"""
-    try:
-        users_collection = await get_users_collection()
-        
-        # Find user
-        user = await users_collection.find_one({"session_id": session_id})
-        if not user:
-            raise HTTPException(status_code=404, detail="User not found")
-            
-        # Delete user
-        await users_collection.delete_one({"session_id": session_id})
-        
-        return JSONResponse(
-            status_code=200,
-            content={"message": "User deleted successfully"}
-        )
-    except Exception as e:
-        api_logger.error(f"Error deleting user: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-@router.get("/users", response_model=UserResponse)
-async def get_users(
-    page: int = Query(1, ge=1),
-    size: int = Query(10, ge=1, le=100),
-    user_type: Optional[str] = None,
-    search: Optional[str] = None,
-    sort_by: str = "created_at",
-    sort_order: str = "desc"
-):
-    """Get list of users with pagination and filtering"""
-    try:
-        users_collection = await get_users_collection()
-        
-        # Build query
-        query = {}
-        if user_type:
-            query["user_type"] = user_type
-        if search:
-            query["$or"] = [
-                {"name": {"$regex": search, "$options": "i"}},
-                {"email": {"$regex": search, "$options": "i"}},
-                {"wallet": {"$regex": search, "$options": "i"}}
+        # Tìm user theo privy_id hoặc email
+        existing_user = await users_collection.find_one({
+            "$or": [
+                {"privy_id": data.privy_id},
+                {"email": data.email} if data.email else {},
+                {"wallet": data.wallet} if data.wallet else {}
             ]
+        })
+        
+        if not existing_user:
+            raise HTTPException(
+                status_code=404,
+                detail="User not found. Please register first."
+            )
             
-        # Calculate skip
-        skip = (page - 1) * size
+        # Cập nhật thông tin đăng nhập
+        update_data = {
+            "last_login": datetime.utcnow(),
+            "updated_at": datetime.utcnow(),
+            "privy_id": data.privy_id
+        }
         
-        # Get total count
-        total = await users_collection.count_documents(query)
-        
-        # Get users
-        sort_direction = -1 if sort_order == "desc" else 1
-        users = await users_collection.find(query).sort(sort_by, sort_direction).skip(skip).limit(size).to_list(length=None)
-        
-        return UserResponse(
-            total=total,
-            users=[User(**user) for user in users],
-            page=page,
-            size=size
-        )
-    except Exception as e:
-        api_logger.error(f"Error getting users: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-@router.get("/users/{user_id}", response_model=User)
-async def get_user_by_id(user_id: str):
-    """Get user by ID"""
-    try:
-        users_collection = await get_users_collection()
-        user = await users_collection.find_one({"_id": ObjectId(user_id)})
-        
-        if not user:
-            raise HTTPException(status_code=404, detail="User not found")
+        # Chỉ cập nhật email nếu nó khớp với email hiện tại
+        if data.email and data.email == existing_user.get("email"):
+            update_data["email"] = data.email
             
-        return User(**user)
-    except Exception as e:
-        api_logger.error(f"Error getting user: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-@router.get("/users/privy/{privy_id}", response_model=User)
-async def get_user_by_privy_id(privy_id: str):
-    """Get user by Privy ID"""
-    try:
-        users_collection = await get_users_collection()
-        user = await users_collection.find_one({"privy_id": privy_id})
-        
-        if not user:
-            raise HTTPException(status_code=404, detail="User not found")
+        # Cập nhật wallet nếu có
+        if data.wallet:
+            update_data["wallet"] = data.wallet
             
-        return User(**user)
-    except Exception as e:
-        api_logger.error(f"Error getting user: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-@router.get("/users/email/{email}", response_model=User)
-async def get_user_by_email(email: EmailStr):
-    """Get user by email"""
-    try:
-        users_collection = await get_users_collection()
-        user = await users_collection.find_one({"email": email})
-        
-        if not user:
-            raise HTTPException(status_code=404, detail="User not found")
+        # Cập nhật name và avatar nếu có
+        if data.name:
+            update_data["name"] = data.name
+        if data.avatar:
+            update_data["avatar"] = data.avatar
             
-        return User(**user)
-    except Exception as e:
-        api_logger.error(f"Error getting user: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-@router.get("/users/wallet/{wallet}", response_model=User)
-async def get_user_by_wallet(wallet: str):
-    """Get user by wallet address"""
-    try:
-        users_collection = await get_users_collection()
-        user = await users_collection.find_one({"wallet": wallet})
-        
-        if not user:
-            raise HTTPException(status_code=404, detail="User not found")
-            
-        return User(**user)
-    except Exception as e:
-        api_logger.error(f"Error getting user: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-@router.put("/users/{user_id}", response_model=User)
-async def update_user_by_id(user_id: str, user_update: UserUpdate):
-    """Update user by ID"""
-    try:
-        users_collection = await get_users_collection()
-        
-        # Find user
-        user = await users_collection.find_one({"_id": ObjectId(user_id)})
-        if not user:
-            raise HTTPException(status_code=404, detail="User not found")
-            
-        # Update user
-        update_data = user_update.dict(exclude_unset=True)
-        update_data["updated_at"] = datetime.utcnow()
-        
         await users_collection.update_one(
-            {"_id": ObjectId(user_id)},
+            {"_id": existing_user["_id"]},
             {"$set": update_data}
         )
+        updated_user = await users_collection.find_one({"_id": existing_user["_id"]})
+        api_logger.info(f"Updated user information for user: {updated_user['_id']}")
         
-        # Get updated user
-        updated_user = await users_collection.find_one({"_id": ObjectId(user_id)})
-        return User(**updated_user)
+        token = create_access_token({"_id": str(updated_user["_id"])})
+        return {
+            "access_token": token, 
+            "token_type": "bearer",
+            "user": {
+                "id": str(updated_user["_id"]),
+                "email": updated_user.get("email"),
+                "name": updated_user.get("name"),
+                "type": updated_user.get("user_type"),
+                "avatar": updated_user.get("avatar"),
+                "remaining_matches": updated_user.get("remaining_matches", 0),
+                "wins": updated_user.get("wins", 0),
+                "losses": updated_user.get("losses", 0)
+            }
+        }
+        
     except Exception as e:
-        api_logger.error(f"Error updating user: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+        api_logger.error(f"Error in Privy login: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Login failed: {str(e)}"
+        )
 
-@router.delete("/users/{user_id}")
-async def delete_user_by_id(user_id: str):
-    """Delete user by ID"""
+@router.post("/auth/privy")
+async def auth_with_privy(data: PrivyAuthRequest):
+    """Đăng ký/đăng nhập bằng Privy"""
     try:
+        api_logger.info(f"Received Privy auth request for privy_id: {data.privy_id}")
         users_collection = await get_users_collection()
         
-        # Find user
-        user = await users_collection.find_one({"_id": ObjectId(user_id)})
-        if not user:
-            raise HTTPException(status_code=404, detail="User not found")
-            
-        # Delete user
-        await users_collection.delete_one({"_id": ObjectId(user_id)})
+        # Tìm user theo privy_id hoặc email
+        existing_user = await users_collection.find_one({
+            "$or": [
+                {"privy_id": data.privy_id},
+                {"email": data.email} if data.email else {},
+                {"wallet": data.wallet} if data.wallet else {}
+            ]
+        })
         
-        return JSONResponse(
-            status_code=200,
-            content={"message": "User deleted successfully"}
-        )
+        if existing_user:
+            # Nếu user tồn tại -> đăng nhập
+            return await login_with_privy(data)
+        else:
+            # Nếu user chưa tồn tại -> đăng ký
+            return await register_with_privy(data)
+            
     except Exception as e:
-        api_logger.error(f"Error deleting user: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+        api_logger.error(f"Error in Privy auth: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Authentication failed: {str(e)}"
+        )
+
+# Các API mới sẽ được thêm vào đây
 
 

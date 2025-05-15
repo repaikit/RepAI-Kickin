@@ -4,8 +4,8 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import type { AppProps } from "next/app";
 import "@/index.css";
-import { GuestUserProvider } from '@/contexts/GuestUserContext';
 import { PrivyProvider } from '@privy-io/react-auth';
+import { AuthProvider } from '@/contexts/AuthContext';
 
 function MyApp({ Component, pageProps }: AppProps) {
   return (
@@ -21,9 +21,9 @@ function MyApp({ Component, pageProps }: AppProps) {
             }
           }}
         >
-          <GuestUserProvider>
-            <Component {...pageProps} />
-          </GuestUserProvider>
+          <AuthProvider>
+              <Component {...pageProps} />
+          </AuthProvider>
         </PrivyProvider>
       </TooltipProvider>
     </QueryClientProvider>

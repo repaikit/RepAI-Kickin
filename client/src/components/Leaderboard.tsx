@@ -1,5 +1,5 @@
-import React, { useState } from "react";
-import { 
+import React from "react";
+import {
   Table,
   TableBody,
   TableCell,
@@ -7,231 +7,95 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { 
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useLeaderboard, LeaderboardPlayer } from "@/hooks/useLeaderboard";
+import { Button } from "@/components/ui/button";
 
 interface LeaderboardProps {
-  players: any[];
-  isLoading: boolean;
   onPositionChange: (position: string) => void;
   onSeasonChange: (season: string) => void;
   currentPosition: string;
   currentSeason: string;
 }
 
-type SortField = "name" | "wins" | "losses" | "winRate";
-type SortDirection = "asc" | "desc";
-
 export default function Leaderboard({ 
-  players, 
-  isLoading,
   onPositionChange,
   onSeasonChange,
   currentPosition,
-  currentSeason
+  currentSeason 
 }: LeaderboardProps) {
-  const [sortField, setSortField] = useState<SortField>("wins");
-  const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
+  const { data: players, isLoading } = useLeaderboard();
 
-  const handleSort = (field: SortField) => {
-    if (sortField === field) {
-      setSortDirection(sortDirection === "asc" ? "desc" : "asc");
-    } else {
-      setSortField(field);
-      setSortDirection("desc");
-    }
-  };
-
-  const getSortedPlayers = () => {
-    let filteredPlayers = [...players];
-    
-    // Apply position filter
-    if (currentPosition !== "all") {
-      filteredPlayers = filteredPlayers.filter(player => 
-        player.position.toLowerCase() === currentPosition.toLowerCase()
-      );
-    }
-    
-    // Apply sorting
-    return filteredPlayers.sort((a, b) => {
-      let comparison = 0;
-      
-      switch (sortField) {
-        case "name":
-          comparison = a.name.localeCompare(b.name);
-          break;
-        case "wins":
-          comparison = a.wins - b.wins;
-          break;
-        case "losses":
-          comparison = a.losses - b.losses;
-          break;
-        case "winRate":
-          const winRateA = a.wins / (a.wins + a.losses) * 100;
-          const winRateB = b.wins / (b.wins + b.losses) * 100;
-          comparison = winRateA - winRateB;
-          break;
-      }
-      
-      return sortDirection === "asc" ? comparison : -comparison;
-    });
-  };
-
-  const getSortIcon = (field: SortField) => {
-    if (sortField !== field) {
-      return (
-        <svg className="ml-1 w-4 h-4 text-slate-400 group-hover:text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
-        </svg>
-      );
-    }
-    
-    return sortDirection === "asc" ? (
-      <svg className="ml-1 w-4 h-4 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
-      </svg>
-    ) : (
-      <svg className="ml-1 w-4 h-4 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-      </svg>
-    );
-  };
-
-  const renderWinRate = (wins: number, losses: number) => {
-    const total = wins + losses;
-    const winRate = total > 0 ? Math.round((wins / total) * 100) : 0;
-    
-    return (
-      <div>
-        <Progress value={winRate} className="h-2.5 mb-1" />
-        <span className="text-xs font-medium text-slate-600">{winRate}%</span>
-      </div>
-    );
-  };
-
-  const renderTrend = (trend: string, trendValue: string) => {
-    if (trend === "up") {
-      return (
-        <div className="flex items-center text-success">
-          <svg className="mr-1 w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 10l7-7m0 0l7 7m-7-7v18" />
-          </svg>
-          <span className="text-sm font-medium">{trendValue}</span>
-        </div>
-      );
-    } else if (trend === "down") {
-      return (
-        <div className="flex items-center text-error">
-          <svg className="mr-1 w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 14l-7 7m0 0l-7-7m7 7V3" />
-          </svg>
-          <span className="text-sm font-medium">{trendValue}</span>
-        </div>
-      );
-    } else {
-      return (
-        <div className="flex items-center text-warning">
-          <svg className="mr-1 w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18 12H6" />
-          </svg>
-          <span className="text-sm font-medium">{trendValue}</span>
-        </div>
-      );
-    }
-  };
+  // Sắp xếp theo số lần đá thắng (kicked_win) giảm dần
+  const sortedPlayers = [...(players || [])].sort((a, b) => b.kicked_win - a.kicked_win);
 
   return (
     <section className="bg-white rounded-xl shadow-md p-6">
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6">
-        <div>
-          <h2 className="text-2xl font-bold text-slate-800">Leaderboard</h2>
-          <p className="text-slate-500">Season 2023/2024 - Top Performers</p>
-        </div>
+      <div className="flex justify-between items-center mb-6">
+        <h2 className="text-2xl font-bold text-slate-800">Leaderboard</h2>
         
-        <div className="flex space-x-2 mt-4 md:mt-0">
-          <Select value={currentPosition} onValueChange={onPositionChange}>
-            <SelectTrigger className="w-[160px] bg-slate-100 text-slate-700">
-              <SelectValue placeholder="All Positions" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Positions</SelectItem>
-              <SelectItem value="kicker">Kickers</SelectItem>
-              <SelectItem value="goalkeeper">Goalkeepers</SelectItem>
-              <SelectItem value="both">Both</SelectItem>
-            </SelectContent>
-          </Select>
-          
-          <Select value={currentSeason} onValueChange={onSeasonChange}>
-            <SelectTrigger className="w-[160px] bg-slate-100 text-slate-700">
-              <SelectValue placeholder="This Season" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="current">This Season</SelectItem>
-              <SelectItem value="last">Last Season</SelectItem>
-              <SelectItem value="all">All Time</SelectItem>
-            </SelectContent>
-          </Select>
+        {/* Position Controls */}
+        <div className="flex items-center space-x-2">
+          <Button
+            variant={currentPosition === "all" ? "default" : "outline"}
+            size="sm"
+            onClick={() => onPositionChange("all")}
+          >
+            All
+          </Button>
+          <Button
+            variant={currentPosition === "kicker" ? "default" : "outline"}
+            size="sm"
+            onClick={() => onPositionChange("kicker")}
+          >
+            Kicker
+          </Button>
+          <Button
+            variant={currentPosition === "goalkeeper" ? "default" : "outline"}
+            size="sm"
+            onClick={() => onPositionChange("goalkeeper")}
+          >
+            Goalkeeper
+          </Button>
+        </div>
+
+        {/* Season Controls */}
+        <div className="flex items-center space-x-2">
+          <Button
+            variant={currentSeason === "current" ? "default" : "outline"}
+            size="sm"
+            onClick={() => onSeasonChange("current")}
+          >
+            Current
+          </Button>
+          <Button
+            variant={currentSeason === "previous" ? "default" : "outline"}
+            size="sm"
+            onClick={() => onSeasonChange("previous")}
+          >
+            Previous
+          </Button>
         </div>
       </div>
-      
+
       <div className="overflow-x-auto">
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead className="w-[60px]">
-                <span className="text-sm font-semibold text-slate-600">#</span>
-              </TableHead>
-              <TableHead>
-                <button 
-                  onClick={() => handleSort("name")}
-                  className="flex items-center cursor-pointer group"
-                >
-                  <span className="text-sm font-semibold text-slate-600">Player</span>
-                  {getSortIcon("name")}
-                </button>
-              </TableHead>
-              <TableHead>
-                <button 
-                  onClick={() => handleSort("wins")}
-                  className="flex items-center cursor-pointer group"
-                >
-                  <span className="text-sm font-semibold text-slate-600">Wins</span>
-                  {getSortIcon("wins")}
-                </button>
-              </TableHead>
-              <TableHead>
-                <button 
-                  onClick={() => handleSort("losses")}
-                  className="flex items-center cursor-pointer group"
-                >
-                  <span className="text-sm font-semibold text-slate-600">Losses</span>
-                  {getSortIcon("losses")}
-                </button>
-              </TableHead>
-              <TableHead>
-                <button 
-                  onClick={() => handleSort("winRate")}
-                  className="flex items-center cursor-pointer group"
-                >
-                  <span className="text-sm font-semibold text-slate-600">Win Rate</span>
-                  {getSortIcon("winRate")}
-                </button>
-              </TableHead>
-              <TableHead>
-                <span className="text-sm font-semibold text-slate-600">Trend</span>
-              </TableHead>
+              <TableHead className="w-[60px]">#</TableHead>
+              <TableHead>Player</TableHead>
+              <TableHead>Level</TableHead>
+              <TableHead>Total Kicked</TableHead>
+              <TableHead>Kicked Win</TableHead>
+              <TableHead>Total Keep</TableHead>
+              <TableHead>Keep Win</TableHead>
+              <TableHead>Pro</TableHead>
+              <TableHead>Total Extra Skill</TableHead>
+              <TableHead>Extra Skill Win</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {isLoading ? (
-              // Loading skeleton
               Array(5).fill(0).map((_, index) => (
                 <TableRow key={index}>
                   <TableCell><Skeleton className="h-6 w-6 rounded-full" /></TableCell>
@@ -246,12 +110,16 @@ export default function Leaderboard({
                   </TableCell>
                   <TableCell><Skeleton className="h-4 w-8" /></TableCell>
                   <TableCell><Skeleton className="h-4 w-8" /></TableCell>
-                  <TableCell><Skeleton className="h-6 w-full" /></TableCell>
-                  <TableCell><Skeleton className="h-4 w-16" /></TableCell>
+                  <TableCell><Skeleton className="h-4 w-8" /></TableCell>
+                  <TableCell><Skeleton className="h-4 w-8" /></TableCell>
+                  <TableCell><Skeleton className="h-4 w-8" /></TableCell>
+                  <TableCell><Skeleton className="h-4 w-8" /></TableCell>
+                  <TableCell><Skeleton className="h-4 w-8" /></TableCell>
+                  <TableCell><Skeleton className="h-4 w-8" /></TableCell>
                 </TableRow>
               ))
             ) : (
-              getSortedPlayers().map((player, index) => (
+              sortedPlayers.map((player, index) => (
                 <TableRow key={player.id} className="hover:bg-slate-50 transition-colors">
                   <TableCell>
                     <span className={
@@ -265,46 +133,37 @@ export default function Leaderboard({
                   </TableCell>
                   <TableCell>
                     <div className="flex items-center">
-                      <img 
-                        src={player.avatar} 
-                        alt={player.name} 
+                      <img
+                        src={player.avatar}
+                        alt={player.name}
                         className="w-10 h-10 rounded-full object-cover mr-3"
                       />
                       <div>
                         <p className="font-medium text-slate-800">{player.name}</p>
-                        <p className="text-xs text-slate-500">{player.position}</p>
                       </div>
                     </div>
                   </TableCell>
-                  <TableCell>
-                    <span className="font-medium text-success">{player.wins}</span>
-                  </TableCell>
-                  <TableCell>
-                    <span className="font-medium text-error">{player.losses}</span>
-                  </TableCell>
-                  <TableCell>
-                    {renderWinRate(player.wins, player.losses)}
-                  </TableCell>
-                  <TableCell>
-                    {renderTrend(player.trend, player.trendValue)}
-                  </TableCell>
+                  <TableCell>{player.level}</TableCell>
+                  <TableCell>{player.total_kicked}</TableCell>
+                  <TableCell>{player.kicked_win}</TableCell>
+                  <TableCell>{player.total_keep}</TableCell>
+                  <TableCell>{player.keep_win}</TableCell>
+                  <TableCell>{player.is_pro ? 'Yes' : 'No'}</TableCell>
+                  <TableCell>{player.is_pro ? player.total_extra_skill : '-'}</TableCell>
+                  <TableCell>{player.is_pro ? player.extra_skill_win : '-'}</TableCell>
                 </TableRow>
               ))
             )}
           </TableBody>
         </Table>
       </div>
-      
       {!isLoading && (
         <div className="mt-6 flex justify-between items-center">
           <div className="text-sm text-slate-500">
-            Showing {players.length} of {players.length} players
+            Showing {players?.length || 0} of {players?.length || 0} players
           </div>
         </div>
       )}
-
-      {/* Force Tailwind to generate these classes for leaderboard ranking colors */}
-      <div className="bg-yellow-500 bg-gray-700 bg-orange-600 bg-slate-600 text-white border-2 border-white" style={{display: 'none'}}></div>
     </section>
   );
 }

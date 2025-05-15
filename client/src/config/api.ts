@@ -8,8 +8,8 @@ export const API_BASE_URL = isDevelopment
 
 // WebSocket URL
 export const WS_BASE_URL = isDevelopment
-  ? 'ws://localhost:4000/ws'
-  : process.env.NEXT_PUBLIC_WS_URL || '/ws';
+  ? 'ws://localhost:5000'
+  : process.env.NEXT_PUBLIC_WS_URL || '';
 
 // API endpoints
 export const API_ENDPOINTS = {
@@ -20,11 +20,16 @@ export const API_ENDPOINTS = {
     getGuest: (sessionId: string) => `${API_BASE_URL}/api/guest/${sessionId}`,
     getCurrentUser: `${API_BASE_URL}/api/me`,
 
-    // Convert Guest
-    convertGuest: `${API_BASE_URL}/api/convert-guest`,
-    
-    // User Management
-    getAll: `${API_BASE_URL}/api/users`,
+    // Auth
+    authWithPrivyLogin: `${API_BASE_URL}/api/auth/privy/login`,
+    authWithPrivyRegister: `${API_BASE_URL}/api/auth/privy/register`,
+
+    // Upgrade Guest
+    upgradeGuest: `${API_BASE_URL}/api/upgrade`,
+    play: `${API_BASE_URL}/api/play`,
+    leaderboard: `${API_BASE_URL}/api/leaderboard`,
+    deleteMe: `${API_BASE_URL}/api/me`,
+
     getById: (userId: string) => `${API_BASE_URL}/api/users/${userId}`,
     getByPrivyId: (privyId: string) => `${API_BASE_URL}/api/users/privy/${privyId}`,
     getByEmail: (email: string) => `${API_BASE_URL}/api/users/email/${email}`,
@@ -47,6 +52,11 @@ export const API_ENDPOINTS = {
     getByStatus: (status: string) => `${API_BASE_URL}/api/matches/status/${status}`,
     update: (matchId: string) => `${API_BASE_URL}/api/matches/${matchId}`,
     delete: (matchId: string) => `${API_BASE_URL}/api/matches/${matchId}`,
+  },
+
+  // WebSocket endpoints
+  ws: {
+    waitingRoom: `${WS_BASE_URL}/ws/waitingroom`,
   },
 };
 
