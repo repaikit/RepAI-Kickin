@@ -113,7 +113,7 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str):
                 # Add timeout for Vercel compatibility
                 data = await asyncio.wait_for(
                     websocket.receive_text(),
-                    timeout=30.0  # 30 seconds timeout
+                    timeout=5.0
                 )
                 try:
                     message = json.loads(data)
