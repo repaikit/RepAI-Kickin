@@ -18,6 +18,7 @@ export const useWaitingRoom = () => {
   const [users, setUsers] = useState<WaitingRoomUser[]>([]);
   const [isConnected, setIsConnected] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
+  const [currentUser, setCurrentUser] = useState<any>(null);
 
   useEffect(() => {
     if (!guestUser?._id) return;
@@ -26,13 +27,14 @@ export const useWaitingRoom = () => {
     let reconnectTimeout: NodeJS.Timeout;
 
     const connectWebSocket = () => {
-      const ws = new WebSocket(`${WS_BASE_URL}/api/ws/waitingroom/${guestUser._id}`);
+      const ws = new WebSocket(`${WS_BASE_URL}/waitingroom/${guestUser.session_id}`);
       wsRef.current = ws;
 
       ws.onopen = () => {
         console.log('WebSocket connected');
         setIsConnected(true);
-        
+        // Chỉ gửi message type: 'init'
+        ws.send(JSON.stringify({ type: 'init' }));
         // Start ping interval
         pingInterval = setInterval(() => {
           if (ws.readyState === WebSocket.OPEN) {
@@ -48,6 +50,11 @@ export const useWaitingRoom = () => {
         // Handle pong message
         if (data.type === 'pong') {
           return;
+        }
+
+        // Xử lý thông tin user hiện tại
+        if (data.type === 'me') {
+          setCurrentUser(data.user);
         }
 
         switch (data.type) {
@@ -180,6 +187,7 @@ export const useWaitingRoom = () => {
 
   return {
     users,
+    currentUser,
     isConnected,
     setReady,
     sendChallenge,

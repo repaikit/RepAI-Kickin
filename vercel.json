@@ -11,15 +11,22 @@
       "config": {
         "runtime": "python3.9",
         "maxLambdaSize": "15mb",
-        "includeFiles": "server/**/*.py"
+        "includeFiles": "server/**/*.py",
+        "supportsResponseStreaming": true,
+        "wsgi": {
+          "app": "main:app"
+        }
       }
+    },
+    {
+      "src": "ws-server/index.js",
+      "use": "@vercel/node"
     }
   ],
   "routes": [
     {
-      "src": "/api/ws/(.*)",
-      "dest": "server/main.py",
-      "continue": false
+      "src": "/ws/(.*)",
+      "dest": "ws-server/index.js"
     },
     {
       "src": "/api/(.*)",
@@ -35,7 +42,7 @@
   ],
   "env": {
     "NEXT_PUBLIC_API_URL": "/api",
-    "NEXT_PUBLIC_WS_URL": "/api/ws",
+    "NEXT_PUBLIC_WS_URL": "/ws",
     "PYTHONPATH": "server"
   }
-} 
+}

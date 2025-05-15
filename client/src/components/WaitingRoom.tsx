@@ -10,7 +10,7 @@ interface WaitingRoomProps {
 
 const WaitingRoom: React.FC<WaitingRoomProps> = ({ sessionId }) => {
   const { guestUser } = useGuestUser();
-  const { users, isConnected, sendChallenge } = useWaitingRoom();
+  const { users, currentUser, isConnected, sendChallenge } = useWaitingRoom();
   const [isLoading, setIsLoading] = useState(true);
 
   // Simulate loading state for initial data fetch
@@ -21,7 +21,14 @@ const WaitingRoom: React.FC<WaitingRoomProps> = ({ sessionId }) => {
   }, [users]);
 
   // Filter out current user from the list
-  const waitingPlayers = users.filter(user => user.user_id !== guestUser?._id).slice(0, 4);
+  const waitingPlayers = users.filter(user => {
+    const u = user as any;
+    return (
+      u.user_id !== currentUser?.user_id &&
+      u.id !== currentUser?.user_id &&
+      u._id !== currentUser?.user_id
+    );
+  }).slice(0, 4);
 
   const handleChallenge = (targetUserId: string) => {
     sendChallenge(targetUserId);

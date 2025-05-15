@@ -12,7 +12,7 @@ from fastapi.responses import JSONResponse, Response
 from contextlib import asynccontextmanager
 
 # Import routers using absolute imports
-from routers import users, matches, skills, waitingroom_ws
+from routers import users, matches, skills
 from middleware.database import database_middleware, DatabaseMiddleware
 from middleware.rate_limit import RateLimitMiddleware
 from middleware.cache import InMemoryCacheMiddleware
@@ -105,10 +105,7 @@ async def get_db():
 app.include_router(users.router, prefix=settings.API_V1_STR)
 app.include_router(matches.router, prefix=settings.API_V1_STR)
 app.include_router(skills.router, prefix=settings.API_V1_STR)
-app.include_router(waitingroom_ws.router, prefix=settings.API_V1_STR)
 
-# Add WebSocket route directly
-app.websocket("/api/ws/waitingroom/{user_id}")(waitingroom_ws.websocket_endpoint)
 
 @app.middleware("http")
 async def metrics_middleware(request: Request, call_next):
