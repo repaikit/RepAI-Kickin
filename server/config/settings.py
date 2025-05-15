@@ -18,7 +18,7 @@ class Settings(BaseSettings):
     # CORS settings - hardcoded values
     CORS_ORIGINS: List[str] = [
         "http://localhost:3000",
-        "http://localhost:8000",
+        "https://kickin.olym3.com",
         "https://rep-ai-kickin.vercel.app",
         "https://kickin-game.vercel.app"
     ]
@@ -31,7 +31,7 @@ class Settings(BaseSettings):
     RATE_LIMIT_PER_MINUTE: int = int(os.getenv("RATE_LIMIT_PER_MINUTE", "60"))
     
     # JWT settings
-    SECRET_KEY: str = os.getenv("JWT_SECRET_KEY", "your-secret-key")
+    SECRET_KEY: str = os.getenv("JWT_KEY", "repaikickin")
     ALGORITHM: str = os.getenv("JWT_ALGORITHM", "HS256")
     ACCESS_TOKEN_EXPIRE_MINUTES: int = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "30"))
     

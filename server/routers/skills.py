@@ -1,14 +1,10 @@
 from fastapi import APIRouter, HTTPException
-from typing import List
-from models.skill import Skill, SkillCreate, SkillUpdate
+from typing import List, Dict, Any
+from models.skill import Skill, SkillCreate, SkillUpdate, SkillType
 from database.database import get_skills_collection
 from bson import ObjectId
 from utils.logger import api_logger
-from enum import Enum
-
-class SkillType(str, Enum):
-    KICKER = "kicker"
-    GOALKEEPER = "goalkeeper"
+import traceback
 
 router = APIRouter()
 
@@ -49,17 +45,70 @@ async def get_skill(skill_id: str):
         api_logger.error(f"Error getting skill {skill_id}: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
+@router.get("/skills/type/{skill_type}/raw", response_model=List[Dict[str, Any]])
+async def get_skills_by_type_raw(skill_type: str):
+    """
+    Get raw skills data by type for debugging
+    """
+    try:
+        api_logger.info(f"Getting raw skills for type: {skill_type}")
+        skills_collection = await get_skills_collection()
+        
+        # Log the query
+        query = {"type": skill_type}
+        api_logger.info(f"MongoDB query: {query}")
+        
+        # Get skills
+        skills = await skills_collection.find(query).to_list(length=None)
+        api_logger.info(f"Found {len(skills)} skills")
+        
+        # Convert ObjectId to string for JSON serialization
+        result = []
+        for skill in skills:
+            skill_dict = dict(skill)
+            if "_id" in skill_dict:
+                skill_dict["_id"] = str(skill_dict["_id"])
+            result.append(skill_dict)
+            
+        return result
+    except Exception as e:
+        api_logger.error(f"Error getting raw skills by type {skill_type}: {str(e)}")
+        api_logger.error(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=str(e))
+
 @router.get("/skills/type/{skill_type}", response_model=List[Skill])
-async def get_skills_by_type(skill_type: SkillType):
+async def get_skills_by_type(skill_type: str):
     """
     Get all skills by type (kicker or goalkeeper)
     """
     try:
+        api_logger.info(f"Getting skills for type: {skill_type}")
         skills_collection = await get_skills_collection()
-        skills = await skills_collection.find({"type": skill_type}).to_list(length=None)
-        return [Skill(**skill) for skill in skills]
+        
+        # Log the query
+        query = {"type": skill_type}
+        api_logger.info(f"MongoDB query: {query}")
+        
+        # Get skills
+        skills = await skills_collection.find(query).to_list(length=None)
+        api_logger.info(f"Found {len(skills)} skills")
+        
+        # Convert to Skill models
+        result = []
+        for skill in skills:
+            try:
+                skill_model = Skill(**skill)
+                result.append(skill_model)
+            except Exception as model_error:
+                api_logger.error(f"Error converting skill to model: {str(model_error)}")
+                api_logger.error(f"Skill data: {skill}")
+                api_logger.error(traceback.format_exc())
+                raise
+                
+        return result
     except Exception as e:
         api_logger.error(f"Error getting skills by type {skill_type}: {str(e)}")
+        api_logger.error(traceback.format_exc())
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.put("/skills/{skill_id}", response_model=Skill)

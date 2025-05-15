@@ -1,5 +1,5 @@
 from typing import Optional, List, Any, Dict, Annotated
-from pydantic import BaseModel, EmailStr, Field, BeforeValidator
+from pydantic import BaseModel, Field, BeforeValidator
 from datetime import datetime
 from bson import ObjectId
 from pydantic.json_schema import JsonSchemaValue
@@ -15,9 +15,8 @@ class UserBase(BaseModel):
     user_type: str = "guest"  # guest, user, admin
     session_id: Optional[str] = None
     remaining_matches: int = 5
-    expires_at: Optional[datetime] = None
     privy_id: Optional[str] = None
-    email: Optional[EmailStr] = None
+    email: Optional[str] = None  # Simple string, no validation
     wallet: Optional[str] = None
     twitter_id: Optional[str] = None
     position: str = "both"
@@ -30,19 +29,19 @@ class UserBase(BaseModel):
     kicker_skills: List[str] = []
     goalkeeper_skills: List[str] = []
     point: int = 0
-    wins: int = 0
-    losses: int = 0
-    total_matches: int = 0
-    rank: int = 9999
     match_history: List[Any] = []
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
     last_login: Optional[datetime] = None
-    # New fields for guest user tracking
-    guest_created_at: Optional[datetime] = None
-    converted_to_user: bool = False
-    converted_at: Optional[datetime] = None
-    device_info: Optional[Dict[str, Any]] = None
+    # Leaderboard fields
+    total_kicked: int = 0  # Số lần đá
+    kicked_win: int = 0    # Số lượt đá thắng
+    total_keep: int = 0    # Số lần chụp gôn
+    keep_win: int = 0      # Số lần chụp thắng
+    is_pro: bool = False   # Tài khoản Pro
+    total_extra_skill: int = 0  # Số lần dùng Extra Skill (chỉ Pro)
+    extra_skill_win: int = 0    # Số lần thắng bằng Extra Skill (chỉ Pro)
+    level: int = 1
 
     class Config:
         json_encoders = {
@@ -57,9 +56,8 @@ class UserUpdate(BaseModel):
     user_type: Optional[str] = None
     session_id: Optional[str] = None
     remaining_matches: Optional[int] = None
-    expires_at: Optional[datetime] = None
     privy_id: Optional[str] = None
-    email: Optional[EmailStr] = None
+    email: Optional[str] = None
     wallet: Optional[str] = None
     twitter_id: Optional[str] = None
     position: Optional[str] = None
@@ -72,18 +70,18 @@ class UserUpdate(BaseModel):
     kicker_skills: Optional[List[str]] = None
     goalkeeper_skills: Optional[List[str]] = None
     point: Optional[int] = None
-    wins: Optional[int] = None
-    losses: Optional[int] = None
-    total_matches: Optional[int] = None
-    rank: Optional[int] = None
     match_history: Optional[List[Any]] = None
     updated_at: datetime = Field(default_factory=datetime.utcnow)
     last_login: Optional[datetime] = None
-    # New fields for guest user tracking
-    guest_created_at: Optional[datetime] = None
-    converted_to_user: Optional[bool] = None
-    converted_at: Optional[datetime] = None
-    device_info: Optional[Dict[str, Any]] = None
+    # Leaderboard fields
+    total_kicked: Optional[int] = None
+    kicked_win: Optional[int] = None
+    total_keep: Optional[int] = None
+    keep_win: Optional[int] = None
+    is_pro: Optional[bool] = None
+    total_extra_skill: Optional[int] = None  # Chỉ Pro
+    extra_skill_win: Optional[int] = None    # Chỉ Pro
+    level: Optional[int] = None
 
 class UserInDB(UserBase):
     id: PyObjectId = Field(default_factory=PyObjectId, alias="_id")

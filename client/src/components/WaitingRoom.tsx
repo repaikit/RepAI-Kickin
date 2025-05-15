@@ -1,116 +1,199 @@
-import React, { useState } from "react";
-import { Skeleton } from "@/components/ui/skeleton";
-import { Badge } from "@/components/ui/badge";
-import { useWaitingRoom } from "@/hooks/useWaitingRoom";
-import { useGuestUser } from "@/hooks/useGuestUser";
+import React, { useEffect, useState } from 'react';
+import { useAuth } from '@/contexts/AuthContext';
+import { Skeleton } from '@/components/ui/skeleton';
+import { API_ENDPOINTS } from '@/config/api';
 
-interface WaitingRoomProps {
-  sessionId: string;
+interface OnlineUser {
+  id: string;
+  name: string;
+  type: string;
+  avatar: string;
+  position: string;
+  role: string;
+  is_active: boolean;
+  is_verified: boolean;
+  trend: string;
+  remaining_matches: number;
+  point: number;
+  level: number;
+  kicker_skills: string[];
+  goalkeeper_skills: string[];
+  total_kicked: number;
+  kicked_win: number;
+  total_keep: number;
+  keep_win: number;
+  is_pro: boolean;
+  total_extra_skill: number;
+  extra_skill_win: number;
+  connected_at: string;
 }
 
-const WaitingRoom: React.FC<WaitingRoomProps> = ({ sessionId }) => {
-  const { guestUser } = useGuestUser();
-  const { users, currentUser, isConnected, sendChallenge } = useWaitingRoom();
-  const [isLoading, setIsLoading] = useState(true);
+export default function WaitingRoom() {
+  const { user } = useAuth();
+  const [onlineUsers, setOnlineUsers] = useState<OnlineUser[]>([]);
+  const [isConnected, setIsConnected] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [ws, setWs] = useState<WebSocket | null>(null);
 
-  // Simulate loading state for initial data fetch
-  React.useEffect(() => {
-    if (users.length > 0) {
-      setIsLoading(false);
+  useEffect(() => {
+    if (!user) return;
+
+    // Get access token from localStorage
+    const accessToken = localStorage.getItem('access_token');
+    if (!accessToken) {
+      setError('No access token found');
+      return;
     }
-  }, [users]);
 
-  // Filter out current user from the list
-  const waitingPlayers = users.filter(user => {
-    const u = user as any;
-    return (
-      u.user_id !== currentUser?.user_id &&
-      u.id !== currentUser?.user_id &&
-      u._id !== currentUser?.user_id
-    );
-  }).slice(0, 4);
+    console.log('Connecting to WebSocket...');
+    // Connect to WebSocket with access token
+    const wsUrl = `${API_ENDPOINTS.ws.waitingRoom}?access_token=${accessToken}`;
+    console.log('WebSocket URL:', wsUrl);
+    
+    const websocket = new WebSocket(wsUrl);
 
-  const handleChallenge = (targetUserId: string) => {
-    sendChallenge(targetUserId);
-  };
+    websocket.onopen = () => {
+      console.log('WebSocket connected successfully');
+      setIsConnected(true);
+      setError(null);
+    };
+
+    websocket.onclose = (event) => {
+      console.log('WebSocket closed:', event.code, event.reason);
+      setIsConnected(false);
+    };
+
+    websocket.onerror = (error) => {
+      console.error('WebSocket error:', error);
+      setError('WebSocket connection error');
+    };
+
+    websocket.onmessage = (event) => {
+      console.log('Received message:', event.data);
+      const message = JSON.parse(event.data);
+      
+      switch (message.type) {
+        case 'user_list':
+          console.log('Received user list:', message.users);
+          setOnlineUsers(message.users);
+          break;
+        case 'user_joined':
+          console.log('User joined:', message.user);
+          setOnlineUsers(prev => [...prev, message.user]);
+          break;
+        case 'user_left':
+          console.log('User left:', message.user_id);
+          setOnlineUsers(prev => prev.filter(u => u.id !== message.user_id));
+          break;
+        case 'ping':
+          console.log('Received ping, sending pong');
+          websocket.send(JSON.stringify({ type: 'pong' }));
+          break;
+        default:
+          console.log('Unknown message type:', message.type);
+      }
+    };
+
+    setWs(websocket);
+
+    return () => {
+      console.log('Cleaning up WebSocket connection');
+      websocket.close();
+    };
+  }, [user]);
+
+  // Log state mỗi lần onlineUsers thay đổi
+  useEffect(() => {
+    console.log('Online users state:', onlineUsers);
+  }, [onlineUsers]);
+
+  if (!user) {
+    return null;
+  }
 
   return (
-    <section className="bg-white rounded-xl shadow-md p-6 h-full">
-      <div className="flex justify-between items-center mb-6">
-        <div>
-          <h2 className="text-2xl font-bold text-slate-800">Waiting Room</h2>
-          <p className="text-slate-500">Players ready for matches</p>
+    <div className="bg-white rounded-xl shadow-sm p-5">
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="text-lg font-semibold text-slate-800">Waiting Room</h2>
+        <div className="flex items-center space-x-2">
+          <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-500' : 'bg-red-500'}`} />
+          <span className="text-sm text-slate-500">
+            {isConnected ? 'Connected' : 'Connecting...'}
+          </span>
         </div>
-        <Badge variant="outline" className="bg-accent/10 text-accent border-accent/20 px-3 py-1">
-          <span className="mr-1">•</span> {users.length} Online
-        </Badge>
       </div>
-      
-      <div className="space-y-4">
-        {isLoading ? (
-          // Loading skeletons
-          Array(4).fill(0).map((_, index) => (
-            <div key={`skeleton-${index}`} className="flex items-center gap-4 p-4 border border-slate-200 rounded-lg">
-              <Skeleton className="h-12 w-12 rounded-full" />
-              <div className="flex-1">
-                <Skeleton className="h-5 w-32 mb-1" />
-                <Skeleton className="h-4 w-24" />
-              </div>
-              <Skeleton className="h-8 w-24 rounded-full" />
-            </div>
-          ))
+
+      {error && (
+        <div className="text-red-500 mb-4">{error}</div>
+      )}
+
+      <div className="space-y-3">
+        {onlineUsers.length === 0 ? (
+          <div className="text-center text-slate-500 py-4">
+            No players online
+          </div>
         ) : (
-          waitingPlayers.map((player) => (
-            <div 
-              key={player.user_id} 
-              className="flex items-center gap-4 p-4 border border-slate-200 rounded-lg hover:border-primary/50 hover:bg-slate-50 transition-colors"
+          onlineUsers.map((user) => (
+            <div
+              key={user.id}
+              className="flex items-center space-x-3 p-3 rounded-lg bg-slate-50 hover:bg-slate-100 transition-colors"
             >
-              <div className="relative">
-                <img 
-                  src={player.avatar || 'https://via.placeholder.com/150'}
-                  alt={player.name} 
-                  className="h-12 w-12 rounded-full object-cover border-2 border-white shadow-sm"
-                />
+              <div className="w-10 h-10 rounded-full overflow-hidden bg-primary/10 flex items-center justify-center">
+                {user.avatar ? (
+                  <img
+                    src={user.avatar}
+                    alt={user.name}
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <span className="text-primary font-medium">
+                    {user.name[0].toUpperCase()}
+                  </span>
+                )}
               </div>
-              
-              <div className="flex-1">
-                <h3 className="font-medium text-slate-800">{player.name}</h3>
-                <p className="text-sm text-slate-500">
-                  {player.remaining_matches} matches left • {player.wins}W {player.losses}L
-                </p>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center space-x-2">
+                  <span className="font-medium text-slate-900 truncate">
+                    {user.name}
+                  </span>
+                  <span className="text-xs px-2 py-0.5 rounded-full bg-slate-200 text-slate-600">
+                    {user.type}
+                  </span>
+                  {user.is_pro && (
+                    <span className="text-xs px-2 py-0.5 rounded-full bg-yellow-100 text-yellow-800">
+                      PRO
+                    </span>
+                  )}
+                  {user.is_verified && (
+                    <span className="text-xs px-2 py-0.5 rounded-full bg-blue-100 text-blue-800">
+                      Verified
+                    </span>
+                  )}
+                </div>
+                <div className="text-xs text-slate-500 space-y-1">
+                  <div className="flex items-center space-x-2">
+                    <span>Level {user.level}</span>
+                    <span>•</span>
+                    <span>{user.point} points</span>
+                    <span>•</span>
+                    <span>{user.remaining_matches} matches left</span>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <span>Kicker: {user.kicked_win}/{user.total_kicked}</span>
+                    <span>•</span>
+                    <span>Goalkeeper: {user.keep_win}/{user.total_keep}</span>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <span>Position: {user.position}</span>
+                    <span>•</span>
+                    <span>Trend: {user.trend}</span>
+                  </div>
+                </div>
               </div>
-              
-              <button 
-                onClick={() => handleChallenge(player.user_id)}
-                className="px-4 py-1.5 bg-primary/10 text-primary font-medium text-sm rounded-full hover:bg-primary hover:text-white transition-colors"
-              >
-                Challenge
-              </button>
             </div>
           ))
         )}
       </div>
-      
-      <div className="mt-6 text-center">
-        <button className="px-6 py-2 text-primary font-medium text-sm hover:underline inline-flex items-center">
-          <span>View All Players</span>
-          <svg className="ml-2 w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-          </svg>
-        </button>
-      </div>
-      
-      {!isLoading && waitingPlayers.length === 0 && (
-        <div className="py-16 text-center text-slate-500">
-          <svg className="w-12 h-12 mx-auto mb-4 text-slate-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
-          </svg>
-          <p className="text-lg font-medium">No players in waiting room</p>
-          <p>Check back later or invite players to join</p>
-        </div>
-      )}
-    </section>
+    </div>
   );
 }
-
-export default WaitingRoom;
