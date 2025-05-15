@@ -3,8 +3,11 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "dev": "cd client && npm run dev",
-    "build": "cd client && npm install && npm run build",
+    "dev:client": "cd client && npm run dev",
+    "dev:server": "cd server && uvicorn main:app --host 0.0.0.0 --port 5000 --reload",
+    "dev:ws": "cd ws-server && node index.js",
+    "dev": "concurrently \"npm run dev:client\" \"npm run dev:server\" \"npm run dev:ws\"",
+    "build": "concurrently \"cd client && npm install && npm run build\" \"cd ws-server && npm install && npm run build\"",
     "start": "cd client && npm run start",
     "lint": "cd client && npm run lint",
     "check": "tsc",
@@ -13,7 +16,8 @@
     "backend:lint": "cd server && flake8 .",
     "dev:all": "concurrently \"npm run dev\" \"npm run backend:dev\"",
     "build:all": "concurrently \"npm run build\" \"cd server && pip install -r requirements.txt\"",
-    "start:all": "concurrently \"cd client && npm run dev\" \"cd server && python main.py\""
+    "start:all": "concurrently \"cd ws-server && npm run dev\" \"cd client && npm run dev\" \"cd server && python main.py\"",
+    "install:ws": "cd ws-server && npm install"
   },
   "devDependencies": {
     "@types/debug": "^4.1.12",

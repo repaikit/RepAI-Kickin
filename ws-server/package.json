@@ -1,0 +1,20 @@
+{
+  "name": "ws-server",
+  "version": "1.0.0",
+  "main": "index.js",
+  "type": "commonjs",
+  "scripts": {
+    "dev": "nodemon index.js",
+    "start": "node index.js",
+    "build": "echo 'No build step for ws-server'"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "WebSocket server for waiting room, deployable on Vercel",
+  "dependencies": {
+    "node-fetch": "^3.3.2",
+    "nodemon": "^3.1.10",
+    "ws": "^8.18.2"
+  }
+}

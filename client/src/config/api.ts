@@ -8,8 +8,8 @@ export const API_BASE_URL = isDevelopment
 
 // WebSocket URL
 export const WS_BASE_URL = isDevelopment
-  ? 'ws://localhost:5000'
-  : process.env.NEXT_PUBLIC_WS_URL || '';
+  ? 'ws://localhost:4000/ws'
+  : process.env.NEXT_PUBLIC_WS_URL || '/ws';
 
 // API endpoints
 export const API_ENDPOINTS = {
@@ -47,11 +47,6 @@ export const API_ENDPOINTS = {
     getByStatus: (status: string) => `${API_BASE_URL}/api/matches/status/${status}`,
     update: (matchId: string) => `${API_BASE_URL}/api/matches/${matchId}`,
     delete: (matchId: string) => `${API_BASE_URL}/api/matches/${matchId}`,
-  },
-
-  // WebSocket endpoints
-  ws: {
-    waitingRoom: (sessionId: string) => `${WS_BASE_URL}/api/ws/waitingroom/${sessionId}`,
   },
 };
 
