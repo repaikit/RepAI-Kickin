@@ -1,26 +1,29 @@
 import sys
 import os
 from pathlib import Path
+
+# Add the parent directory to Python path
+ROOT_DIR = Path(__file__).resolve().parent
+sys.path.append(str(ROOT_DIR))
+
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
 from contextlib import asynccontextmanager
+
+# Import routers using absolute imports
 from routers import users, matches, skills, waitingroom_ws
 from middleware.database import database_middleware, DatabaseMiddleware
 from middleware.rate_limit import RateLimitMiddleware
 from middleware.cache import InMemoryCacheMiddleware
 from utils.logger import api_logger, setup_logger
 from database.database import init_db, close_db, Database, get_database
+from config.settings import settings
+
 import time
 import asyncio
 from prometheus_client import Counter, Histogram, generate_latest, CONTENT_TYPE_LATEST
 import prometheus_client
-
-# Add the parent directory to Python path
-ROOT_DIR = Path(__file__).resolve().parent
-sys.path.append(str(ROOT_DIR))
-
-from config.settings import settings
 
 # Initialize metrics
 def init_metrics():

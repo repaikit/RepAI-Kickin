@@ -1,40 +1,41 @@
-  {
-    "version": 2,
-    "builds": [
-      {
-        "src": "client/package.json",
-        "use": "@vercel/next"
-      },
-      {
-        "src": "server/main.py",
-        "use": "@vercel/python",
-        "config": {
-          "runtime": "python3.9",
-          "maxLambdaSize": "15mb"
-        }
+{
+  "version": 2,
+  "builds": [
+    {
+      "src": "client/package.json",
+      "use": "@vercel/next"
+    },
+    {
+      "src": "server/main.py",
+      "use": "@vercel/python",
+      "config": {
+        "runtime": "python3.9",
+        "maxLambdaSize": "15mb",
+        "includeFiles": "server/**/*.py"
       }
-    ],
-    "routes": [
-      {
-        "src": "/api/ws/(.*)",
-        "dest": "server/main.py",
-        "continue": true
-      },
-      {
-        "src": "/api/(.*)",
-        "dest": "server/main.py"
-      },
-      {
-        "handle": "filesystem"
-      },
-      {
-        "src": "/(.*)",
-        "dest": "client/$1"
-      }
-    ],
-    "env": {
-      "NEXT_PUBLIC_API_URL": "/api",
-      "NEXT_PUBLIC_WS_URL": "/api/ws",
-      "PYTHONPATH": "."
     }
-  } 
+  ],
+  "routes": [
+    {
+      "src": "/api/ws/(.*)",
+      "dest": "server/main.py",
+      "continue": true
+    },
+    {
+      "src": "/api/(.*)",
+      "dest": "server/main.py"
+    },
+    {
+      "handle": "filesystem"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "client/$1"
+    }
+  ],
+  "env": {
+    "NEXT_PUBLIC_API_URL": "/api",
+    "NEXT_PUBLIC_WS_URL": "/api/ws",
+    "PYTHONPATH": "server"
+  }
+} 
