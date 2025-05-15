@@ -110,11 +110,17 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str):
 
         try:
             while True:
-                # Add timeout for Vercel compatibility
-                data = await asyncio.wait_for(
-                    websocket.receive_text(),
-                    timeout=5.0
-                )
+                try:
+                    data = await asyncio.wait_for(
+                        websocket.receive_text(),
+                        timeout=3.0
+                    )
+                except asyncio.TimeoutError:
+                    await websocket.send_json({
+                        "type": "ping",
+                        "timestamp": datetime.utcnow().isoformat()
+                    })
+                    continue
                 try:
                     message = json.loads(data)
                     # Handle different message types here

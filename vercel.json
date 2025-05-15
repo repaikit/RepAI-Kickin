@@ -19,7 +19,7 @@
     {
       "src": "/api/ws/(.*)",
       "dest": "server/main.py",
-      "continue": true
+      "continue": false
     },
     {
       "src": "/api/(.*)",

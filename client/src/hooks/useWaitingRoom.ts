@@ -36,9 +36,9 @@ export const useWaitingRoom = () => {
         // Start ping interval
         pingInterval = setInterval(() => {
           if (ws.readyState === WebSocket.OPEN) {
-            sendMessage({ type: 'ping' });
+            ws.send(JSON.stringify({ type: 'ping' }));
           }
-        }, 5000); // Gửi ping mỗi 5 giây
+        }, 3000);
       };
 
       ws.onmessage = (event) => {
@@ -122,7 +122,7 @@ export const useWaitingRoom = () => {
         }
         
         // Thử kết nối lại sau 5 giây
-        reconnectTimeout = setTimeout(connectWebSocket, 5000);
+        reconnectTimeout = setTimeout(connectWebSocket, 3000);
       };
 
       ws.onerror = (error) => {
