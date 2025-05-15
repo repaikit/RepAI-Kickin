@@ -1,6 +1,6 @@
 import { usePrivy } from '@privy-io/react-auth';
 import Image from 'next/image';
-import welcomeBg from '@/photo/welcomebackground.jpg';
+import welcomeBg from '@/photo/WelcomeBackGround.jpg';
 import { API_ENDPOINTS } from '@/config/api';
 import { useRouter } from 'next/router';
 import { useAuth } from '@/contexts/AuthContext';
