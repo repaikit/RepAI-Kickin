@@ -1,19 +1,18 @@
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { Skeleton } from '@/components/ui/skeleton';
-import { API_ENDPOINTS } from '@/config/api';
+import { websocketService } from '@/services/websocket';
+import { toast } from 'react-hot-toast';
 
 interface OnlineUser {
   id: string;
   name: string;
   type: string;
   avatar: string;
-  position: string;
   role: string;
   is_active: boolean;
   is_verified: boolean;
   trend: string;
-  remaining_matches: number;
   point: number;
   level: number;
   kicker_skills: string[];
@@ -33,79 +32,57 @@ export default function WaitingRoom() {
   const [onlineUsers, setOnlineUsers] = useState<OnlineUser[]>([]);
   const [isConnected, setIsConnected] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [ws, setWs] = useState<WebSocket | null>(null);
+  const [challengeInvite, setChallengeInvite] = useState<{ from: string, from_name: string } | null>(null);
+  const [challengeStatus, setChallengeStatus] = useState<string | null>(null);
 
   useEffect(() => {
     if (!user) return;
 
-    // Get access token from localStorage
-    const accessToken = localStorage.getItem('access_token');
-    if (!accessToken) {
-      setError('No access token found');
-      return;
-    }
-
-    console.log('Connecting to WebSocket...');
-    // Connect to WebSocket with access token
-    const wsUrl = `${API_ENDPOINTS.ws.waitingRoom}?access_token=${accessToken}`;
-    console.log('WebSocket URL:', wsUrl);
-    
-    const websocket = new WebSocket(wsUrl);
-
-    websocket.onopen = () => {
-      console.log('WebSocket connected successfully');
-      setIsConnected(true);
-      setError(null);
-    };
-
-    websocket.onclose = (event) => {
-      console.log('WebSocket closed:', event.code, event.reason);
-      setIsConnected(false);
-    };
-
-    websocket.onerror = (error) => {
-      console.error('WebSocket error:', error);
-      setError('WebSocket connection error');
-    };
-
-    websocket.onmessage = (event) => {
-      console.log('Received message:', event.data);
-      const message = JSON.parse(event.data);
-      
-      switch (message.type) {
-        case 'user_list':
-          console.log('Received user list:', message.users);
-          setOnlineUsers(message.users);
-          break;
-        case 'user_joined':
-          console.log('User joined:', message.user);
-          setOnlineUsers(prev => [...prev, message.user]);
-          break;
-        case 'user_left':
-          console.log('User left:', message.user_id);
-          setOnlineUsers(prev => prev.filter(u => u.id !== message.user_id));
-          break;
-        case 'ping':
-          console.log('Received ping, sending pong');
-          websocket.send(JSON.stringify({ type: 'pong' }));
-          break;
-        default:
-          console.log('Unknown message type:', message.type);
+    // Set up WebSocket callbacks
+    websocketService.setCallbacks({
+      onConnect: () => {
+        setIsConnected(true);
+        setError(null);
+      },
+      onDisconnect: () => {
+        setIsConnected(false);
+      },
+      onError: (message) => {
+        setError(message);
+        toast.error(message);
+      },
+      onUserList: (users) => {
+        setOnlineUsers(users);
+      },
+      onChallengeInvite: (from, fromName) => {
+        console.log('Received challenge_invite', from, fromName);
+        setChallengeInvite({ from, from_name: fromName });
+      },
+      onChallengeAccepted: (matchId) => {
+        setChallengeStatus('Your challenge was accepted! Starting match...');
+        toast.success('Challenge accepted! Starting match...');
+        // TODO: Navigate to match page
+      },
+      onChallengeDeclined: () => {
+        setChallengeStatus('Your challenge was declined.');
+        toast.error('Challenge was declined');
       }
-    };
+    });
 
-    setWs(websocket);
+    // Connect to WebSocket
+    websocketService.connect();
 
+    // Cleanup on unmount
     return () => {
-      console.log('Cleaning up WebSocket connection');
-      websocket.close();
+      websocketService.disconnect();
     };
   }, [user]);
 
-  // Log state mỗi lần onlineUsers thay đổi
-  useEffect(() => {
-    console.log('Online users state:', onlineUsers);
-  }, [onlineUsers]);
+  const handleChallenge = (targetUser: OnlineUser) => {
+    websocketService.sendChallengeRequest(targetUser.id);
+    setChallengeStatus(`Challenge request sent to ${targetUser.name}`);
+    toast.success(`Challenge request sent to ${targetUser.name}`);
+  };
 
   if (!user) {
     return null;
@@ -128,12 +105,12 @@ export default function WaitingRoom() {
       )}
 
       <div className="space-y-3">
-        {onlineUsers.length === 0 ? (
+        {onlineUsers.filter(u => u.id !== user._id).length === 0 ? (
           <div className="text-center text-slate-500 py-4">
-            No players online
+            No other players in the waiting room
           </div>
         ) : (
-          onlineUsers.map((user) => (
+          onlineUsers.filter(u => u.id !== user._id).map((user) => (
             <div
               key={user.id}
               className="flex items-center space-x-3 p-3 rounded-lg bg-slate-50 hover:bg-slate-100 transition-colors"
@@ -176,24 +153,63 @@ export default function WaitingRoom() {
                     <span>•</span>
                     <span>{user.point} points</span>
                     <span>•</span>
-                    <span>{user.remaining_matches} matches left</span>
                   </div>
                   <div className="flex items-center space-x-2">
                     <span>Kicker: {user.kicked_win}/{user.total_kicked}</span>
                     <span>•</span>
                     <span>Goalkeeper: {user.keep_win}/{user.total_keep}</span>
                   </div>
-                  <div className="flex items-center space-x-2">
-                    <span>Position: {user.position}</span>
-                    <span>•</span>
-                    <span>Trend: {user.trend}</span>
-                  </div>
                 </div>
               </div>
+              <button
+                className="ml-4 px-3 py-1 bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors"
+                onClick={() => handleChallenge(user)}
+              >
+                Challenge
+              </button>
             </div>
           ))
         )}
       </div>
+
+      {/* Challenge Invite Modal */}
+      {challengeInvite && (
+        <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-30 z-50">
+          <div className="bg-white p-6 rounded shadow-lg">
+            <p className="mb-4 font-medium">
+              {challengeInvite.from_name} has challenged you! Accept?
+            </p>
+            <div className="flex space-x-4">
+              <button
+                className="px-4 py-2 bg-green-500 text-white rounded"
+                onClick={() => {
+                  websocketService.acceptChallenge(challengeInvite.from);
+                  setChallengeInvite(null);
+                }}
+              >
+                Accept
+              </button>
+              <button
+                className="px-4 py-2 bg-red-500 text-white rounded"
+                onClick={() => {
+                  websocketService.declineChallenge(challengeInvite.from);
+                  setChallengeInvite(null);
+                }}
+              >
+                Decline
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Challenge Status Toast */}
+      {challengeStatus && (
+        <div className="fixed top-4 right-4 bg-blue-500 text-white px-4 py-2 rounded shadow z-50">
+          {challengeStatus}
+          <button className="ml-2" onClick={() => setChallengeStatus(null)}>x</button>
+        </div>
+      )}
     </div>
   );
 }

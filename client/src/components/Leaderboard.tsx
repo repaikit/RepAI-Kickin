@@ -24,58 +24,17 @@ export default function Leaderboard({
   currentPosition,
   currentSeason 
 }: LeaderboardProps) {
-  const { data: players, isLoading } = useLeaderboard();
+  const [currentPage, setCurrentPage] = React.useState(1);
+  const pageSize = 10;
+  const maxPages = 100;
+  const { data: players, isLoading } = useLeaderboard(currentPage, pageSize);
 
-  // Sắp xếp theo số lần đá thắng (kicked_win) giảm dần
-  const sortedPlayers = [...(players || [])].sort((a, b) => b.kicked_win - a.kicked_win);
+  const pagedPlayers = players || [];
 
   return (
     <section className="bg-white rounded-xl shadow-md p-6">
       <div className="flex justify-between items-center mb-6">
         <h2 className="text-2xl font-bold text-slate-800">Leaderboard</h2>
-        
-        {/* Position Controls */}
-        <div className="flex items-center space-x-2">
-          <Button
-            variant={currentPosition === "all" ? "default" : "outline"}
-            size="sm"
-            onClick={() => onPositionChange("all")}
-          >
-            All
-          </Button>
-          <Button
-            variant={currentPosition === "kicker" ? "default" : "outline"}
-            size="sm"
-            onClick={() => onPositionChange("kicker")}
-          >
-            Kicker
-          </Button>
-          <Button
-            variant={currentPosition === "goalkeeper" ? "default" : "outline"}
-            size="sm"
-            onClick={() => onPositionChange("goalkeeper")}
-          >
-            Goalkeeper
-          </Button>
-        </div>
-
-        {/* Season Controls */}
-        <div className="flex items-center space-x-2">
-          <Button
-            variant={currentSeason === "current" ? "default" : "outline"}
-            size="sm"
-            onClick={() => onSeasonChange("current")}
-          >
-            Current
-          </Button>
-          <Button
-            variant={currentSeason === "previous" ? "default" : "outline"}
-            size="sm"
-            onClick={() => onSeasonChange("previous")}
-          >
-            Previous
-          </Button>
-        </div>
       </div>
 
       <div className="overflow-x-auto">
@@ -89,9 +48,10 @@ export default function Leaderboard({
               <TableHead>Kicked Win</TableHead>
               <TableHead>Total Keep</TableHead>
               <TableHead>Keep Win</TableHead>
-              <TableHead>Pro</TableHead>
               <TableHead>Total Extra Skill</TableHead>
               <TableHead>Extra Skill Win</TableHead>
+              <TableHead>Total Point</TableHead>
+              <TableHead>Reward (USDC)</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -116,10 +76,11 @@ export default function Leaderboard({
                   <TableCell><Skeleton className="h-4 w-8" /></TableCell>
                   <TableCell><Skeleton className="h-4 w-8" /></TableCell>
                   <TableCell><Skeleton className="h-4 w-8" /></TableCell>
+                  <TableCell><Skeleton className="h-4 w-8" /></TableCell>
                 </TableRow>
               ))
             ) : (
-              sortedPlayers.map((player, index) => (
+              pagedPlayers.map((player, index) => (
                 <TableRow key={player.id} className="hover:bg-slate-50 transition-colors">
                   <TableCell>
                     <span className={
@@ -128,7 +89,7 @@ export default function Leaderboard({
                       index === 2 ? "inline-flex items-center justify-center w-6 h-6 rounded-full text-xs font-bold bg-orange-600 text-white border-2 border-white" :
                       "inline-flex items-center justify-center w-6 h-6 rounded-full text-xs font-bold bg-slate-600 text-white border-2 border-white"
                     }>
-                      {index + 1}
+                      {(currentPage - 1) * pageSize + index + 1}
                     </span>
                   </TableCell>
                   <TableCell>
@@ -148,9 +109,10 @@ export default function Leaderboard({
                   <TableCell>{player.kicked_win}</TableCell>
                   <TableCell>{player.total_keep}</TableCell>
                   <TableCell>{player.keep_win}</TableCell>
-                  <TableCell>{player.is_pro ? 'Yes' : 'No'}</TableCell>
-                  <TableCell>{player.is_pro ? player.total_extra_skill : '-'}</TableCell>
-                  <TableCell>{player.is_pro ? player.extra_skill_win : '-'}</TableCell>
+                  <TableCell>{player.total_extra_skill}</TableCell>
+                  <TableCell>{player.extra_skill_win}</TableCell>
+                  <TableCell>{player.total_point}</TableCell>
+                  <TableCell>{player.reward}</TableCell>
                 </TableRow>
               ))
             )}
@@ -160,7 +122,28 @@ export default function Leaderboard({
       {!isLoading && (
         <div className="mt-6 flex justify-between items-center">
           <div className="text-sm text-slate-500">
-            Showing {players?.length || 0} of {players?.length || 0} players
+            Showing {pagedPlayers.length} of {pagedPlayers.length} players (Page {currentPage})
+          </div>
+          <div className="flex items-center space-x-2">
+            <button
+              onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+              disabled={currentPage === 1}
+              className="px-3 py-1 rounded bg-slate-200 hover:bg-slate-300 disabled:opacity-50"
+            >
+              Prev
+            </button>
+            <span className="font-medium">{currentPage}</span>
+            <button
+              onClick={() => {
+                if (pagedPlayers.length === pageSize && currentPage < maxPages) {
+                  setCurrentPage((p) => p + 1);
+                }
+              }}
+              disabled={pagedPlayers.length < pageSize || currentPage === maxPages}
+              className="px-3 py-1 rounded bg-slate-200 hover:bg-slate-300 disabled:opacity-50"
+            >
+              Next
+            </button>
           </div>
         </div>
       )}

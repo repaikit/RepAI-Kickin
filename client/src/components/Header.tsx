@@ -10,6 +10,7 @@ export default function Header() {
   const { login, user: privyUser, ready } = usePrivy();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isPrivyLoading, setIsPrivyLoading] = useState(false);
+  const [upgradeError, setUpgradeError] = useState<string | null>(null);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -39,13 +40,49 @@ export default function Header() {
     }
   };
 
+  const handleRefreshGuest = async () => {
+    try {
+      const token = localStorage.getItem('access_token');
+      if (!token) {
+        alert('Không tìm thấy access token!');
+        return;
+      }
+      const response = await fetch(API_ENDPOINTS.users.refreshGuest, {
+        method: 'POST',
+        headers: {
+          ...defaultFetchOptions.headers,
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.detail || 'Làm mới lượt chơi thất bại');
+      }
+      const data = await response.json();
+      await checkAuth();
+      alert('Đã làm mới lượt chơi và kỹ năng cho guest!');
+    } catch (err) {
+      alert('Làm mới lượt chơi thất bại!');
+    }
+  };
+
+  function clearPrivyTokens() {
+    // Xóa các key liên quan đến Privy (trừ access_token backend)
+    Object.keys(localStorage).forEach((key) => {
+      if (key.startsWith('privy:')) {
+        localStorage.removeItem(key);
+      }
+    });
+  }
+
   useEffect(() => {
     if (ready && privyUser?.id && user?.user_type === 'guest') {
       (async () => {
         try {
+          setUpgradeError(null); // clear lỗi cũ
           const token = localStorage.getItem('access_token');
           if (!token) {
-            console.error('No access token found');
+            setUpgradeError('Không tìm thấy access token!');
             return;
           }
 
@@ -55,8 +92,6 @@ export default function Header() {
             wallet: privyUser.wallet?.address || null,
             name: privyUser.email?.address?.split('@')[0] || 'Player'
           };
-
-          console.log('Upgrading guest account with data:', requestData);
 
           const response = await fetch(API_ENDPOINTS.users.upgradeGuest, {
             method: 'POST',
@@ -70,18 +105,24 @@ export default function Header() {
 
           if (!response.ok) {
             const errorData = await response.json();
-            console.error('Upgrade error:', errorData);
-            throw new Error(errorData.detail || 'Failed to upgrade account');
+            // Nếu lỗi do email/wallet đã được sử dụng, chỉ xóa token Privy
+            if (
+              errorData.detail &&
+              (errorData.detail.includes('Email đã được sử dụng') || errorData.detail.includes('Wallet đã được sử dụng'))
+            ) {
+              clearPrivyTokens();
+              setUpgradeError(errorData.detail); // Hiển thị lỗi đẹp
+            } else {
+              setUpgradeError(errorData.detail || 'Failed to upgrade account');
+            }
+            return;
           }
 
-          const userData = await response.json();
-          console.log('Account upgraded successfully:', userData);
-
-          // Refresh auth state
+          // Thành công: refresh lại trang
           await checkAuth();
+          window.location.reload();
         } catch (error) {
-          console.error('Upgrade process error:', error);
-          alert('Failed to upgrade account: ' + (error instanceof Error ? error.message : 'Unknown error'));
+          setUpgradeError(error instanceof Error ? error.message : 'Unknown error');
         }
       })();
     }
@@ -178,6 +219,19 @@ export default function Header() {
                             }
                           </p>
                         </div>
+                        {isGuestUser && (
+                          <div className="p-4">
+                            <button
+                              onClick={handleRefreshGuest}
+                              className="w-full flex items-center justify-center px-4 py-2.5 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors mb-2"
+                            >
+                              <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582M20 20v-5h-.581M5.635 19A9 9 0 1 1 19 5.635" />
+                              </svg>
+                              Làm mới lượt chơi
+                            </button>
+                          </div>
+                        )}
                         <div className="p-4">
                           <button
                             onClick={handlePrivyLogin}
@@ -190,6 +244,11 @@ export default function Header() {
                             {isPrivyLoading ? 'Connecting...' : 'Login'}
                           </button>
                         </div>
+                        {isGuestUser && upgradeError && (
+                          <div className="px-4 py-2 text-red-600 text-sm font-medium">
+                            {upgradeError}
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
