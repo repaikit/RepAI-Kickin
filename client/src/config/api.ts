@@ -5,7 +5,7 @@ const isDevelopment = process.env.NODE_ENV === 'development';
 export const API_BASE_URL = isDevelopment 
   ? 'http://localhost:5000'
   : process.env.NEXT_PUBLIC_API_URL || '';
-
+console.log("bạn đang kết nối tới" + API_BASE_URL);
 // WebSocket URL
 export const WS_BASE_URL = isDevelopment
   ? 'ws://localhost:5000'
