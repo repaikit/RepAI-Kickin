@@ -15,7 +15,6 @@ class UserBase(BaseModel):
     user_type: str = "guest"  # guest, user, admin
     session_id: Optional[str] = None
     remaining_matches: int = 5
-    privy_id: Optional[str] = None
     email: Optional[str] = None  # Simple string, no validation
     wallet: Optional[str] = None
     twitter_id: Optional[str] = None
@@ -28,7 +27,8 @@ class UserBase(BaseModel):
     avatar: Optional[str] = None
     kicker_skills: List[str] = []
     goalkeeper_skills: List[str] = []
-    point: int = 0
+    total_point: int = 0
+    reward: float = 0.0
     match_history: List[Any] = []
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
@@ -56,7 +56,6 @@ class UserUpdate(BaseModel):
     user_type: Optional[str] = None
     session_id: Optional[str] = None
     remaining_matches: Optional[int] = None
-    privy_id: Optional[str] = None
     email: Optional[str] = None
     wallet: Optional[str] = None
     twitter_id: Optional[str] = None
@@ -69,7 +68,8 @@ class UserUpdate(BaseModel):
     avatar: Optional[str] = None
     kicker_skills: Optional[List[str]] = None
     goalkeeper_skills: Optional[List[str]] = None
-    point: Optional[int] = None
+    total_point: Optional[int] = None
+    reward: Optional[float] = None
     match_history: Optional[List[Any]] = None
     updated_at: datetime = Field(default_factory=datetime.utcnow)
     last_login: Optional[datetime] = None

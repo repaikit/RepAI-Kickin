@@ -1,25 +1,27 @@
 import { useQuery } from "@tanstack/react-query";
 import { API_ENDPOINTS, defaultFetchOptions } from "@/config/api";
 
-export interface LeaderboardPlayer {
-  id: string;
-  name: string;
-  avatar: string;
-  total_kicked: number;
-  kicked_win: number;
-  total_keep: number;
-  keep_win: number;
-  is_pro: boolean;
-  total_extra_skill: number;
-  extra_skill_win: number;
-  level: number;
-}
+  export interface LeaderboardPlayer {
+    id: string;
+    name: string;
+    avatar: string;
+    total_kicked: number;
+    kicked_win: number;
+    total_keep: number;
+    keep_win: number;
+    is_pro: boolean;
+    total_extra_skill: number;
+    extra_skill_win: number;
+    total_point: number;
+    reward: number;
+    level: number;
+  }
 
-export const useLeaderboard = (limit: number = 10) => {
+export const useLeaderboard = (page: number = 1, limit: number = 10) => {
   return useQuery<LeaderboardPlayer[]>({
-    queryKey: ["leaderboard", limit],
+    queryKey: ["leaderboard", page, limit],
     queryFn: async () => {
-      const url = API_ENDPOINTS.users.leaderboard + `?limit=${limit}`;
+      const url = API_ENDPOINTS.users.leaderboard + `?page=${page}&limit=${limit}`;
       const response = await fetch(url, defaultFetchOptions);
       if (!response.ok) {
         throw new Error(`Failed to fetch leaderboard: ${response.status} ${response.statusText}`);
@@ -37,6 +39,8 @@ export const useLeaderboard = (limit: number = 10) => {
         is_pro: user.is_pro,
         total_extra_skill: user.total_extra_skill,
         extra_skill_win: user.extra_skill_win,
+        total_point: user.total_point,
+        reward: user.reward,
         level: user.level,
       }));
     },

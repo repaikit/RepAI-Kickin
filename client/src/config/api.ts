@@ -26,6 +26,10 @@ export const API_ENDPOINTS = {
 
     // Upgrade Guest
     upgradeGuest: `${API_BASE_URL}/api/upgrade`,
+
+    // refresh guest
+    refreshGuest: `${API_BASE_URL}/api/guest/refresh`,
+
     play: `${API_BASE_URL}/api/play`,
     leaderboard: `${API_BASE_URL}/api/leaderboard`,
     deleteMe: `${API_BASE_URL}/api/me`,
