@@ -81,8 +81,6 @@ class ChallengeManager:
             })
             return
 
-        await reset_week_if_needed()
-
         if accepted:
             # Randomly assign roles
             roles = ["kicker", "goalkeeper"]
@@ -176,9 +174,6 @@ class ChallengeManager:
             else:
                 loser_update_fields["$inc"] = {"total_kicked": 1, "remaining_matches": -1}
             await db.users.update_one({"_id": ObjectId(loser_id)}, loser_update_fields)
-            # Add extra points for pro users
-            if is_pro:
-                await db.users.update_one({"_id": ObjectId(winner_id)}, {"$inc": {"total_extra_skill": 1, "total_point": 1}})
             # Get updated user data
             updated_winner = await db.users.find_one({"_id": ObjectId(winner_id)})
             updated_loser = await db.users.find_one({"_id": ObjectId(loser_id)})
@@ -202,23 +197,6 @@ class ChallengeManager:
             # Update reward for both winner and loser
             await db.users.update_one({"_id": ObjectId(winner_id)}, {"$set": {"reward": self.calculate_reward(updated_winner)}})
             await db.users.update_one({"_id": ObjectId(loser_id)}, {"$set": {"reward": self.calculate_reward(updated_loser)}})
-            # Check if level up occurred
-            level_up = new_level > winner.get("level", 1)
-            new_skills = []
-            if level_up and not is_pro:
-                # Add new skills based on role
-                if winner_id == kicker_id:
-                    new_skills = [f"kicker_skill_level_{new_level}"]
-                else:
-                    new_skills = [f"goalkeeper_skill_level_{new_level}"]
-                await db.users.update_one(
-                    {"_id": ObjectId(winner_id)},
-                    {"$push": {
-                        "kicker_skills" if winner_id == kicker_id else "goalkeeper_skills": {
-                            "$each": new_skills
-                        }
-                    }}
-                )
             # Prepare match result message
             result_message = {
                 "type": "challenge_result",
@@ -236,7 +214,6 @@ class ChallengeManager:
                         "remaining_matches": updated_winner.get("remaining_matches", 0),
                         "is_pro": updated_winner.get("is_pro", False),
                         "legend_level": updated_winner.get("legend_level", 0),
-                        "total_extra_skill": updated_winner.get("total_extra_skill", 0),
                         "level": updated_winner.get("level", 1),
                         "level_up": level_up,
                         "new_skills": new_skills if level_up and not is_pro else []
@@ -249,7 +226,6 @@ class ChallengeManager:
                         "remaining_matches": updated_loser.get("remaining_matches", 0),
                         "is_pro": updated_loser.get("is_pro", False),
                         "legend_level": updated_loser.get("legend_level", 0),
-                        "total_extra_skill": updated_loser.get("total_extra_skill", 0),
                         "level": updated_loser.get("level", 1)
                     }
                 }
@@ -328,36 +304,6 @@ class ChallengeManager:
             return (total_point // 20) * 10
         else:
             return (total_point // 10) * 1
-
-async def reset_week_if_needed():
-    db = await get_database()
-    now = datetime.utcnow()
-    current_week = f"{now.year}-{now.isocalendar()[1]:02d}"
-    settings = await db.settings.find_one({"_id": "weekly_reset"})
-    if not settings or settings.get("last_week") != current_week:
-        # Reset tuần cho tất cả user
-        await db.users.update_many(
-            {},
-            {
-                "$push": {
-                    "basic_week_history": {"week": current_week, "point": "$basic_week_point"},
-                    "pro_week_history": {"week": current_week, "point": "$pro_week_point"},
-                    "vip_week_history": {"week": current_week, "point": "$vip_week_point"},
-                },
-                "$set": {
-                    "basic_week_point": 0,
-                    "pro_week_point": 0,
-                    "vip_week_point": 0
-                }
-            }
-        )
-        await db.settings.update_one(
-            {"_id": "weekly_reset"},
-            {"$set": {"last_week": current_week}},
-            upsert=True
-        )
-        from utils.logger import api_logger
-        api_logger.info(f"[WeeklyReset] Reset week to {current_week}")
 
 # Create a singleton instance
 challenge_manager = ChallengeManager() 

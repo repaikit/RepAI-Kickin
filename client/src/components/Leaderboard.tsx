@@ -10,6 +10,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { useLeaderboard } from "@/hooks/useLeaderboard";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useAuth } from "@/contexts/AuthContext";
 
 interface LeaderboardProps {
   onPositionChange: (position: string) => void;
@@ -28,6 +29,7 @@ export default function Leaderboard({
 }: LeaderboardProps) {
   const [activeTab, setActiveTab] = useState<PlayerType>('basic');
   const { data: players, isLoading } = useLeaderboard();
+  const { user } = useAuth();
 
   // Filter players based on active tab
   const filteredPlayers = players?.filter(player => {
@@ -43,17 +45,33 @@ export default function Leaderboard({
     }
   }) || [];
 
+  // Handle tab change
+  const handleTabChange = (value: string) => {
+    if (user?.user_type === 'guest' && value !== 'basic') {
+      return; // Prevent changing to pro/vip tabs for guests
+    }
+    setActiveTab(value as PlayerType);
+  };
+
   return (
     <section className="bg-white rounded-xl shadow-md p-6">
       <div className="flex justify-between items-center mb-6">
         <h2 className="text-2xl font-bold text-slate-800">Leaderboard</h2>
       </div>
 
-      <Tabs defaultValue="basic" value={activeTab} onValueChange={(value) => setActiveTab(value as PlayerType)}>
-        <TabsList className="grid w-full grid-cols-3 mb-6">
+      <Tabs 
+        defaultValue="basic" 
+        value={activeTab} 
+        onValueChange={handleTabChange}
+      >
+        <TabsList className={`grid ${user?.user_type === 'guest' ? 'w-full grid-cols-1' : 'w-full grid-cols-3'} mb-6`}>
           <TabsTrigger value="basic">Basic Players</TabsTrigger>
-          <TabsTrigger value="pro">Pro Players</TabsTrigger>
-          <TabsTrigger value="vip">VIP Players</TabsTrigger>
+          {user?.user_type !== 'guest' && (
+            <>
+              <TabsTrigger value="pro">Pro Players</TabsTrigger>
+              <TabsTrigger value="vip">VIP Players</TabsTrigger>
+            </>
+          )}
         </TabsList>
 
         <TabsContent value="basic">
@@ -140,7 +158,6 @@ export default function Leaderboard({
                   <TableHead>Kicked Win</TableHead>
                   <TableHead>Kept Win</TableHead>
                   <TableHead>Total Week Point</TableHead>
-                  <TableHead>Extra Points</TableHead>
                   <TableHead>Reward (USDC)</TableHead>
                 </TableRow>
               </TableHeader>
@@ -158,7 +175,6 @@ export default function Leaderboard({
                           </div>
                         </div>
                       </TableCell>
-                      <TableCell><Skeleton className="h-4 w-8" /></TableCell>
                       <TableCell><Skeleton className="h-4 w-8" /></TableCell>
                       <TableCell><Skeleton className="h-4 w-8" /></TableCell>
                       <TableCell><Skeleton className="h-4 w-8" /></TableCell>
@@ -196,7 +212,6 @@ export default function Leaderboard({
                       <TableCell>{player.kicked_win}</TableCell>
                       <TableCell>{player.keep_win}</TableCell>
                       <TableCell>{player.total_point}</TableCell>
-                      <TableCell>{player.total_extra_skill}</TableCell>
                       <TableCell>{player.reward}</TableCell>
                     </TableRow>
                   ))
