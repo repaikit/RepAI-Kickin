@@ -184,7 +184,7 @@ async def complete_match(match_id: str, winner_id: str):
                 update_data = {
                     "$inc": {
                         "wins": 1,
-                        "point": 10
+                        "total_point": 10
                     }
                 }
             else:

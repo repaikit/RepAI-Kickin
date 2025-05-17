@@ -13,16 +13,31 @@ type WebSocketCallbacks = {
   onError?: (message: string) => void;
   onConnect?: () => void;
   onDisconnect?: () => void;
+  onChallengeResult?: (result: any) => void;
+  onLeaderboardUpdate?: (message: WebSocketMessage) => void;
 };
 
 class WebSocketService {
   private ws: WebSocket | null = null;
-  private callbacks: WebSocketCallbacks = {};
+  private callbacks: { [key: string]: Set<Function> } = {};
   private reconnectAttempts = 0;
   private maxReconnectAttempts = 5;
   private reconnectTimeout: NodeJS.Timeout | null = null;
 
   constructor() {
+    // Initialize callback sets
+    this.callbacks = {
+      onUserList: new Set(),
+      onChallengeInvite: new Set(),
+      onChallengeAccepted: new Set(),
+      onChallengeDeclined: new Set(),
+      onError: new Set(),
+      onConnect: new Set(),
+      onDisconnect: new Set(),
+      onChallengeResult: new Set(),
+      onLeaderboardUpdate: new Set()
+    };
+
     // Bind methods
     this.connect = this.connect.bind(this);
     this.disconnect = this.disconnect.bind(this);
@@ -30,8 +45,26 @@ class WebSocketService {
     this.handleMessage = this.handleMessage.bind(this);
   }
 
-  public setCallbacks(callbacks: WebSocketCallbacks) {
-    this.callbacks = callbacks;
+  public setCallbacks(callbacks: Partial<WebSocketCallbacks>) {
+    Object.entries(callbacks).forEach(([key, callback]) => {
+      if (callback) {
+        this.callbacks[key].add(callback);
+        if (key === 'onUserList') {
+          console.log('WebSocketService: Registered onUserList callback');
+        }
+      }
+    });
+  }
+
+  public removeCallbacks(callbacks: Partial<WebSocketCallbacks>) {
+    Object.entries(callbacks).forEach(([key, callback]) => {
+      if (callback) {
+        this.callbacks[key].delete(callback);
+        if (key === 'onUserList') {
+          console.log('WebSocketService: Removed onUserList callback');
+        }
+      }
+    });
   }
 
   public connect() {
@@ -44,7 +77,7 @@ class WebSocketService {
     const accessToken = localStorage.getItem('access_token');
     if (!accessToken) {
       console.error('No access token found');
-      this.callbacks.onError?.('No access token found');
+      this.callbacks.onError.forEach(callback => callback('No access token found'));
       return;
     }
 
@@ -57,12 +90,12 @@ class WebSocketService {
     this.ws.onopen = () => {
       console.log('WebSocket connected');
       this.reconnectAttempts = 0;
-      this.callbacks.onConnect?.();
+      this.callbacks.onConnect.forEach(callback => callback());
     };
 
     this.ws.onclose = (event) => {
       console.log('WebSocket closed:', event.code, event.reason);
-      this.callbacks.onDisconnect?.();
+      this.callbacks.onDisconnect.forEach(callback => callback());
       
       // Attempt to reconnect
       if (this.reconnectAttempts < this.maxReconnectAttempts) {
@@ -78,7 +111,7 @@ class WebSocketService {
 
     this.ws.onerror = (error) => {
       console.error('WebSocket error:', error);
-      this.callbacks.onError?.('WebSocket connection error');
+      this.callbacks.onError.forEach(callback => callback('Connection error - Please refresh the page'));
     };
 
     this.ws.onmessage = (event) => {
@@ -103,12 +136,16 @@ class WebSocketService {
     }
   }
 
+  public isConnected(): boolean {
+    return this.ws?.readyState === WebSocket.OPEN;
+  }
+
   public sendMessage(message: WebSocketMessage) {
     if (this.ws?.readyState === WebSocket.OPEN) {
       this.ws.send(JSON.stringify(message));
     } else {
       console.error('WebSocket is not connected');
-      this.callbacks.onError?.('WebSocket is not connected');
+      this.callbacks.onError.forEach(callback => callback('WebSocket is not connected'));
     }
   }
 
@@ -134,35 +171,59 @@ class WebSocketService {
   }
 
   private handleMessage(message: WebSocketMessage) {
-    console.log('Received message:', message);
+    console.log('WebSocketService: Received message:', message);
 
     switch (message.type) {
       case 'user_list':
-        this.callbacks.onUserList?.(message.users);
+        console.log('WebSocketService: Handling user_list', message.users);
+        this.callbacks.onUserList.forEach(callback => {
+          console.log('WebSocketService: Calling onUserList callback');
+          callback(message.users);
+        });
         break;
 
       case 'challenge_invite':
-        this.callbacks.onChallengeInvite?.(message.from, message.from_name);
+        console.log('WebSocketService: Handling challenge_invite');
+        this.callbacks.onChallengeInvite.forEach(callback => callback(message.from, message.from_name));
         break;
 
       case 'challenge_accepted':
-        this.callbacks.onChallengeAccepted?.(message.match_id);
+        console.log('WebSocketService: Handling challenge_accepted');
+        this.callbacks.onChallengeAccepted.forEach(callback => callback(message.match_id));
         break;
 
       case 'challenge_declined':
-        this.callbacks.onChallengeDeclined?.();
+        console.log('WebSocketService: Handling challenge_declined');
+        this.callbacks.onChallengeDeclined.forEach(callback => callback());
+        break;
+
+      case 'challenge_result':
+        console.log('WebSocketService: Handling challenge_result');
+        this.callbacks.onChallengeResult.forEach(callback => callback(message));
         break;
 
       case 'error':
-        this.callbacks.onError?.(message.message);
+        console.log('WebSocketService: Handling error');
+        this.callbacks.onError.forEach(callback => callback(message.message));
         break;
 
       case 'ping':
+        console.log('WebSocketService: Handling ping');
         this.sendMessage({ type: 'pong' });
         break;
 
+      case 'leaderboard_update':
+        console.log('WebSocketService: Handling leaderboard_update', message);
+        if (this.callbacks.onLeaderboardUpdate.size > 0) {
+          console.log('WebSocketService: Calling onLeaderboardUpdate callbacks');
+          this.callbacks.onLeaderboardUpdate.forEach(callback => callback(message));
+        } else {
+          console.log('WebSocketService: No onLeaderboardUpdate callbacks registered');
+        }
+        break;
+
       default:
-        console.log('Unknown message type:', message.type);
+        console.log('WebSocketService: Unknown message type:', message.type);
     }
   }
 }

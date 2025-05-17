@@ -17,7 +17,7 @@ interface User {
   kicked_win?: number;
   total_keep?: number;
   keep_win?: number;
-  point?: number;
+  total_point?: number;
   total_extra_skill?: number;
   extra_skill_win?: number;
   is_pro?: boolean;

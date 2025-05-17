@@ -15,6 +15,7 @@ class UserBase(BaseModel):
     user_type: str = "guest"  # guest, user, admin
     session_id: Optional[str] = None
     remaining_matches: int = 5
+    last_reset: Optional[datetime] = None
     email: Optional[str] = None  # Simple string, no validation
     wallet: Optional[str] = None
     twitter_id: Optional[str] = None
@@ -34,14 +35,26 @@ class UserBase(BaseModel):
     updated_at: datetime = Field(default_factory=datetime.utcnow)
     last_login: Optional[datetime] = None
     # Leaderboard fields
-    total_kicked: int = 0  # Số lần đá
-    kicked_win: int = 0    # Số lượt đá thắng
-    total_keep: int = 0    # Số lần chụp gôn
-    keep_win: int = 0      # Số lần chụp thắng
-    is_pro: bool = False   # Tài khoản Pro
-    total_extra_skill: int = 0  # Số lần dùng Extra Skill (chỉ Pro)
-    extra_skill_win: int = 0    # Số lần thắng bằng Extra Skill (chỉ Pro)
+    total_kicked: int = 0
+    kicked_win: int = 0
+    total_keep: int = 0
+    keep_win: int = 0
+    is_pro: bool = False
+    is_vip: bool = False
+    extra_skill_win: int = 0
     level: int = 1
+    legend_level: int = 0
+    vip_level: str = "NONE"  # SILVER, GOLD, RUBY, EMERALD, DIAMOND
+    vip_amount: float = 0.0
+    vip_year: int = 2024
+    vip_payment_method: str = "NONE"  # VISA, NFT, NONE
+    # --- Thêm các trường điểm tuần và lịch sử điểm tuần ---
+    basic_week_point: int = 0
+    pro_week_point: int = 0
+    vip_week_point: int = 0
+    basic_week_history: List[dict] = []  # [{"week": "2024-21", "point": 10}]
+    pro_week_history: List[dict] = []
+    vip_week_history: List[dict] = []
 
     class Config:
         json_encoders = {
@@ -79,8 +92,7 @@ class UserUpdate(BaseModel):
     total_keep: Optional[int] = None
     keep_win: Optional[int] = None
     is_pro: Optional[bool] = None
-    total_extra_skill: Optional[int] = None  # Chỉ Pro
-    extra_skill_win: Optional[int] = None    # Chỉ Pro
+    total_extra_skill: Optional[int] = None
     level: Optional[int] = None
 
 class UserInDB(UserBase):
