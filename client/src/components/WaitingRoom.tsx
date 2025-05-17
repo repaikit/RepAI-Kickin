@@ -53,6 +53,14 @@ export default function WaitingRoom() {
   const [challengeStatus, setChallengeStatus] = useState<string | null>(null);
   const [matchResult, setMatchResult] = useState<any | null>(null);
 
+  // Handle tab change
+  const handleTabChange = (value: string) => {
+    if (user?.user_type === 'guest' && value !== 'basic') {
+      return; // Prevent changing to pro/vip tabs for guests
+    }
+    setActiveTab(value as PlayerType);
+  };
+
   useEffect(() => {
     if (!user) return;
 
@@ -227,11 +235,15 @@ export default function WaitingRoom() {
     <div className="container mx-auto p-4">
       <h2 className="text-2xl font-bold mb-6">Waiting Room</h2>
       
-      <Tabs defaultValue="basic" value={activeTab} onValueChange={(value) => setActiveTab(value as PlayerType)}>
-        <TabsList className="grid w-full grid-cols-3 mb-6">
+      <Tabs defaultValue="basic" value={activeTab} onValueChange={handleTabChange}>
+        <TabsList className={`grid ${user?.user_type === 'guest' ? 'w-full grid-cols-1' : 'w-full grid-cols-3'} mb-6`}>
           <TabsTrigger value="basic">Basic Players</TabsTrigger>
-          <TabsTrigger value="pro">Pro Players</TabsTrigger>
-          <TabsTrigger value="vip">VIP Players</TabsTrigger>
+          {user?.user_type !== 'guest' && (
+            <>
+              <TabsTrigger value="pro">Pro Players</TabsTrigger>
+              <TabsTrigger value="vip">VIP Players</TabsTrigger>
+            </>
+          )}
         </TabsList>
 
         <TabsContent value="basic">

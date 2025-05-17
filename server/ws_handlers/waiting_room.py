@@ -214,17 +214,6 @@ async def validate_user(websocket: WebSocket) -> dict:
             api_logger.error(f"User not found with id: {user_id}")
             raise HTTPException(status_code=401, detail="User not found")
         
-        # Reset remaining_matches mỗi ngày
-        now = datetime.utcnow().date()
-        last_reset = user_data.get("last_reset")
-        if not last_reset or (hasattr(last_reset, 'date') and last_reset.date() < now):
-            await db.users.update_one(
-                {"_id": ObjectId(user_id)},
-                {"$set": {"remaining_matches": 5, "last_reset": datetime.utcnow()}}
-            )
-            user_data["remaining_matches"] = 5
-            user_data["last_reset"] = datetime.utcnow()
-        
         api_logger.info(f"User validated successfully: {user_id}")
         return user_data
     except Exception as e:
