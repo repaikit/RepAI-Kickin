@@ -315,7 +315,6 @@ async def refresh_guest_user(request: Request):
         "kicker_skills": [kicker_skill],
         "goalkeeper_skills": [goalkeeper_skill],
         "updated_at": datetime.utcnow(),
-        "point": 0,
         "match_history": [],
         "total_kicked": 0,
         "kicked_win": 0,

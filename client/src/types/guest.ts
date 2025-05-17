@@ -15,7 +15,7 @@ export interface GuestUser {
   avatar: string;
   kicker_skills: string[];
   goalkeeper_skills: string[];
-  point: number;
+  total_point: number;
   total_kicked: number;
   kicked_win: number;
   total_keep: number;

@@ -46,7 +46,7 @@ export default function Profile() {
             </div> */}
             <div className="flex justify-between text-slate-700">
               <span className="font-medium">Points:</span>
-              <span>{user?.point ?? 0}</span>
+              <span>{user?.total_point ?? 0}</span>
             </div>
             <div className="flex justify-between text-slate-700">
               <span className="font-medium">Wins:</span>

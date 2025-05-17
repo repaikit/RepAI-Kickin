@@ -35,7 +35,7 @@ class WaitingRoomManager:
         self.online_users[user_id] = {
             "id": str(user_data["_id"]),
             "name": user_data.get("name") or "Guest Player",
-            "type": user_data.get("user_type") or "guest",
+            "user_type": user_data.get("user_type") or "guest",
             "avatar": user_data.get("avatar") or "",
             "position": user_data.get("position") or "both",
             "role": user_data.get("role") or "user",
@@ -43,7 +43,6 @@ class WaitingRoomManager:
             "is_verified": user_data.get("is_verified", False),
             "trend": user_data.get("trend") or "neutral",
             "remaining_matches": user_data.get("remaining_matches", 5),
-            "point": user_data.get("point", 0),
             "level": user_data.get("level", 1),
             "kicker_skills": user_data.get("kicker_skills", []),
             "goalkeeper_skills": user_data.get("goalkeeper_skills", []),
@@ -93,25 +92,25 @@ class WaitingRoomManager:
     async def broadcast_user_list(self):
         """Broadcast the list of online users to all connected clients"""
         if not self.active_connections:
+            api_logger.info('[WaitingRoom] No active connections, skip broadcast_user_list')
             return
 
         db = await get_database()
         online_users = []
-        
         for user_id in list(self.active_connections.keys()):
             user = await db.users.find_one({"_id": ObjectId(user_id)})
-            if user:
+            if user and user.get("remaining_matches", 0) > 0:
                 online_users.append({
                     "id": str(user["_id"]),
                     "name": user.get("name", "Anonymous"),
-                    "type": user.get("type", "guest"),
+                    "user_type": user.get("user_type", "guest"),
                     "avatar": user.get("avatar", ""),
                     "role": user.get("role", "user"),
                     "is_active": user.get("is_active", True),
                     "is_verified": user.get("is_verified", False),
                     "trend": user.get("trend", "neutral"),
-                    "point": user.get("point", 0),
                     "level": user.get("level", 1),
+                    "total_point": user.get("total_point", 0),
                     "kicker_skills": user.get("kicker_skills", []),
                     "goalkeeper_skills": user.get("goalkeeper_skills", []),
                     "total_kicked": user.get("total_kicked", 0),
@@ -121,7 +120,8 @@ class WaitingRoomManager:
                     "is_pro": user.get("is_pro", False),
                     "total_extra_skill": user.get("total_extra_skill", 0),
                     "extra_skill_win": user.get("extra_skill_win", 0),
-                    "connected_at": datetime.utcnow().isoformat()
+                    "connected_at": datetime.utcnow().isoformat(),
+                    "remaining_matches": user.get("remaining_matches", 0)
                 })
 
         message = {
@@ -133,10 +133,11 @@ class WaitingRoomManager:
         for user_id, connection in list(self.active_connections.items()):
             try:
                 await connection.send_json(message)
+                api_logger.info(f"[WaitingRoom] Sent user_list to {user_id} ({len(online_users)} users)")
             except Exception as e:
                 # Remove disconnected user
                 disconnected_users.append(user_id)
-                print(f"[WaitingRoom] Remove disconnected user: {user_id} - {e}")
+                api_logger.error(f"[WaitingRoom] Remove disconnected user: {user_id} - {e}")
         for user_id in disconnected_users:
             await self.disconnect(user_id)
 
@@ -212,7 +213,18 @@ async def validate_user(websocket: WebSocket) -> dict:
         if not user_data:
             api_logger.error(f"User not found with id: {user_id}")
             raise HTTPException(status_code=401, detail="User not found")
-            
+        
+        # Reset remaining_matches mỗi ngày
+        now = datetime.utcnow().date()
+        last_reset = user_data.get("last_reset")
+        if not last_reset or (hasattr(last_reset, 'date') and last_reset.date() < now):
+            await db.users.update_one(
+                {"_id": ObjectId(user_id)},
+                {"$set": {"remaining_matches": 5, "last_reset": datetime.utcnow()}}
+            )
+            user_data["remaining_matches"] = 5
+            user_data["last_reset"] = datetime.utcnow()
+        
         api_logger.info(f"User validated successfully: {user_id}")
         return user_data
     except Exception as e:
