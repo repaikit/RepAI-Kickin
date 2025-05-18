@@ -29,7 +29,7 @@ class UserBase(BaseModel):
     kicker_skills: List[str] = []
     goalkeeper_skills: List[str] = []
     total_point: int = 0
-    reward: float = 0.0
+    bonus_point: float = 0.0
     match_history: List[Any] = []
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
@@ -54,6 +54,12 @@ class UserBase(BaseModel):
     basic_week_history: List[dict] = []  # [{"week": "2024-21", "point": 10}]
     pro_week_history: List[dict] = []
     vip_week_history: List[dict] = []
+    # --- Thêm các trường mới ---
+    last_box_open: Optional[datetime] = None
+    mystery_box_history: List[dict] = []
+    last_claim_matches: Optional[datetime] = None
+    # --- Thêm trường daily_tasks ---
+    daily_tasks: Dict[str, Dict[str, bool]] = Field(default_factory=dict)  # {"task_id": {"completed": bool, "claimed": bool}}
 
     class Config:
         json_encoders = {
@@ -81,7 +87,7 @@ class UserUpdate(BaseModel):
     kicker_skills: Optional[List[str]] = None
     goalkeeper_skills: Optional[List[str]] = None
     total_point: Optional[int] = None
-    reward: Optional[float] = None
+    bonus_point: Optional[float] = None
     match_history: Optional[List[Any]] = None
     updated_at: datetime = Field(default_factory=datetime.utcnow)
     last_login: Optional[datetime] = None
@@ -93,6 +99,9 @@ class UserUpdate(BaseModel):
     is_pro: Optional[bool] = None
     total_extra_skill: Optional[int] = None
     level: Optional[int] = None
+    last_box_open: Optional[datetime] = None
+    mystery_box_history: Optional[List[dict]] = None
+    last_claim_matches: Optional[datetime] = None
 
 class UserInDB(UserBase):
     id: PyObjectId = Field(default_factory=PyObjectId, alias="_id")

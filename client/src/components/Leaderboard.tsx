@@ -85,7 +85,7 @@ export default function Leaderboard({
                   <TableHead className="whitespace-nowrap text-left">Kicked Win</TableHead>
                   <TableHead className="whitespace-nowrap text-left">Kept Win</TableHead>
                   <TableHead className="whitespace-nowrap text-left">Total Week Point</TableHead>
-                  <TableHead className="whitespace-nowrap text-left">Reward (USDC)</TableHead>
+                  <TableHead className="whitespace-nowrap text-left">Bonus Point</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -138,7 +138,7 @@ export default function Leaderboard({
                       <TableCell>{player.kicked_win}</TableCell>
                       <TableCell>{player.keep_win}</TableCell>
                       <TableCell>{player.total_point}</TableCell>
-                      <TableCell>{player.reward}</TableCell>
+                      <TableCell>{player.bonus_point}</TableCell>
                     </TableRow>
                   ))
                 )}
@@ -158,7 +158,7 @@ export default function Leaderboard({
                   <TableHead>Kicked Win</TableHead>
                   <TableHead>Kept Win</TableHead>
                   <TableHead>Total Week Point</TableHead>
-                  <TableHead>Reward (USDC)</TableHead>
+                  <TableHead>Bonus Point</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -212,7 +212,7 @@ export default function Leaderboard({
                       <TableCell>{player.kicked_win}</TableCell>
                       <TableCell>{player.keep_win}</TableCell>
                       <TableCell>{player.total_point}</TableCell>
-                      <TableCell>{player.reward}</TableCell>
+                      <TableCell>{player.bonus_point}</TableCell>
                     </TableRow>
                   ))
                 )}
@@ -233,7 +233,7 @@ export default function Leaderboard({
                   <TableHead>Kept Win</TableHead>
                   <TableHead>Total Week Point</TableHead>
                   <TableHead>Extra Points</TableHead>
-                  <TableHead>Reward (USDC)</TableHead>
+                  <TableHead>Bonus Point</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -289,7 +289,7 @@ export default function Leaderboard({
                       <TableCell>{player.keep_win}</TableCell>
                       <TableCell>{player.total_point}</TableCell>
                       <TableCell>{player.total_extra_skill}</TableCell>
-                      <TableCell>{player.reward}</TableCell>
+                      <TableCell>{player.bonus_point}</TableCell>
                     </TableRow>
                   ))
                 )}

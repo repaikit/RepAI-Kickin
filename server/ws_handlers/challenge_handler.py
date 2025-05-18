@@ -117,11 +117,16 @@ class ChallengeManager:
             # --- Cập nhật điểm tuần đúng bảng cho winner ---
             if winner.get("is_vip", False):
                 week_point_field = "vip_week_point"
+                board_type = "VIP"
             elif winner.get("is_pro", False):
                 week_point_field = "pro_week_point"
+                board_type = "PRO"
             else:
                 week_point_field = "basic_week_point"
+                board_type = "BASIC"
+            
             await db.users.update_one({"_id": ObjectId(winner_id)}, {"$inc": {week_point_field: 1}})
+            api_logger.info(f"[Challenge] Updated {board_type} weekly point for winner {winner_id}")
             # --- END cập nhật điểm tuần ---
 
             # Create match history record
@@ -219,9 +224,6 @@ class ChallengeManager:
                         }
                     }}
                 )
-            # Update reward for both winner and loser
-            await db.users.update_one({"_id": ObjectId(winner_id)}, {"$set": {"reward": self.calculate_reward(updated_winner)}})
-            await db.users.update_one({"_id": ObjectId(loser_id)}, {"$set": {"reward": self.calculate_reward(updated_loser)}})
             # Prepare match result message
             result_message = {
                 "type": "challenge_result",
@@ -261,13 +263,9 @@ class ChallengeManager:
             await self.send_message(active_connections, kicker_id, result_message)
             await self.send_message(active_connections, goalkeeper_id, result_message)
 
-            # Sau khi cập nhật điểm số, cập nhật lại trạng thái mới nhất của user và gửi lên leaderboard
-            # Sau khi update winner/loser và cập nhật reward:
             updated_winner = await db.users.find_one({"_id": ObjectId(winner_id)})
             updated_loser = await db.users.find_one({"_id": ObjectId(loser_id)})
-            # Khi build leaderboard_data, đảm bảo lấy đủ is_pro, is_vip
             from ws_handlers.waiting_room import manager
-            # Lấy lại top_users mới nhất
             leaderboard_users = await db.users.find().sort("total_point", -1).limit(10).to_list(length=10)
             leaderboard_data = [
                 {
@@ -282,7 +280,7 @@ class ChallengeManager:
                     "total_extra_skill": u.get("total_extra_skill", 0),
                     "extra_skill_win": u.get("extra_skill_win", 0),
                     "total_point": u.get("total_point", 0),
-                    "reward": u.get("reward", 0.0),
+                    "bonus_point": u.get("bonus_point", 0.0),
                     "is_pro": u.get("is_pro", False),
                     "is_vip": u.get("is_vip", False),
                 }
@@ -293,7 +291,9 @@ class ChallengeManager:
                 "leaderboard": leaderboard_data
             })
 
-            # --- Cập nhật level/legend/vip realtime cho winner ---
+            # Broadcast updated user list for realtime update in waiting room
+            await manager.broadcast_user_list()
+
             total_win = updated_winner.get("kicked_win", 0) + updated_winner.get("keep_win", 0)
             new_level = get_basic_level(total_win)
             is_pro = new_level >= 100

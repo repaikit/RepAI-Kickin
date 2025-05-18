@@ -1,10 +1,12 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Body, Request
 from typing import List, Dict, Any
 from models.skill import Skill, SkillCreate, SkillUpdate, SkillType
-from database.database import get_skills_collection
+from database.database import get_skills_collection, get_database
 from bson import ObjectId
 from utils.logger import api_logger
 import traceback
+import random
+from datetime import datetime
 
 router = APIRouter()
 
@@ -143,4 +145,80 @@ async def delete_skill(skill_id: str):
         return {"message": "Skill deleted successfully"}
     except Exception as e:
         api_logger.error(f"Error deleting skill {skill_id}: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e)) 
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/buy_skill")
+async def buy_skill(
+    request: Request,
+    skill_type: str = Body(..., embed=True)
+):
+    """
+    Mua skill mới cho user, random skill chưa sở hữu, trừ điểm thắng tương ứng.
+    - skill_type: 'kicker' hoặc 'goalkeeper'
+    """
+    # Lấy user_id từ JWT token (đã được xác thực bởi middleware)
+    user_id = str(request.state.user["_id"])
+    
+    db = await get_database()
+    skills_collection = await get_skills_collection()
+
+    # 1. Lấy user
+    user = await db.users.find_one({"_id": ObjectId(user_id)})
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    # 2. Xác định trường điểm và skill hiện có
+    if skill_type == "kicker":
+        current_skills = user.get("kicker_skills", [])
+        point_field = "kicked_win"
+    elif skill_type == "goalkeeper":
+        current_skills = user.get("goalkeeper_skills", [])
+        point_field = "keep_win"
+    else:
+        raise HTTPException(status_code=400, detail="Invalid skill_type (must be 'kicker' or 'goalkeeper')")
+
+    # 3. Kiểm tra đủ điểm chưa (10 điểm)
+    user_points = user.get(point_field, 0)
+    if user_points < 10:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Not enough {point_field.replace('_', ' ')} points to buy skill (need 10, have {user_points})"
+        )
+
+    # 4. Lấy danh sách skill hợp lệ từ DB
+    all_skills = await skills_collection.find({"type": skill_type}).to_list(length=None)
+    all_skill_names = [s["name"] for s in all_skills]
+    available_skills = [s for s in all_skill_names if s not in current_skills]
+
+    if not available_skills:
+        raise HTTPException(status_code=400, detail="You already own all available skills of this type.")
+
+    # 5. Random skill mới
+    new_skill = random.choice(available_skills)
+
+    # 6. Trừ điểm và lưu skill mới, lưu lịch sử
+    update_result = await db.users.update_one(
+        {"_id": ObjectId(user_id)},
+        {
+            "$inc": {point_field: -10},
+            "$push": {
+                f"{skill_type}_skills": new_skill,
+                "skill_history": {
+                    "type": skill_type,
+                    "skill": new_skill,
+                    "bought_at": datetime.utcnow().isoformat(),
+                    "action": "buy"
+                }
+            }
+        }
+    )
+    if update_result.modified_count == 0:
+        raise HTTPException(status_code=500, detail="Failed to update user with new skill.")
+
+    # 7. Lấy lại user để trả về số điểm còn lại
+    updated_user = await db.users.find_one({"_id": ObjectId(user_id)})
+    return {
+        "message": "Skill bought successfully",
+        "skill": new_skill,
+        "remaining_points": updated_user.get(point_field, 0)
+    } 

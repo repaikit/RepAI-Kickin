@@ -25,7 +25,6 @@ VIP_LEVELS = [
     ("DIAMOND", 500)
 ]
 
-# Create logs directory if it doesn't exist
 os.makedirs('logs', exist_ok=True)
 
 # Log start time
@@ -42,9 +41,9 @@ async def distribute_weekly_rewards():
     
     # Xử lý từng bảng riêng biệt
     for board, history_field, reward_table in [
-        ("basic", "basic_week_history", REWARD_BASIC),  # Tất cả user đều có thể nhận
-        ("pro", "pro_week_history", REWARD_PRO),        # Chỉ user PRO mới nhận
-        ("vip", "vip_week_history", REWARD_VIP)         # Chỉ user VIP mới nhận
+        ("basic", "basic_week_history", REWARD_BASIC),
+        ("pro", "pro_week_history", REWARD_PRO),
+        ("vip", "vip_week_history", REWARD_VIP)
     ]:
         # Lọc user theo điều kiện của từng bảng
         eligible_users = []
@@ -63,11 +62,20 @@ async def distribute_weekly_rewards():
             # Lấy 4 tuần gần nhất
             last_4 = sorted(week_history, key=lambda x: x["week"], reverse=True)[:4]
             total = sum(item.get("point", 0) for item in last_4)
+            
+            # Thêm thông tin chi tiết về từng tuần
+            weekly_points = [item.get("point", 0) for item in last_4]
+            
             user_points.append({
                 "user_id": user["_id"],
                 "name": user.get("name", ""),
                 "wallet": user.get("wallet", ""),
-                "total_point": total
+                "total_point": total,
+                "weekly_points": weekly_points,
+                "level": user.get("level", 1),
+                "is_pro": user.get("is_pro", False),
+                "vip_level": user.get("vip_level", "NONE"),
+                "current_reward": user.get("bonus_point", 0.0)
             })
 
         # Xếp hạng
@@ -77,24 +85,30 @@ async def distribute_weekly_rewards():
         # Trao thưởng
         for idx, user_info in enumerate(top_10):
             reward = reward_table[idx]
+            new_bonus_point = user_info["current_reward"] + reward
+            
             await db.users.update_one(
                 {"_id": user_info["user_id"]},
                 {
-                    "$set": {"reward": reward},  # Set reward mới cho tuần này
+                    "$set": {"bonus_point": new_bonus_point},
                     "$push": {
                         "reward_history": {
                             "week": current_week,
                             "board": board,
                             "rank": idx + 1,
-                            "usdc": reward,
                             "distributed_at": distributed_at,
                             "total_point": user_info["total_point"],
-                            "period": "4_weeks"  # Thêm thông tin về chu kỳ thưởng
+                            "weekly_points": user_info["weekly_points"],
+                            "period": "4_weeks",
+                            "previous_bonus_point": user_info["current_reward"],
+                            "new_bonus_point": new_bonus_point,
+                            "level": user_info["level"],
+                            "is_pro": user_info["is_pro"],
+                            "vip_level": user_info["vip_level"]
                         }
                     }
                 }
             )
-        api_logger.info(f"[WeeklyReward] Distributed rewards for {board.upper()} - week {current_week} (4-week period)")
 
 def get_basic_level(total_win):
     for i, milestone in enumerate(LEVEL_MILESTONES_BASIC):
@@ -165,8 +179,41 @@ async def reset_week():
                     "total_keep": user.get("total_keep", 0),
                     "keep_win": user.get("keep_win", 0),
                     "user_type": user.get("user_type", "guest"),
-                    "level": user.get("level", 1)
+                    "level": user.get("level", 1),
+                    "is_pro": user.get("is_pro", False),
+                    "vip_level": user.get("vip_level", "NONE")
                 }
+
+                # Lưu lịch sử skill trước khi reset
+                skill_history_entry = {
+                    "week": current_week,
+                    "reset_at": reset_at,
+                    "kicker_skills": user.get("kicker_skills", []),
+                    "goalkeeper_skills": user.get("goalkeeper_skills", []),
+                    "action": "reset"
+                }
+
+                # Reset skill, chỉ giữ lại skill đầu tiên (index 0)
+                kicker_skills = user.get("kicker_skills", [])
+                goalkeeper_skills = user.get("goalkeeper_skills", [])
+                
+                # Chỉ giữ lại skill đầu tiên nếu có
+                new_kicker_skills = [kicker_skills[0]] if kicker_skills else []
+                new_goalkeeper_skills = [goalkeeper_skills[0]] if goalkeeper_skills else []
+
+                # Update user với skill mới và lịch sử
+                await db.users.update_one(
+                    {"_id": user["_id"]},
+                    {
+                        "$set": {
+                            "kicker_skills": new_kicker_skills,
+                            "goalkeeper_skills": new_goalkeeper_skills
+                        },
+                        "$push": {
+                            "skill_history": skill_history_entry
+                        }
+                    }
+                )
                 
                 # Lưu lịch sử điểm tuần cho từng bảng
                 for board in ["basic", "pro", "vip"]:
@@ -177,24 +224,37 @@ async def reset_week():
                         "point": week_point,
                         "reset_at": reset_at,
                         "user_type": user.get("user_type", "guest"),
-                        "level": user.get("level", 1)
+                        "level": user.get("level", 1),
+                        "is_pro": user.get("is_pro", False),
+                        "vip_level": user.get("vip_level", "NONE")
                     }
                     await db.users.update_one(
                         {"_id": user["_id"]},
                         {
                             "$push": {
                                 week_history_field: history_entry,
-                                "stats_history": stats_history  # Thêm lịch sử stats
+                                "stats_history": stats_history
                             }
                         }
                     )
 
-            # Reset tất cả các trường về 0
+            # Reset điểm tuần cho từng bảng theo quy tắc mới
+            # BASIC: reset mỗi tuần
+            await db.users.update_many({}, {
+                "$set": {"basic_week_point": 0}
+            })
+            # PRO: chỉ reset khi tuần chia hết cho 4
+            week_number = int(current_week.split('-')[1])
+            if week_number % 4 == 0:
+                await db.users.update_many({}, {
+                    "$set": {"pro_week_point": 0}
+                })
+            # VIP: không reset vip_week_point
+            # Nếu muốn lưu lịch sử thì vẫn push vào vip_week_history như trên, nhưng không reset về 0
+
+            # Reset các trường khác về 0 như cũ
             await db.users.update_many({}, {
                 "$set": {
-                    "basic_week_point": 0,
-                    "pro_week_point": 0,
-                    "vip_week_point": 0,
                     "total_kicked": 0,
                     "kicked_win": 0,
                     "total_keep": 0,
@@ -211,7 +271,6 @@ async def reset_week():
             api_logger.info(f"[WeeklyReset] Successfully reset week to {current_week}")
             
             # Kiểm tra xem có phải tuần thứ 4 không
-            week_number = int(current_week.split('-')[1])
             if week_number % 4 == 0:  # Mỗi 4 tuần trao thưởng 1 lần
                 api_logger.info(f"[WeeklyReward] Week {current_week} is reward week")
                 await distribute_weekly_rewards()

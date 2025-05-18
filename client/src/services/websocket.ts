@@ -15,6 +15,9 @@ type WebSocketCallbacks = {
   onDisconnect?: () => void;
   onChallengeResult?: (result: any) => void;
   onLeaderboardUpdate?: (message: WebSocketMessage) => void;
+  onUserJoined?: (user: any) => void;
+  onUserLeft?: (userId: string) => void;
+  onUserUpdated?: (user: any) => void;
 };
 
 class WebSocketService {
@@ -35,7 +38,10 @@ class WebSocketService {
       onConnect: new Set(),
       onDisconnect: new Set(),
       onChallengeResult: new Set(),
-      onLeaderboardUpdate: new Set()
+      onLeaderboardUpdate: new Set(),
+      onUserJoined: new Set(),
+      onUserLeft: new Set(),
+      onUserUpdated: new Set()
     };
 
     // Bind methods
@@ -220,6 +226,21 @@ class WebSocketService {
         } else {
           console.log('WebSocketService: No onLeaderboardUpdate callbacks registered');
         }
+        break;
+
+      case 'user_joined':
+        console.log('WebSocketService: Handling user_joined');
+        this.callbacks.onUserJoined.forEach(callback => callback(message.user));
+        break;
+
+      case 'user_left':
+        console.log('WebSocketService: Handling user_left');
+        this.callbacks.onUserLeft.forEach(callback => callback(message.user_id));
+        break;
+
+      case 'user_updated':
+        console.log('WebSocketService: Handling user_updated');
+        this.callbacks.onUserUpdated.forEach(callback => callback(message.user));
         break;
 
       default:

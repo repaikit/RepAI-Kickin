@@ -23,10 +23,10 @@ async def reset_daily_matches():
         
         api_logger.info(f"[DailyReset] Starting reset for date {current_date}")
         
-        # Reset remaining matches to 5 for all users
+        # Reset remaining matches to 5 and daily_tasks to empty for all users
         result = await db.users.update_many(
             {},
-            {"$set": {"remaining_matches": 5}}
+            {"$set": {"remaining_matches": 5, "daily_tasks": {}}}
         )
         
         api_logger.info(f"[DailyReset] Successfully reset matches for {current_date}")
