@@ -13,6 +13,16 @@ export const WS_BASE_URL = isDevelopment
 
 // API endpoints
 export const API_ENDPOINTS = {
+  mystery_box: {
+    getStatus: `${API_BASE_URL}/api/status`,
+    openBox: `${API_BASE_URL}/api/open`,
+    getHistory: `${API_BASE_URL}/api/history`,
+  },
+
+  task_claim_matches: {
+    getStatus: `${API_BASE_URL}/api/tasks/claim-matches-status`,
+    claimMatches: `${API_BASE_URL}/api/tasks/claim-matches`,
+  },
   // User APIs
   users: {
     // Guest User
@@ -61,6 +71,11 @@ export const API_ENDPOINTS = {
   // WebSocket endpoints
   ws: {
     waitingRoom: `${WS_BASE_URL}/ws/waitingroom`,
+  },
+
+  daily_tasks: {
+    get: `${API_BASE_URL}/api/tasks/daily`,
+    claim: `${API_BASE_URL}/api/tasks/daily/claim`,
   },
 };
 

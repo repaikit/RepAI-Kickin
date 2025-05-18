@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { Skeleton } from '@/components/ui/skeleton';
 import { websocketService } from '@/services/websocket';
@@ -52,6 +52,8 @@ export default function WaitingRoom() {
   const [challengeInvite, setChallengeInvite] = useState<{ from: string, from_name: string } | null>(null);
   const [challengeStatus, setChallengeStatus] = useState<string | null>(null);
   const [matchResult, setMatchResult] = useState<any | null>(null);
+  const [pendingChallengeUserId, setPendingChallengeUserId] = useState<string | null>(null);
+  const challengeTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Handle tab change
   const handleTabChange = (value: string) => {
@@ -70,6 +72,21 @@ export default function WaitingRoom() {
       setIsLoading(false);
     };
 
+    const handleUserJoined = (newUser: OnlineUser) => {
+      setOnlineUsers(prev => {
+        if (prev.some(u => u.id === newUser.id)) return prev;
+        return [...prev, newUser];
+      });
+    };
+
+    const handleUserLeft = (userId: string) => {
+      setOnlineUsers(prev => prev.filter(u => u.id !== userId));
+    };
+
+    const handleUserUpdated = (updatedUser: OnlineUser) => {
+      setOnlineUsers(prev => prev.map(u => u.id === updatedUser.id ? updatedUser : u));
+    };
+
     const handleError = (error: string) => {
       console.error('WebSocket error:', error);
       setIsLoading(false);
@@ -83,6 +100,9 @@ export default function WaitingRoom() {
     // Set up WebSocket callbacks
     websocketService.setCallbacks({
       onUserList: handleUserList,
+      onUserJoined: handleUserJoined,
+      onUserLeft: handleUserLeft,
+      onUserUpdated: handleUserUpdated,
       onError: handleError,
       onConnect: () => {
         console.log('WebSocket connected in WaitingRoom');
@@ -100,16 +120,18 @@ export default function WaitingRoom() {
       },
       onChallengeAccepted: (matchId) => {
         setChallengeStatus('Your challenge was accepted! Starting match...');
+        clearChallengeTimeout();
         toast.success('Challenge accepted! Starting match...');
         // TODO: Navigate to match page
       },
       onChallengeDeclined: () => {
         setChallengeStatus('Your challenge was declined.');
+        clearChallengeTimeout();
         toast.error('Challenge was declined');
       },
       onChallengeResult: (result) => {
-        console.log('Received challenge_result', result);
         setMatchResult(result);
+        clearChallengeTimeout();
       }
     });
 
@@ -117,6 +139,9 @@ export default function WaitingRoom() {
     return () => {
       websocketService.removeCallbacks({
         onUserList: handleUserList,
+        onUserJoined: handleUserJoined,
+        onUserLeft: handleUserLeft,
+        onUserUpdated: handleUserUpdated,
         onError: handleError,
         onConnect: () => {
           console.log('WebSocket connected in WaitingRoom');
@@ -128,6 +153,18 @@ export default function WaitingRoom() {
       });
     };
   }, [user]);
+
+  // Timeout nếu không có phản hồi sau 10s
+  useEffect(() => {
+    if (pendingChallengeUserId) {
+      const timeout = setTimeout(() => {
+        setPendingChallengeUserId(null);
+        setChallengeStatus('No response. Challenge timed out.');
+        toast.error('No response. Challenge timed out.');
+      }, 10000);
+      return () => clearTimeout(timeout);
+    }
+  }, [pendingChallengeUserId]);
 
   // Filter users based on active tab
   const filteredUsers = onlineUsers.filter(player => {
@@ -144,10 +181,49 @@ export default function WaitingRoom() {
   });
 
   const handleChallenge = (userId: string) => {
+    setPendingChallengeUserId(userId);
     websocketService.sendChallengeRequest(userId);
-    setChallengeStatus(`Challenge request sent to ${userId}`);
-    toast.success(`Challenge request sent to ${userId}`);
+    const challengedUser = onlineUsers.find(u => u.id === userId);
+    const challengedName = challengedUser ? challengedUser.name : userId;
+    setChallengeStatus(`Challenge request sent to ${challengedName}`);
+    toast.success(
+      <span>
+        <b>Challenge request sent!</b><br />
+        To: <span className="text-blue-600 font-semibold">{challengedName}</span>
+      </span>,
+      { icon: '⚡' }
+    );
+    // Set timeout
+    if (challengeTimeoutRef.current) clearTimeout(challengeTimeoutRef.current);
+    challengeTimeoutRef.current = setTimeout(() => {
+      setPendingChallengeUserId(null);
+      setChallengeStatus('No response. Challenge timed out.');
+      toast.error('No response. Challenge timed out.');
+    }, 10000);
   };
+
+  // Clear timeout và reset trạng thái khi có phản hồi
+  const clearChallengeTimeout = () => {
+    if (challengeTimeoutRef.current) {
+      clearTimeout(challengeTimeoutRef.current);
+      challengeTimeoutRef.current = null;
+    }
+    setPendingChallengeUserId(null);
+  };
+
+  useEffect(() => {
+    return () => {
+      if (challengeTimeoutRef.current) clearTimeout(challengeTimeoutRef.current);
+    };
+  }, []);
+
+  // Challenge Status Toast tự động ẩn sau 3s
+  useEffect(() => {
+    if (challengeStatus) {
+      const timeout = setTimeout(() => setChallengeStatus(null), 3000);
+      return () => clearTimeout(timeout);
+    }
+  }, [challengeStatus]);
 
   if (!user) {
     return null;
@@ -209,20 +285,25 @@ export default function WaitingRoom() {
               <p className="text-gray-500">Goalkeeper Wins</p>
               <p className="font-medium">{player.keep_win}/{player.total_keep}</p>
             </div>
-            <div className="col-span-2 mt-2">
-              <p className="text-gray-500">Reward</p>
-              <p className="font-medium">
-                {player.is_vip ? '30 → 20 USDC' : player.is_pro ? '20 → 10 USDC' : '10 → 1 USDC'}
-              </p>
-            </div>
           </div>
           {canChallenge && (
             <div className="flex justify-center mt-4">
               <Button
                 onClick={() => handleChallenge(player.id)}
                 className="bg-blue-500 hover:bg-blue-600 w-full md:w-40"
+                disabled={pendingChallengeUserId === player.id}
               >
-                Challenge
+                {pendingChallengeUserId === player.id ? (
+                  <span className="flex items-center justify-center">
+                    <svg className="animate-spin h-5 w-5 mr-2 text-white" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"/>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+                    </svg>
+                    Waiting...
+                  </span>
+                ) : (
+                  'Challenge'
+                )}
               </Button>
             </div>
           )}
@@ -339,14 +420,15 @@ export default function WaitingRoom() {
 
       {/* Challenge Invite Modal */}
       {challengeInvite && (
-        <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-30 z-50">
-          <div className="bg-white p-6 rounded shadow-lg">
-            <p className="mb-4 font-medium">
-              {challengeInvite?.from_name} has challenged you! Accept?
-            </p>
-            <div className="flex space-x-4">
+        <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-40 z-50 transition-all">
+          <div className="bg-white p-8 rounded-xl shadow-2xl max-w-xs w-full text-center animate-fade-in border border-gray-200">
+            <h3 className="text-lg font-bold mb-2 text-black">
+              {challengeInvite?.from_name} has challenged you!
+            </h3>
+            <p className="mb-6 text-gray-700">Do you accept this challenge?</p>
+            <div className="flex justify-center gap-4">
               <button
-                className="px-4 py-2 bg-green-500 text-white rounded"
+                className="px-5 py-2 bg-green-500 hover:bg-green-600 text-white rounded font-semibold transition shadow"
                 onClick={() => {
                   if (challengeInvite) {
                     websocketService.acceptChallenge(challengeInvite.from);
@@ -357,7 +439,7 @@ export default function WaitingRoom() {
                 Accept
               </button>
               <button
-                className="px-4 py-2 bg-red-500 text-white rounded"
+                className="px-5 py-2 bg-red-500 hover:bg-red-600 text-white rounded font-semibold transition shadow"
                 onClick={() => {
                   if (challengeInvite) {
                     websocketService.declineChallenge(challengeInvite.from);
@@ -374,9 +456,39 @@ export default function WaitingRoom() {
 
       {/* Challenge Status Toast */}
       {challengeStatus && (
-        <div className="fixed top-4 right-4 bg-blue-500 text-white px-4 py-2 rounded shadow z-50">
-          {challengeStatus}
-          <button className="ml-2" onClick={() => setChallengeStatus(null)}>x</button>
+        <div className="
+          fixed bottom-6 right-6 z-50
+          flex items-center gap-3
+          px-6 py-4
+          rounded-2xl
+          shadow-2xl
+          border border-blue-300
+          bg-gradient-to-br from-blue-500/90 to-blue-700/90
+          backdrop-blur-md
+          animate-fade-in
+          text-white
+          min-w-[260px]
+          max-w-xs
+          transition-all
+        ">
+          <span className="flex items-center justify-center bg-white/20 rounded-full p-2 shadow">
+            {/* Modern SVG icon */}
+            <svg width="28" height="28" fill="none" viewBox="0 0 24 24">
+              <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" fill="#fff" className="drop-shadow" />
+            </svg>
+          </span>
+          <span className="flex-1 font-semibold text-base leading-tight drop-shadow">
+            {challengeStatus}
+          </span>
+          <button
+            className="ml-2 text-white/70 hover:text-white transition"
+            onClick={() => setChallengeStatus(null)}
+            aria-label="Close"
+          >
+            <svg width="20" height="20" fill="none" viewBox="0 0 20 20">
+              <path d="M6 6l8 8M6 14L14 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+            </svg>
+          </button>
         </div>
       )}
 
@@ -386,51 +498,70 @@ export default function WaitingRoom() {
           const myStats = isWinner ? matchResult.match_stats.winner : matchResult.match_stats.loser;
           const opponentStats = isWinner ? matchResult.match_stats.loser : matchResult.match_stats.winner;
           return (
-            <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-30 z-50">
-              <div className="bg-white p-6 rounded shadow-lg max-w-md w-full">
-                <h2 className="text-xl font-bold mb-2 text-center">
-                  {isWinner ? "You Win!" : "You Lose!"}
-                </h2>
-                <div className="mb-2">
-                  <b>Your Role:</b> {myStats.role.charAt(0).toUpperCase() + myStats.role.slice(1)}<br />
-                  <b>Your Skill:</b> {myStats.role === "kicker" ? matchResult.kicker_skill : matchResult.goalkeeper_skill}
-                </div>
-                <div className="mb-2">
-                  <b>Opponent:</b> {opponentStats.name} ({opponentStats.role})<br />
-                  <b>Opponent Skill:</b> {opponentStats.role === "kicker" ? matchResult.kicker_skill : matchResult.goalkeeper_skill}
-                </div>
-                <div className="mb-2">
-                  <b>Level:</b> {myStats.level}
-                  {myStats.level_up && (
-                    <span className="ml-2 text-green-600 font-bold">Level Up!</span>
-                  )}
-                  {myStats.new_skills && myStats.new_skills.length > 0 && (
-                    <div>
-                      <b>New Skill Unlocked:</b> {myStats.new_skills.join(', ')}
+            <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-40 z-50 transition-all">
+              <div className="bg-white p-0 rounded-2xl shadow-2xl max-w-lg w-full text-center animate-fade-in border border-gray-200 overflow-hidden">
+                {/* Accent bar */}
+                <div className={isWinner ? "h-2 bg-gradient-to-r from-green-400 to-blue-500" : "h-2 bg-gradient-to-r from-red-400 to-gray-400"} />
+                <div className="p-10">
+                  <h2 className={`text-3xl font-bold mb-6 ${isWinner ? 'text-green-600' : 'text-red-600'}`}>
+                    {isWinner ? "Victory" : "Defeat"}
+                  </h2>
+                  <div className="mb-8">
+                    <div className="grid grid-cols-2 gap-6 text-lg text-left">
+                      <div>
+                        <span className="text-gray-500">Your Role:</span>
+                        <span className="font-semibold text-black ml-1">{myStats.role.charAt(0).toUpperCase() + myStats.role.slice(1)}</span>
+                      </div>
+                      <div>
+                        <span className="text-gray-500">Your Skill:</span>
+                        <span className="font-semibold text-black ml-1">{myStats.role === "kicker" ? matchResult.kicker_skill : matchResult.goalkeeper_skill}</span>
+                      </div>
+                      <div>
+                        <span className="text-gray-500">Opponent:</span>
+                        <span className="font-semibold text-black ml-1">{opponentStats.name} ({opponentStats.role})</span>
+                      </div>
+                      <div>
+                        <span className="text-gray-500">Opponent Skill:</span>
+                        <span className="font-semibold text-black ml-1">{opponentStats.role === "kicker" ? matchResult.kicker_skill : matchResult.goalkeeper_skill}</span>
+                      </div>
+                      <div>
+                        <span className="text-gray-500">Level:</span>
+                        <span className="font-semibold text-black ml-1">{myStats.level}{myStats.level_up && <span className="ml-2 text-green-600 font-bold">Level Up!</span>}</span>
+                      </div>
+                      <div>
+                        <span className="text-gray-500">Points this match:</span>
+                        <span className="font-semibold text-black ml-1">
+                          {isWinner ? "+1" : "0"}
+                          {myStats.is_pro && isWinner && (
+                            <span className="ml-2 text-yellow-600 font-bold">+1 (Pro)</span>
+                          )}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-gray-500">Total Points:</span>
+                        <span className="font-semibold text-black ml-1">{myStats.total_point}</span>
+                      </div>
+                      {myStats.is_pro && (
+                        <div>
+                          <span className="text-gray-500">Extra Skill Points:</span>
+                          <span className="font-semibold text-black ml-1">{myStats.total_extra_skill}</span>
+                        </div>
+                      )}
+                      {myStats.new_skills && myStats.new_skills.length > 0 && (
+                        <div className="col-span-2">
+                          <span className="text-gray-500">New Skill Unlocked:</span>
+                          <span className="font-semibold text-black ml-1">{myStats.new_skills.join(', ')}</span>
+                        </div>
+                      )}
                     </div>
-                  )}
+                  </div>
+                  <button
+                    className="mt-4 px-8 py-3 bg-blue-500 hover:bg-blue-600 text-white rounded-lg font-semibold text-lg transition"
+                    onClick={() => setMatchResult(null)}
+                  >
+                    Close
+                  </button>
                 </div>
-                <div className="mb-2">
-                  <b>Points this match:</b> {isWinner ? "+1" : "0"}
-                  {myStats.is_pro && isWinner && (
-                    <>
-                      {" "}+1 <span className="text-yellow-600 font-bold">(Extra Point for Pro)</span>
-                    </>
-                  )}
-                  <br />
-                  <b>Total Points:</b> {myStats.total_point}
-                  {myStats.is_pro && (
-                    <div>
-                      <b>Total Extra Skill Points:</b> {myStats.total_extra_skill}
-                    </div>
-                  )}
-                </div>
-                <button
-                  className="mt-4 px-4 py-2 bg-blue-500 text-white rounded"
-                  onClick={() => setMatchResult(null)}
-                >
-                  Close
-                </button>
               </div>
             </div>
           );

@@ -21,11 +21,11 @@ interface LeaderboardProps {
 
 type PlayerType = 'basic' | 'pro' | 'vip';
 
-export default function Leaderboard({ 
+export default function Leaderboard({
   onPositionChange,
   onSeasonChange,
   currentPosition,
-  currentSeason 
+  currentSeason
 }: LeaderboardProps) {
   const [activeTab, setActiveTab] = useState<PlayerType>('basic');
   const { data: players, isLoading } = useLeaderboard();
@@ -59,9 +59,9 @@ export default function Leaderboard({
         <h2 className="text-2xl font-bold text-slate-800">Leaderboard</h2>
       </div>
 
-      <Tabs 
-        defaultValue="basic" 
-        value={activeTab} 
+      <Tabs
+        defaultValue="basic"
+        value={activeTab}
         onValueChange={handleTabChange}
       >
         <TabsList className={`grid ${user?.user_type === 'guest' ? 'w-full grid-cols-1' : 'w-full grid-cols-3'} mb-6`}>
@@ -75,17 +75,17 @@ export default function Leaderboard({
         </TabsList>
 
         <TabsContent value="basic">
-          <div className="overflow-x-auto">
+          <div className="w-full overflow-x-auto">
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead className="w-[60px]">#</TableHead>
-                  <TableHead>Player</TableHead>
-                  <TableHead>Level</TableHead>
-                  <TableHead>Kicked Win</TableHead>
-                  <TableHead>Kept Win</TableHead>
-                  <TableHead>Total Week Point</TableHead>
-                  <TableHead>Reward (USDC)</TableHead>
+                  <TableHead className="w-[60px]">rank</TableHead>
+                  <TableHead className="whitespace-nowrap text-left">Player</TableHead>
+                  <TableHead className="whitespace-nowrap text-left">Level</TableHead>
+                  <TableHead className="whitespace-nowrap text-left">Kicked Win</TableHead>
+                  <TableHead className="whitespace-nowrap text-left">Kept Win</TableHead>
+                  <TableHead className="whitespace-nowrap text-left">Total Week Point</TableHead>
+                  <TableHead className="whitespace-nowrap text-left">Bonus Point</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -115,15 +115,15 @@ export default function Leaderboard({
                       <TableCell>
                         <span className={
                           index === 0 ? "inline-flex items-center justify-center w-6 h-6 rounded-full text-xs font-bold bg-yellow-500 text-white border-2 border-white" :
-                          index === 1 ? "inline-flex items-center justify-center w-6 h-6 rounded-full text-xs font-bold bg-gray-700 text-white border-2 border-white" :
-                          index === 2 ? "inline-flex items-center justify-center w-6 h-6 rounded-full text-xs font-bold bg-orange-600 text-white border-2 border-white" :
-                          "inline-flex items-center justify-center w-6 h-6 rounded-full text-xs font-bold bg-slate-600 text-white border-2 border-white"
+                            index === 1 ? "inline-flex items-center justify-center w-6 h-6 rounded-full text-xs font-bold bg-gray-700 text-white border-2 border-white" :
+                              index === 2 ? "inline-flex items-center justify-center w-6 h-6 rounded-full text-xs font-bold bg-orange-600 text-white border-2 border-white" :
+                                "inline-flex items-center justify-center w-6 h-6 rounded-full text-xs font-bold bg-slate-600 text-white border-2 border-white"
                         }>
                           {index + 1}
                         </span>
                       </TableCell>
                       <TableCell>
-                        <div className="flex items-center">
+                        <div className="flex items-center max-w-[160px] overflow-hidden text-ellipsis whitespace-nowrap">
                           <img
                             src={player.avatar}
                             alt={player.name}
@@ -138,7 +138,7 @@ export default function Leaderboard({
                       <TableCell>{player.kicked_win}</TableCell>
                       <TableCell>{player.keep_win}</TableCell>
                       <TableCell>{player.total_point}</TableCell>
-                      <TableCell>{player.reward}</TableCell>
+                      <TableCell>{player.bonus_point}</TableCell>
                     </TableRow>
                   ))
                 )}
@@ -158,7 +158,7 @@ export default function Leaderboard({
                   <TableHead>Kicked Win</TableHead>
                   <TableHead>Kept Win</TableHead>
                   <TableHead>Total Week Point</TableHead>
-                  <TableHead>Reward (USDC)</TableHead>
+                  <TableHead>Bonus Point</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -188,9 +188,9 @@ export default function Leaderboard({
                       <TableCell>
                         <span className={
                           index === 0 ? "inline-flex items-center justify-center w-6 h-6 rounded-full text-xs font-bold bg-yellow-500 text-white border-2 border-white" :
-                          index === 1 ? "inline-flex items-center justify-center w-6 h-6 rounded-full text-xs font-bold bg-gray-700 text-white border-2 border-white" :
-                          index === 2 ? "inline-flex items-center justify-center w-6 h-6 rounded-full text-xs font-bold bg-orange-600 text-white border-2 border-white" :
-                          "inline-flex items-center justify-center w-6 h-6 rounded-full text-xs font-bold bg-slate-600 text-white border-2 border-white"
+                            index === 1 ? "inline-flex items-center justify-center w-6 h-6 rounded-full text-xs font-bold bg-gray-700 text-white border-2 border-white" :
+                              index === 2 ? "inline-flex items-center justify-center w-6 h-6 rounded-full text-xs font-bold bg-orange-600 text-white border-2 border-white" :
+                                "inline-flex items-center justify-center w-6 h-6 rounded-full text-xs font-bold bg-slate-600 text-white border-2 border-white"
                         }>
                           {index + 1}
                         </span>
@@ -212,7 +212,7 @@ export default function Leaderboard({
                       <TableCell>{player.kicked_win}</TableCell>
                       <TableCell>{player.keep_win}</TableCell>
                       <TableCell>{player.total_point}</TableCell>
-                      <TableCell>{player.reward}</TableCell>
+                      <TableCell>{player.bonus_point}</TableCell>
                     </TableRow>
                   ))
                 )}
@@ -233,7 +233,7 @@ export default function Leaderboard({
                   <TableHead>Kept Win</TableHead>
                   <TableHead>Total Week Point</TableHead>
                   <TableHead>Extra Points</TableHead>
-                  <TableHead>Reward (USDC)</TableHead>
+                  <TableHead>Bonus Point</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -264,9 +264,9 @@ export default function Leaderboard({
                       <TableCell>
                         <span className={
                           index === 0 ? "inline-flex items-center justify-center w-6 h-6 rounded-full text-xs font-bold bg-yellow-500 text-white border-2 border-white" :
-                          index === 1 ? "inline-flex items-center justify-center w-6 h-6 rounded-full text-xs font-bold bg-gray-700 text-white border-2 border-white" :
-                          index === 2 ? "inline-flex items-center justify-center w-6 h-6 rounded-full text-xs font-bold bg-orange-600 text-white border-2 border-white" :
-                          "inline-flex items-center justify-center w-6 h-6 rounded-full text-xs font-bold bg-slate-600 text-white border-2 border-white"
+                            index === 1 ? "inline-flex items-center justify-center w-6 h-6 rounded-full text-xs font-bold bg-gray-700 text-white border-2 border-white" :
+                              index === 2 ? "inline-flex items-center justify-center w-6 h-6 rounded-full text-xs font-bold bg-orange-600 text-white border-2 border-white" :
+                                "inline-flex items-center justify-center w-6 h-6 rounded-full text-xs font-bold bg-slate-600 text-white border-2 border-white"
                         }>
                           {index + 1}
                         </span>
@@ -289,7 +289,7 @@ export default function Leaderboard({
                       <TableCell>{player.keep_win}</TableCell>
                       <TableCell>{player.total_point}</TableCell>
                       <TableCell>{player.total_extra_skill}</TableCell>
-                      <TableCell>{player.reward}</TableCell>
+                      <TableCell>{player.bonus_point}</TableCell>
                     </TableRow>
                   ))
                 )}

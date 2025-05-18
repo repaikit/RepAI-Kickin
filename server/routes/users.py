@@ -39,7 +39,7 @@ async def create_guest_user(request: Request):
         created_at=datetime.utcnow(),
         updated_at=datetime.utcnow(),
         total_point=0,
-        reward=0.0,
+        bonus_point=0.0,
     ).dict(by_alias=True)
     result = await users_collection.insert_one(guest_user)
     created_user = await users_collection.find_one({"_id": result.inserted_id})
@@ -322,7 +322,7 @@ async def refresh_guest_user(request: Request):
         "keep_win": 0,
         "level": 1,
         "total_point": 0,
-        "reward": 0.0,
+        "bonus_point": 0.0,
     }
     await users_collection.update_one({"session_id": session_id}, {"$set": update_data})
     updated_user = await users_collection.find_one({"session_id": session_id})

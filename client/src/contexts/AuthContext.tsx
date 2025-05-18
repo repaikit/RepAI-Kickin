@@ -24,6 +24,7 @@ interface User {
   created_at?: string;
   updated_at?: string;
   last_login?: string;
+  level?: number;
 }
 
 interface AuthContextType {
@@ -52,14 +53,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         router.push('/login');
         return;
       }
-      // Gọi API protected với Authorization header
+      console.log("DEBUG /api/me token:", token)
       const response = await fetch(API_ENDPOINTS.users.getCurrentUser, {
-        ...defaultFetchOptions,
+        method: 'GET',
         headers: {
           ...defaultFetchOptions.headers,
+          'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
         }
       });
+
+
       if (response.ok) {
         const userData = await response.json();
         setUser(userData);

@@ -30,33 +30,46 @@ class WaitingRoomManager:
         self.ping_interval = 30  # seconds
 
     async def connect(self, websocket: WebSocket, user_id: str, user_data: dict):
-        await websocket.accept()
-        self.active_connections[user_id] = websocket
-        self.online_users[user_id] = {
-            "id": str(user_data["_id"]),
-            "name": user_data.get("name") or "Guest Player",
-            "user_type": user_data.get("user_type") or "guest",
-            "avatar": user_data.get("avatar") or "",
-            "position": user_data.get("position") or "both",
-            "role": user_data.get("role") or "user",
-            "is_active": user_data.get("is_active", True),
-            "is_verified": user_data.get("is_verified", False),
-            "trend": user_data.get("trend") or "neutral",
-            "remaining_matches": user_data.get("remaining_matches", 5),
-            "level": user_data.get("level", 1),
-            "kicker_skills": user_data.get("kicker_skills", []),
-            "goalkeeper_skills": user_data.get("goalkeeper_skills", []),
-            "total_kicked": user_data.get("total_kicked", 0),
-            "kicked_win": user_data.get("kicked_win", 0),
-            "total_keep": user_data.get("total_keep", 0),
-            "keep_win": user_data.get("keep_win", 0),
-            "is_pro": user_data.get("is_pro", False),
-            "total_extra_skill": user_data.get("total_extra_skill", 0),
-            "extra_skill_win": user_data.get("extra_skill_win", 0),
-            "connected_at": datetime.utcnow().isoformat()
-        }
-        api_logger.info(f"New connection: {user_id}")
-        await self.broadcast_user_list()
+        """Handle new WebSocket connection"""
+        try:
+            # Accept connection
+            await websocket.accept()
+            self.active_connections[user_id] = websocket
+            
+            # Store user data
+            self.online_users[user_id] = {
+                "id": str(user_data["_id"]),
+                "name": user_data.get("name") or "Guest Player",
+                "user_type": user_data.get("user_type") or "guest",
+                "avatar": user_data.get("avatar") or "",
+                "position": user_data.get("position") or "both",
+                "role": user_data.get("role") or "user",
+                "is_active": user_data.get("is_active", True),
+                "is_verified": user_data.get("is_verified", False),
+                "trend": user_data.get("trend") or "neutral",
+                "remaining_matches": user_data.get("remaining_matches", 5),
+                "level": user_data.get("level", 1),
+                "kicker_skills": user_data.get("kicker_skills", []),
+                "goalkeeper_skills": user_data.get("goalkeeper_skills", []),
+                "total_kicked": user_data.get("total_kicked", 0),
+                "kicked_win": user_data.get("kicked_win", 0),
+                "total_keep": user_data.get("total_keep", 0),
+                "keep_win": user_data.get("keep_win", 0),
+                "is_pro": user_data.get("is_pro", False),
+                "total_extra_skill": user_data.get("total_extra_skill", 0),
+                "extra_skill_win": user_data.get("extra_skill_win", 0),
+                "connected_at": datetime.utcnow().isoformat()
+            }
+            
+            api_logger.info(f"User {user_id} connected to waiting room")
+            await self.broadcast_user_list()
+
+        except Exception as e:
+            api_logger.error(f"Error in websocket connection: {str(e)}")
+            try:
+                await websocket.close(code=4000, reason="Internal server error")
+            except:
+                pass
 
     async def disconnect(self, user_id: str):
         if user_id in self.active_connections:
@@ -198,6 +211,13 @@ async def validate_user(websocket: WebSocket) -> dict:
         try:
             data = jwt.decode(access_token, SECRET_KEY, algorithms=[ALGORITHM])
             user_id = data.get("_id")
+            exp = data.get("exp")
+            
+            # Check token expiration
+            if exp and datetime.utcnow().timestamp() > exp:
+                api_logger.error("Token expired")
+                raise HTTPException(status_code=401, detail="Token expired")
+                
             api_logger.info(f"Decoded token data - user_id: {user_id}")
             
             if not user_id:

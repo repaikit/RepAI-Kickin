@@ -4,6 +4,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { API_ENDPOINTS, defaultFetchOptions } from "@/config/api";
 import { Skeleton } from "@/components/ui/skeleton";
 import { usePrivy } from "@privy-io/react-auth";
+import TaskMysteryBoxDropdown from "./TaskMysteryBoxDropdown";
 
 export default function Header() {
   const { user, isAuthenticated, isLoading, logout, checkAuth } = useAuth();
@@ -26,7 +27,7 @@ export default function Header() {
 
   const handlePrivyLogin = async () => {
     if (isPrivyLoading) return;
-    
+
     setIsPrivyLoading(true);
     try {
       console.log('Starting Privy login...');
@@ -44,7 +45,7 @@ export default function Header() {
     try {
       const token = localStorage.getItem('access_token');
       if (!token) {
-        alert('Không tìm thấy access token!');
+        alert('Access token not found!');
         return;
       }
       const response = await fetch(API_ENDPOINTS.users.refreshGuest, {
@@ -56,18 +57,17 @@ export default function Header() {
       });
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.detail || 'Làm mới lượt chơi thất bại');
+        throw new Error(errorData.detail || 'Failed to refresh turn');
       }
       const data = await response.json();
       await checkAuth();
-      alert('Đã làm mới lượt chơi và kỹ năng cho guest!');
+      alert('Refreshed turn and skills for guest!');
     } catch (err) {
-      alert('Làm mới lượt chơi thất bại!');
+      alert('Failed to refresh turn!');
     }
   };
 
   function clearPrivyTokens() {
-    // Xóa các key liên quan đến Privy (trừ access_token backend)
     Object.keys(localStorage).forEach((key) => {
       if (key.startsWith('privy:')) {
         localStorage.removeItem(key);
@@ -79,10 +79,10 @@ export default function Header() {
     if (ready && privyUser?.id && user?.user_type === 'guest') {
       (async () => {
         try {
-          setUpgradeError(null); // clear lỗi cũ
+          setUpgradeError(null);
           const token = localStorage.getItem('access_token');
           if (!token) {
-            setUpgradeError('Không tìm thấy access token!');
+            setUpgradeError('Access token not found!');
             return;
           }
 
@@ -105,20 +105,18 @@ export default function Header() {
 
           if (!response.ok) {
             const errorData = await response.json();
-            // Nếu lỗi do email/wallet đã được sử dụng, chỉ xóa token Privy
             if (
               errorData.detail &&
-              (errorData.detail.includes('Email đã được sử dụng') || errorData.detail.includes('Wallet đã được sử dụng'))
+              (errorData.detail.includes('Email has already been used') || errorData.detail.includes('Wallet has already been used'))
             ) {
               clearPrivyTokens();
-              setUpgradeError(errorData.detail); // Hiển thị lỗi đẹp
+              setUpgradeError(errorData.detail);
             } else {
               setUpgradeError(errorData.detail || 'Failed to upgrade account');
             }
             return;
           }
 
-          // Thành công: refresh lại trang
           await checkAuth();
           window.location.reload();
         } catch (error) {
@@ -142,21 +140,23 @@ export default function Header() {
           </svg>
           <h1 className="text-2xl font-bold text-slate-800">Kick'in</h1>
         </Link>
-        
+
         <nav className="hidden md:flex space-x-6">
           <Link href="/" className="text-primary font-medium hover:text-primary/80 transition-colors">Dashboard</Link>
           <Link href="/matches" className="text-slate-600 hover:text-primary transition-colors">Matches</Link>
           <Link href="/players" className="text-slate-600 hover:text-primary transition-colors">Players</Link>
           <Link href="/statistics" className="text-slate-600 hover:text-primary transition-colors">Statistics</Link>
         </nav>
-        
+
         <div className="flex items-center space-x-4">
+          <TaskMysteryBoxDropdown />
+          
           <button className="text-slate-600 hover:text-primary transition-colors">
             <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
             </svg>
           </button>
-          
+
           <div className="relative profile-menu">
             {isLoading ? (
               <Skeleton className="w-10 h-10 rounded-full" />
@@ -228,7 +228,7 @@ export default function Header() {
                               <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582M20 20v-5h-.581M5.635 19A9 9 0 1 1 19 5.635" />
                               </svg>
-                              Làm mới lượt chơi
+                              Refresh Turn
                             </button>
                           </div>
                         )}
@@ -257,7 +257,7 @@ export default function Header() {
             )}
           </div>
         </div>
-        
+
         <button className="md:hidden text-slate-600 hover:text-primary transition-colors">
           <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16m-7 6h7" />

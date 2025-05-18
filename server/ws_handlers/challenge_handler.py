@@ -117,11 +117,16 @@ class ChallengeManager:
             # --- Cập nhật điểm tuần đúng bảng cho winner ---
             if winner.get("is_vip", False):
                 week_point_field = "vip_week_point"
+                board_type = "VIP"
             elif winner.get("is_pro", False):
                 week_point_field = "pro_week_point"
+                board_type = "PRO"
             else:
                 week_point_field = "basic_week_point"
+                board_type = "BASIC"
+            
             await db.users.update_one({"_id": ObjectId(winner_id)}, {"$inc": {week_point_field: 1}})
+            api_logger.info(f"[Challenge] Updated {board_type} weekly point for winner {winner_id}")
             # --- END cập nhật điểm tuần ---
 
             # Create match history record
@@ -139,12 +144,37 @@ class ChallengeManager:
             }
 
             # Level milestone logic
-            LEVEL_MILESTONES = [0, 100, 300, 600, 1000, 1500, 2100, 2800, 3600, 4500, 5500, 6600, 7800, 9100, 10500, 12000, 13600, 15300, 17100, 19000, 21000, 23100, 25300, 27600, 30000, 32500, 35100, 37800, 40600, 43500, 46500, 49600, 52800, 56100, 59500, 63000, 66600, 70300, 74100, 78000, 82000, 86100, 90300, 94600, 99000, 103500, 108100, 112800, 117600, 122500, 127500, 132600, 137800, 143100, 148500, 154000, 159600, 165300, 171100, 177000, 183000, 189100, 195300, 201600, 208000, 214500, 221100, 227800, 234600, 241500, 248500, 255600, 262800, 270100, 277500, 285000, 292600, 300300, 308100, 316000, 324000, 332100, 340300, 348600, 357000, 365500, 374100, 382800, 391600, 400500, 409500, 418600, 427800, 437100, 446500, 456000, 465600, 475300, 485100, 495000]  # Example, can be adjusted
+            LEVEL_MILESTONES_BASIC = [0, 100, 300, 600, 1000, 1500, 2100, 2800, 3600, 4500, 5500, 6600, 7800, 9100, 10500, 12000, 13600, 15300, 17100, 19000, 21000, 23100, 25300, 27600, 30000, 32500, 35100, 37800, 40600, 43500, 46500, 49600, 52800, 56100, 59500, 63000, 66600, 70300, 74100, 78000, 82000, 86100, 90300, 94600, 99000, 103500, 108100, 112800, 117600, 122500, 127500, 132600, 137800, 143100, 148500, 154000, 159600, 165300, 171100, 177000, 183000, 189100, 195300, 201600, 208000, 214500, 221100, 227800, 234600, 241500, 248500, 255600, 262800, 270100, 277500, 285000, 292600, 300300, 308100, 316000, 324000, 332100, 340300, 348600, 357000, 365500, 374100, 382800, 391600, 400500, 409500, 418600, 427800, 437100, 446500, 456000, 465600, 475300, 485100, 495000]
+            LEGEND_STEP = 100
+            LEGEND_MAX = 10
+            VIP_LEVELS = [
+                ("SILVER", 50),
+                ("GOLD", 100),
+                ("RUBY", 150),
+                ("EMERALD", 200),
+                ("DIAMOND", 500)
+            ]
+            def get_basic_level(total_win):
+                for i, milestone in enumerate(LEVEL_MILESTONES_BASIC):
+                    if total_win < milestone:
+                        return i
+                return len(LEVEL_MILESTONES_BASIC)
+            def get_legend_level(total_win):
+                if total_win < LEVEL_MILESTONES_BASIC[99]:
+                    return 0
+                legend = (total_win - LEVEL_MILESTONES_BASIC[99]) // LEGEND_STEP + 1
+                return min(legend, LEGEND_MAX)
+            def get_vip_level(vip_amount):
+                level = "NONE"
+                for name, amount in VIP_LEVELS:
+                    if vip_amount >= amount:
+                        level = name
+                return level
             # Calculate total wins for winner
             total_wins = winner.get("kicked_win", 0) + winner.get("keep_win", 0) + 1
             # Determine new level
             new_level = 1
-            for i, milestone in enumerate(LEVEL_MILESTONES):
+            for i, milestone in enumerate(LEVEL_MILESTONES_BASIC):
                 if total_wins >= milestone:
                     new_level = i + 1
                 else:
@@ -156,7 +186,7 @@ class ChallengeManager:
                 is_pro = True
                 new_level = 100
                 # Legend logic: every 100 wins after level 100 increases legend_level
-                legend_level = (total_wins - LEVEL_MILESTONES[99]) // 100 + 1 if total_wins > LEVEL_MILESTONES[99] else 0
+                legend_level = (total_wins - LEVEL_MILESTONES_BASIC[99]) // 100 + 1 if total_wins > LEVEL_MILESTONES_BASIC[99] else 0
             # Update winner's stats and check for level up
             update_fields = {
                 "$set": {"level": new_level, "is_pro": is_pro, "legend_level": legend_level},
@@ -194,9 +224,6 @@ class ChallengeManager:
                         }
                     }}
                 )
-            # Update reward for both winner and loser
-            await db.users.update_one({"_id": ObjectId(winner_id)}, {"$set": {"reward": self.calculate_reward(updated_winner)}})
-            await db.users.update_one({"_id": ObjectId(loser_id)}, {"$set": {"reward": self.calculate_reward(updated_loser)}})
             # Prepare match result message
             result_message = {
                 "type": "challenge_result",
@@ -236,13 +263,9 @@ class ChallengeManager:
             await self.send_message(active_connections, kicker_id, result_message)
             await self.send_message(active_connections, goalkeeper_id, result_message)
 
-            # Sau khi cập nhật điểm số, cập nhật lại trạng thái mới nhất của user và gửi lên leaderboard
-            # Sau khi update winner/loser và cập nhật reward:
             updated_winner = await db.users.find_one({"_id": ObjectId(winner_id)})
             updated_loser = await db.users.find_one({"_id": ObjectId(loser_id)})
-            # Khi build leaderboard_data, đảm bảo lấy đủ is_pro, is_vip
             from ws_handlers.waiting_room import manager
-            # Lấy lại top_users mới nhất
             leaderboard_users = await db.users.find().sort("total_point", -1).limit(10).to_list(length=10)
             leaderboard_data = [
                 {
@@ -257,7 +280,7 @@ class ChallengeManager:
                     "total_extra_skill": u.get("total_extra_skill", 0),
                     "extra_skill_win": u.get("extra_skill_win", 0),
                     "total_point": u.get("total_point", 0),
-                    "reward": u.get("reward", 0.0),
+                    "bonus_point": u.get("bonus_point", 0.0),
                     "is_pro": u.get("is_pro", False),
                     "is_vip": u.get("is_vip", False),
                 }
@@ -267,6 +290,29 @@ class ChallengeManager:
                 "type": "leaderboard_update",
                 "leaderboard": leaderboard_data
             })
+
+            # Broadcast updated user list for realtime update in waiting room
+            await manager.broadcast_user_list()
+
+            total_win = updated_winner.get("kicked_win", 0) + updated_winner.get("keep_win", 0)
+            new_level = get_basic_level(total_win)
+            is_pro = new_level >= 100
+            if is_pro:
+                new_level = 100
+                legend_level = get_legend_level(total_win)
+            else:
+                legend_level = 0
+            vip_amount = updated_winner.get("vip_amount", 0)
+            vip_level = get_vip_level(vip_amount)
+            await db.users.update_one(
+                {"_id": ObjectId(winner_id)},
+                {"$set": {
+                    "level": new_level,
+                    "is_pro": is_pro,
+                    "legend_level": legend_level,
+                    "vip_level": vip_level
+                }}
+            )
 
         else:
             # Notify the challenger that the challenge was declined
