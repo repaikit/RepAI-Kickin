@@ -21,10 +21,10 @@ export default function WelcomeDirectionPage({ onDone }: WelcomeDirectionPagePro
 
   const handlePrivyAuth = async (mode: 'login' | 'register') => {
     if (isPrivyLoading) return;
-    
+
     setIsPrivyLoading(true);
     setAuthMode(mode);
-    
+
     try {
       console.log(`Starting Privy ${mode}...`);
       await login();
@@ -57,7 +57,7 @@ export default function WelcomeDirectionPage({ onDone }: WelcomeDirectionPagePro
       console.log('Guest login successful, saving token...');
       localStorage.setItem('access_token', data.access_token);
       console.log('Guest token saved to localStorage');
-      
+
       setTimeout(async () => {
         await checkAuth();
         const returnUrl = router.query.returnUrl as string;
@@ -82,7 +82,7 @@ export default function WelcomeDirectionPage({ onDone }: WelcomeDirectionPagePro
 
     console.log('Auth successful, saving token...');
     localStorage.setItem('access_token', userData.access_token);
-    
+
     setTimeout(async () => {
       await checkAuth();
       const returnUrl = router.query.returnUrl as string;
@@ -97,7 +97,7 @@ export default function WelcomeDirectionPage({ onDone }: WelcomeDirectionPagePro
   useEffect(() => {
     if (ready && privyUser?.id && !hasHandled.current && authMode) {
       hasHandled.current = true;
-      
+
       const requestData = {
         privy_id: privyUser.id,
         email: privyUser.email?.address || null,
@@ -106,8 +106,8 @@ export default function WelcomeDirectionPage({ onDone }: WelcomeDirectionPagePro
         avatar: privyUser.email?.address ? `https://api.dicebear.com/7.x/avataaars/svg?seed=${privyUser.email.address}` : undefined
       };
 
-      const endpoint = authMode === 'login' 
-        ? API_ENDPOINTS.users.authWithPrivyLogin 
+      const endpoint = authMode === 'login'
+        ? API_ENDPOINTS.users.authWithPrivyLogin
         : API_ENDPOINTS.users.authWithPrivyRegister;
 
       fetch(endpoint, {
@@ -118,22 +118,22 @@ export default function WelcomeDirectionPage({ onDone }: WelcomeDirectionPagePro
         },
         body: JSON.stringify(requestData)
       })
-      .then(async response => {
-        if (!response.ok) {
-          const errorData = await response.json();
-          throw new Error(errorData.detail || `Failed to ${authMode} with server`);
-        }
-        return response.json();
-      })
-      .then(userData => handleAuthSuccess(userData))
-      .catch(error => {
-        console.error(`${authMode} error:`, error);
-        alert(`${authMode === 'login' ? 'Login' : 'Registration'} failed: ` + (error instanceof Error ? error.message : 'Unknown error'));
-      })
-      .finally(() => {
-        setIsPrivyLoading(false);
-        setAuthMode(null);
-      });
+        .then(async response => {
+          if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.detail || `Failed to ${authMode} with server`);
+          }
+          return response.json();
+        })
+        .then(userData => handleAuthSuccess(userData))
+        .catch(error => {
+          console.error(`${authMode} error:`, error);
+          alert(`${authMode === 'login' ? 'Login' : 'Registration'} failed: ` + (error instanceof Error ? error.message : 'Unknown error'));
+        })
+        .finally(() => {
+          setIsPrivyLoading(false);
+          setAuthMode(null);
+        });
     }
     if (!privyUser) {
       hasHandled.current = false;
@@ -157,10 +157,10 @@ export default function WelcomeDirectionPage({ onDone }: WelcomeDirectionPagePro
       <div className="absolute inset-0 bg-black/40 z-10" />
       {/* Welcome box */}
       <div className="relative z-20 flex flex-col items-center justify-center w-full">
-        <div className="backdrop-blur-md bg-white/70 rounded-2xl shadow-2xl px-10 py-16 max-w-md w-full text-center mx-auto" style={{maxWidth: 420}}>
+        <div className="backdrop-blur-md bg-white/70 rounded-2xl shadow-2xl px-10 py-16 max-w-md w-full text-center mx-auto" style={{ maxWidth: 420 }}>
           <h2 className="text-3xl font-extrabold mb-4 text-slate-900 drop-shadow">Welcome to Kick'in!</h2>
           <p className="mb-8 text-base text-slate-700">Sign up or log in to start playing and saving your progress.</p>
-          
+
           <div className="space-y-4">
             <button
               className={`w-full py-3 bg-primary text-white rounded-lg font-bold text-lg shadow hover:bg-primary/90 transition ${isPrivyLoading && authMode === 'login' ? 'opacity-50 cursor-not-allowed' : ''}`}
@@ -171,12 +171,13 @@ export default function WelcomeDirectionPage({ onDone }: WelcomeDirectionPagePro
             </button>
 
             <button
-              className={`w-full py-3 bg-secondary text-white rounded-lg font-bold text-lg shadow hover:bg-secondary/90 transition ${isPrivyLoading && authMode === 'register' ? 'opacity-50 cursor-not-allowed' : ''}`}
+              className={`w-full py-3 bg-primary text-white rounded-lg font-bold text-lg shadow hover:bg-primary/90 transition ${isPrivyLoading && authMode === 'register' ? 'opacity-50 cursor-not-allowed' : ''}`}
               onClick={() => handlePrivyAuth('register')}
               disabled={isPrivyLoading && authMode === 'register'}
             >
               {isPrivyLoading && authMode === 'register' ? 'Signing up...' : 'Sign Up'}
             </button>
+
 
             <div className="relative my-4">
               <div className="absolute inset-0 flex items-center">
@@ -192,7 +193,7 @@ export default function WelcomeDirectionPage({ onDone }: WelcomeDirectionPagePro
               onClick={handleGuestLogin}
               disabled={isGuestLoading}
             >
-              {isGuestLoading ? 'Đang vào với tư cách khách...' : 'Try as Guest'}
+              {isGuestLoading ? 'Entering as a guest...' : 'Try as Guest'}
             </button>
           </div>
         </div>
