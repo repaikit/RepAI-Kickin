@@ -41,7 +41,6 @@ class UserBase(BaseModel):
     keep_win: int = 0
     is_pro: bool = False
     is_vip: bool = False
-    extra_skill_win: int = 0
     level: int = 1
     legend_level: int = 0
     vip_level: str = "NONE"  # SILVER, GOLD, RUBY, EMERALD, DIAMOND
