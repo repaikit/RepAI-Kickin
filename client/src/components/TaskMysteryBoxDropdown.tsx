@@ -7,6 +7,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
 import { Progress } from "@/components/ui/progress";
+import { websocketService } from '@/services/websocket';
 
 interface BoxStatus {
   can_open: boolean;
@@ -204,6 +205,17 @@ export default function TaskMysteryBoxDropdown() {
         // Refresh auth and box status
         await checkAuth();
         await fetchBoxStatus();
+
+        // Emit websocket event to update waiting room
+        websocketService.sendMessage({
+          type: 'user_updated',
+          user: {
+            ...user,
+            remaining_matches: reward.type === 'remaining_matches' ? (user?.remaining_matches || 0) + Number(reward.value) : user?.remaining_matches,
+            kicker_skills: reward.type === 'skill' && reward.skill_type === 'kicker' ? [...(user?.kicker_skills || []), reward.skill_name] : user?.kicker_skills,
+            goalkeeper_skills: reward.type === 'skill' && reward.skill_type === 'goalkeeper' ? [...(user?.goalkeeper_skills || []), reward.skill_name] : user?.goalkeeper_skills
+          }
+        });
       } else {
         toast.error(data.message || 'Failed to open box');
       }
@@ -271,6 +283,15 @@ export default function TaskMysteryBoxDropdown() {
       toast.success('You have claimed 50 free matches!');
       fetchClaimStatus();
       await checkAuth(); // update user info
+      
+      // Emit websocket event to update waiting room
+      websocketService.sendMessage({
+        type: 'user_updated',
+        user: {
+          ...user,
+          remaining_matches: (user?.remaining_matches || 0) + 50
+        }
+      });
     } else {
       toast.error(data.message || 'You need to wait before claiming again!');
     }
@@ -362,10 +383,19 @@ export default function TaskMysteryBoxDropdown() {
       }
 
       if (data.success) {
-        toast.success(`Successfully claimed ${data.reward} points!`);
+        toast.success(`Successfully claimed ${data.reward} Matches!`);
         // Refresh tasks and user data
         await fetchDailyTasks();
         await checkAuth();
+
+        // Emit websocket event to update waiting room
+        websocketService.sendMessage({
+          type: 'user_updated',
+          user: {
+            ...user,
+            total_point: (user?.total_point || 0) + data.reward
+          }
+        });
       } else {
         toast.error(data.message || 'Failed to claim reward');
       }

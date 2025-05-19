@@ -2,6 +2,9 @@ from fastapi import APIRouter, HTTPException, Request, Body
 from datetime import datetime, timedelta
 from database.database import get_database
 from pydantic import BaseModel
+import logging
+import traceback
+from utils.logger import api_logger
 
 router = APIRouter()
 
@@ -28,13 +31,33 @@ async def get_daily_tasks(request: Request):
     today = now.date()
 
     # Lọc match_history trong ngày hiện tại
-    matches_today = [
-        m for m in user.get("match_history", [])
-        if "timestamp" in m and
-           datetime.fromisoformat(
-               m["timestamp"]["$date"] if isinstance(m["timestamp"], dict) else m["timestamp"]
-           ).date() == today
-    ]
+    matches_today = []
+    for m in user.get("match_history", []):
+        try:
+            # Log each match entry
+            api_logger.debug(f"Processing match history entry: {m}")
+            
+            # Handle different timestamp formats
+            timestamp_data = m.get("timestamp")
+            
+            if timestamp_data:
+                if isinstance(timestamp_data, dict) and "$date" in timestamp_data:
+                    match_timestamp = datetime.fromisoformat(timestamp_data["$date"])
+                elif isinstance(timestamp_data, str):
+                     match_timestamp = datetime.fromisoformat(timestamp_data)
+                else:
+                    api_logger.warning(f"Unexpected timestamp format in match history: {timestamp_data}. Skipping entry.")
+                    continue # Skip this entry if timestamp format is unexpected
+                    
+                if match_timestamp.date() == today:
+                    matches_today.append(m)
+            else:
+                api_logger.warning(f"Match history entry missing timestamp: {m}. Skipping entry.")
+
+        except Exception as e:
+            api_logger.error(f"Error processing match history entry {m}: {str(e)}")
+            api_logger.error(f"Traceback: {traceback.format_exc()}")
+            continue
 
     # Đếm số trận, số trận thắng, v.v.
     total_matches = len(matches_today)

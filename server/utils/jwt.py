@@ -4,7 +4,7 @@ import os
 
 SECRET_KEY = os.getenv("JWT_KEY", "repaikickin")
 ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
-ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7  # 7 ngày
+ACCESS_TOKEN_EXPIRE_MINUTES = 180  # 3 giờ
 
 def create_access_token(data: dict, expires_delta: timedelta = None):
     to_encode = data.copy()

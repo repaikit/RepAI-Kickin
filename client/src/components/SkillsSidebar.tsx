@@ -1,6 +1,7 @@
 import React from "react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { CheckCircle2, Circle } from "lucide-react";
+import BuySkillButton from "./BuySkillButton";
 
 interface Skill {
   _id: string;
@@ -15,13 +16,17 @@ interface SkillsSidebarProps {
   userSkills: string[];
   title: string;
   isLoading: boolean;
+  userPoints: number;
+  onSkillBought?: () => void;
 }
 
 export default function SkillsSidebar({
   skills = [],
   userSkills = [],
   title = "Player Skills",
-  isLoading
+  isLoading,
+  userPoints,
+  onSkillBought
 }: SkillsSidebarProps) {
   // Check if user has learned a skill by comparing skill names
   const hasLearnedSkill = (skillName: string) => {
@@ -36,6 +41,9 @@ export default function SkillsSidebar({
     if (!aLearned && bLearned) return 1;
     return a.name.localeCompare(b.name);
   });
+
+  // Determine skill type from title
+  const skillType = title.toLowerCase().includes('kicker') ? 'kicker' : 'goalkeeper';
 
   return (
     <div className="bg-white rounded-xl shadow-sm p-5 h-full flex flex-col">
@@ -83,6 +91,15 @@ export default function SkillsSidebar({
             })}
           </div>
         )}
+      </div>
+      
+      {/* Buy Skill Button */}
+      <div className="mt-4 pt-4 border-t border-slate-100">
+        <BuySkillButton 
+          skillType={skillType}
+          userPoints={userPoints}
+          onSuccess={onSkillBought}
+        />
       </div>
     </div>
   );

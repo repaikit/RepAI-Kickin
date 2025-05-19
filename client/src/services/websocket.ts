@@ -18,6 +18,11 @@ type WebSocketCallbacks = {
   onUserJoined?: (user: any) => void;
   onUserLeft?: (userId: string) => void;
   onUserUpdated?: (user: any) => void;
+  onMysteryBoxOpened?: (data: any) => void;
+  onTaskCompleted?: (data: any) => void;
+  onMatchesClaimed?: (data: any) => void;
+  onChatHistory?: (message: WebSocketMessage) => void;
+  onChatMessage?: (message: WebSocketMessage) => void;
 };
 
 class WebSocketService {
@@ -41,7 +46,12 @@ class WebSocketService {
       onLeaderboardUpdate: new Set(),
       onUserJoined: new Set(),
       onUserLeft: new Set(),
-      onUserUpdated: new Set()
+      onUserUpdated: new Set(),
+      onMysteryBoxOpened: new Set(),
+      onTaskCompleted: new Set(),
+      onMatchesClaimed: new Set(),
+      onChatHistory: new Set(),
+      onChatMessage: new Set()
     };
 
     // Bind methods
@@ -188,6 +198,22 @@ class WebSocketService {
         });
         break;
 
+      case 'chat_history':
+        console.log('WebSocketService: Handling chat_history. Message content:', message);
+        this.callbacks.onChatHistory.forEach(callback => {
+          console.log('WebSocketService: Calling onChatHistory callback with message:', message);
+          callback(message);
+        });
+        break;
+
+      case 'chat_message':
+        console.log('WebSocketService: Handling chat_message. Message content:', message);
+        this.callbacks.onChatMessage.forEach(callback => {
+          console.log('WebSocketService: Calling onChatMessage callback with message:', message);
+          callback(message);
+        });
+        break;
+
       case 'challenge_invite':
         console.log('WebSocketService: Handling challenge_invite');
         this.callbacks.onChallengeInvite.forEach(callback => callback(message.from, message.from_name));
@@ -239,8 +265,23 @@ class WebSocketService {
         break;
 
       case 'user_updated':
-        console.log('WebSocketService: Handling user_updated');
+        console.log('WebSocketService: Handling user_updated', message.user);
         this.callbacks.onUserUpdated.forEach(callback => callback(message.user));
+        break;
+
+      case 'mystery_box_opened':
+        console.log('WebSocketService: Handling mystery_box_opened');
+        this.callbacks.onMysteryBoxOpened.forEach(callback => callback(message));
+        break;
+
+      case 'task_completed':
+        console.log('WebSocketService: Handling task_completed');
+        this.callbacks.onTaskCompleted.forEach(callback => callback(message));
+        break;
+
+      case 'matches_claimed':
+        console.log('WebSocketService: Handling matches_claimed');
+        this.callbacks.onMatchesClaimed.forEach(callback => callback(message));
         break;
 
       default:

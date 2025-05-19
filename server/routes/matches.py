@@ -15,7 +15,6 @@ async def create_match(match: MatchCreate):
         match_dict = match.model_dump(by_alias=True)
         result = await matches_collection.insert_one(match_dict)
         created_match = await matches_collection.find_one({"_id": result.inserted_id})
-        api_logger.info(f"Created new match with id: {result.inserted_id}")
         return Match(**created_match)
     except Exception as e:
         api_logger.error(f"Error creating match: {str(e)}")

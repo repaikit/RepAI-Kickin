@@ -79,7 +79,7 @@ export default function Leaderboard({
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead className="w-[60px]">rank</TableHead>
+                  <TableHead className="w-[60px]">#</TableHead>
                   <TableHead className="whitespace-nowrap text-left">Player</TableHead>
                   <TableHead className="whitespace-nowrap text-left">Level</TableHead>
                   <TableHead className="whitespace-nowrap text-left">Kicked Win</TableHead>
@@ -93,8 +93,8 @@ export default function Leaderboard({
                   Array(5).fill(0).map((_, index) => (
                     <TableRow key={index}>
                       <TableCell><Skeleton className="h-6 w-6 rounded-full" /></TableCell>
-                      <TableCell>
-                        <div className="flex items-center">
+                      <TableCell className="w-[250px] min-w-[250px]">
+                        <div className="flex items-center overflow-hidden text-ellipsis whitespace-nowrap">
                           <Skeleton className="h-10 w-10 rounded-full mr-3" />
                           <div>
                             <Skeleton className="h-4 w-24 mb-1" />
@@ -122,8 +122,8 @@ export default function Leaderboard({
                           {index + 1}
                         </span>
                       </TableCell>
-                      <TableCell>
-                        <div className="flex items-center max-w-[160px] overflow-hidden text-ellipsis whitespace-nowrap">
+                      <TableCell className="w-[250px] min-w-[250px]">
+                        <div className="flex items-center overflow-hidden text-ellipsis whitespace-nowrap">
                           <img
                             src={player.avatar}
                             alt={player.name}
@@ -166,8 +166,8 @@ export default function Leaderboard({
                   Array(5).fill(0).map((_, index) => (
                     <TableRow key={index}>
                       <TableCell><Skeleton className="h-6 w-6 rounded-full" /></TableCell>
-                      <TableCell>
-                        <div className="flex items-center">
+                      <TableCell className="w-[250px] min-w-[250px]">
+                        <div className="flex items-center overflow-hidden text-ellipsis whitespace-nowrap">
                           <Skeleton className="h-10 w-10 rounded-full mr-3" />
                           <div>
                             <Skeleton className="h-4 w-24 mb-1" />
@@ -195,8 +195,8 @@ export default function Leaderboard({
                           {index + 1}
                         </span>
                       </TableCell>
-                      <TableCell>
-                        <div className="flex items-center">
+                      <TableCell className="w-[250px] min-w-[250px]">
+                        <div className="flex items-center overflow-hidden text-ellipsis whitespace-nowrap">
                           <img
                             src={player.avatar}
                             alt={player.name}
@@ -241,8 +241,8 @@ export default function Leaderboard({
                   Array(5).fill(0).map((_, index) => (
                     <TableRow key={index}>
                       <TableCell><Skeleton className="h-6 w-6 rounded-full" /></TableCell>
-                      <TableCell>
-                        <div className="flex items-center">
+                      <TableCell className="w-[250px] min-w-[250px]">
+                        <div className="flex items-center overflow-hidden text-ellipsis whitespace-nowrap">
                           <Skeleton className="h-10 w-10 rounded-full mr-3" />
                           <div>
                             <Skeleton className="h-4 w-24 mb-1" />
@@ -271,8 +271,8 @@ export default function Leaderboard({
                           {index + 1}
                         </span>
                       </TableCell>
-                      <TableCell>
-                        <div className="flex items-center">
+                      <TableCell className="w-[250px] min-w-[250px]">
+                        <div className="flex items-center overflow-hidden text-ellipsis whitespace-nowrap">
                           <img
                             src={player.avatar}
                             alt={player.name}

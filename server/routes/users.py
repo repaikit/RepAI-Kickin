@@ -29,6 +29,7 @@ async def create_guest_user(request: Request):
     goalkeeper_skill = await get_random_skill(skills_collection, "goalkeeper")
     avatar_seed = str(uuid.uuid4())
     avatar_url = f"https://api.dicebear.com/7.x/adventurer/svg?seed={avatar_seed}"
+    now = datetime.utcnow()
     guest_user = UserCreate(
         user_type="guest",
         session_id=session_id,
@@ -36,8 +37,9 @@ async def create_guest_user(request: Request):
         kicker_skills=[kicker_skill],
         goalkeeper_skills=[goalkeeper_skill],
         avatar=avatar_url,
-        created_at=datetime.utcnow(),
-        updated_at=datetime.utcnow(),
+        created_at=now,
+        updated_at=now,
+        last_activity=now,
         total_point=0,
         bonus_point=0.0,
     ).dict(by_alias=True)
@@ -112,45 +114,91 @@ async def get_current_user(request: Request):
     user["_id"] = str(user["_id"])
     return user
 
+@router.patch("/me", response_model=User)
+async def update_current_user(request: Request, user_update: UserUpdate):
+    """Cập nhật thông tin user hiện tại"""
+    user = getattr(request.state, "user", None)
+    if not user:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    users_collection = await get_users_collection()
+    user_id = user.get("_id")
+    if not user_id:
+        raise HTTPException(status_code=400, detail="Invalid user data in token")
+
+    # Lấy dữ liệu cập nhật từ request body, bỏ qua các giá trị None
+    update_data = user_update.model_dump(exclude_unset=True)
+
+    # Loại bỏ các trường không cho phép user tự cập nhật
+    # Ví dụ: user_type, session_id, created_at, last_login, last_activity, is_pro, is_vip
+    # Cần tùy chỉnh danh sách này dựa trên logic nghiệp vụ
+    restricted_fields = [
+        "user_type", "session_id", "created_at", "last_login", 
+        "last_activity", "is_pro", "is_vip", "total_kicked", 
+        "kicked_win", "total_keep", "keep_win", "total_point", 
+        "bonus_point", "match_history", "vip_amount", "vip_year", 
+        "vip_payment_method", "basic_week_point", "pro_week_point", 
+        "vip_week_point", "basic_week_history", "pro_week_history", 
+        "vip_week_history", "mystery_box_history", "last_box_open", 
+        "last_claim_matches", "daily_tasks"
+    ]
+    
+    for field in restricted_fields:
+        if field in update_data:
+            del update_data[field]
+
+    # Thêm trường updated_at
+    update_data["updated_at"] = datetime.utcnow()
+
+    # Nếu không có gì để cập nhật ngoài updated_at, trả về user hiện tại
+    if len(update_data) == 1 and "updated_at" in update_data:
+        updated_user = await users_collection.find_one({"_id": ObjectId(user_id)})
+        if not updated_user:
+            raise HTTPException(status_code=404, detail="User not found after update attempt")
+        return User(**updated_user)
+
+    result = await users_collection.update_one(
+        {"_id": ObjectId(user_id)},
+        {"$set": update_data}
+    )
+
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    updated_user = await users_collection.find_one({"_id": ObjectId(user_id)})
+    if not updated_user:
+        # Should not happen if matched_count > 0, but good to be safe
+        raise HTTPException(status_code=404, detail="User not found after update")
+
+    # --- Emit WebSocket event for user update ---
+    # Assuming 'manager' (WaitingRoomManager) is accessible here or can be imported
+    # If manager is not directly accessible, we might need to send this via another mechanism
+    from server.ws_handlers.waiting_room import manager as waiting_room_manager
+    if waiting_room_manager:
+        # Prepare simplified user data for broadcasting
+        user_broadcast_data = {
+            "id": str(updated_user["_id"]),
+            "name": updated_user.get("name", "Anonymous"),
+            "avatar": updated_user.get("avatar", ""),
+            "user_type": updated_user.get("user_type", "guest"),
+            # Add other fields needed on client if any
+        }
+        await waiting_room_manager.broadcast({
+            "type": "user_updated",
+            "user": user_broadcast_data
+        })
+    # ------------------------------------------
+
+    # Check if auth context needs refresh (e.g., if wallet changed)
+    # Note: Currently wallet is not updatable via this endpoint based on the client code.
+    # If it were, we'd need a way to signal auth context refresh.
+
+    return User(**updated_user)
+
 class PlayRequest(BaseModel):
     session_id: str
     mode: str
     win: bool
-
-@router.post("/play", response_model=User)
-async def play_and_update(data: PlayRequest):
-    session_id = data.session_id
-    mode = data.mode
-    win = data.win
-    users_collection = await get_users_collection()
-    user = await users_collection.find_one({"session_id": session_id})
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-    update_data = {"updated_at": datetime.utcnow()}
-    # Trừ lượt chơi
-    if user.get("remaining_matches", 0) <= 0:
-        raise HTTPException(status_code=400, detail="No remaining matches")
-    update_data["remaining_matches"] = user["remaining_matches"] - 1
-    # Cập nhật thống kê
-    if mode == "kicker":
-        update_data["total_kicked"] = user.get("total_kicked", 0) + 1
-        if win:
-            update_data["kicked_win"] = user.get("kicked_win", 0) + 1
-    elif mode == "goalkeeper":
-        update_data["total_keep"] = user.get("total_keep", 0) + 1
-        if win:
-            update_data["keep_win"] = user.get("keep_win", 0) + 1
-    elif mode == "extra_skill":
-        if not user.get("is_pro", False):
-            raise HTTPException(status_code=403, detail="Only Pro users can use extra skill")
-        update_data["total_extra_skill"] = user.get("total_extra_skill", 0) + 1
-        if win:
-            update_data["extra_skill_win"] = user.get("extra_skill_win", 0) + 1
-    else:
-        raise HTTPException(status_code=400, detail="Invalid mode")
-    await users_collection.update_one({"session_id": session_id}, {"$set": update_data})
-    updated_user = await users_collection.find_one({"session_id": session_id})
-    return User(**updated_user)
 
 # API lấy leaderboard
 @router.get("/leaderboard", response_model=List[User])
@@ -178,6 +226,10 @@ class PrivyAuthRequest(BaseModel):
     wallet: Optional[str] = None
     name: Optional[str] = None
     avatar: Optional[str] = None
+
+class TokenResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
 
 @router.post("/auth/privy/register")
 async def register_with_privy(data: PrivyAuthRequest):
@@ -216,13 +268,13 @@ async def register_with_privy(data: PrivyAuthRequest):
         
         result = await users_collection.insert_one(new_user)
         created_user = await users_collection.find_one({"_id": result.inserted_id})
-        api_logger.info(f"Created new user with id: {created_user['_id']}")
         
-        token = create_access_token({"_id": str(created_user["_id"])})
-        return {
-            "access_token": token, 
-            "token_type": "bearer",
-        }
+        # Tạo access token
+        access_token = create_access_token({"_id": str(created_user["_id"])})
+        
+        return TokenResponse(
+            access_token=access_token
+        )
         
     except Exception as e:
         api_logger.error(f"Error in Privy registration: {str(e)}")
@@ -235,7 +287,6 @@ async def register_with_privy(data: PrivyAuthRequest):
 async def login_with_privy(data: PrivyAuthRequest):
     """Đăng nhập với Privy (chỉ kiểm tra email hoặc wallet)"""
     try:
-        api_logger.info(f"Received Privy login request for email: {data.email}, wallet: {data.wallet}")
         users_collection = await get_users_collection()
         
         # Tìm user theo email hoặc wallet
@@ -267,22 +318,19 @@ async def login_with_privy(data: PrivyAuthRequest):
         # Cập nhật wallet nếu có
         if data.wallet:
             update_data["wallet"] = data.wallet
-        # Cập nhật name và avatar nếu có
-        if data.name:
-            update_data["name"] = data.name
         
         await users_collection.update_one(
             {"_id": existing_user["_id"]},
             {"$set": update_data}
         )
         updated_user = await users_collection.find_one({"_id": existing_user["_id"]})
-        api_logger.info(f"Updated user information for user: {updated_user['_id']}")
         
-        token = create_access_token({"_id": str(updated_user["_id"])})
-        return {
-            "access_token": token, 
-            "token_type": "bearer"
-        }
+        # Tạo access token
+        access_token = create_access_token({"_id": str(updated_user["_id"])})
+        
+        return TokenResponse(
+            access_token=access_token
+        )
         
     except Exception as e:
         api_logger.error(f"Error in Privy login: {str(e)}")
@@ -301,20 +349,23 @@ async def refresh_guest_user(request: Request):
     user = getattr(request.state, "user", None)
     if not user or user.get("user_type") != "guest":
         raise HTTPException(status_code=401, detail="Not authenticated as guest")
-    session_id = user.get("session_id")
-    if not session_id:
-        raise HTTPException(status_code=400, detail="Missing session_id")
+    
+    user_id = user.get("_id")
+    if not user_id:
+        raise HTTPException(status_code=400, detail="Missing user id")
 
     # Random lại kỹ năng
     kicker_skill = await get_random_skill(skills_collection, "kicker")
     goalkeeper_skill = await get_random_skill(skills_collection, "goalkeeper")
+    now = datetime.utcnow()
 
-    # Reset các trường
+    # Reset các trường theo User model
     update_data = {
         "remaining_matches": 5,
         "kicker_skills": [kicker_skill],
         "goalkeeper_skills": [goalkeeper_skill],
-        "updated_at": datetime.utcnow(),
+        "updated_at": now,
+        "last_activity": now,
         "match_history": [],
         "total_kicked": 0,
         "kicked_win": 0,
@@ -323,9 +374,27 @@ async def refresh_guest_user(request: Request):
         "level": 1,
         "total_point": 0,
         "bonus_point": 0.0,
+        "trend": "neutral",
+        "is_pro": False,
+        "is_vip": False,
+        "legend_level": 0,
+        "vip_level": "NONE",
+        "vip_amount": 0.0,
+        "vip_year": None,
+        "vip_payment_method": "NONE",
+        "basic_week_point": 0,
+        "pro_week_point": 0,
+        "vip_week_point": 0,
+        "basic_week_history": [],
+        "pro_week_history": [],
+        "vip_week_history": [],
+        "mystery_box_history": [],
+        "last_box_open": None,
+        "last_claim_matches": None,
+        "daily_tasks": {}
     }
-    await users_collection.update_one({"session_id": session_id}, {"$set": update_data})
-    updated_user = await users_collection.find_one({"session_id": session_id})
+    await users_collection.update_one({"_id": ObjectId(user_id)}, {"$set": update_data})
+    updated_user = await users_collection.find_one({"_id": ObjectId(user_id)})
     return {
         "user": User(**updated_user)
     }

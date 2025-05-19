@@ -3,7 +3,7 @@ from typing import Dict, List, Optional
 import json
 from datetime import datetime, timedelta
 import asyncio
-from database.database import get_database
+from database.database import get_database, get_chat_messages_collection
 from utils.logger import api_logger
 import httpx
 from config.settings import settings
@@ -60,8 +60,7 @@ class WaitingRoomManager:
                 "extra_skill_win": user_data.get("extra_skill_win", 0),
                 "connected_at": datetime.utcnow().isoformat()
             }
-            
-            api_logger.info(f"User {user_id} connected to waiting room")
+
             await self.broadcast_user_list()
 
         except Exception as e:
@@ -76,7 +75,6 @@ class WaitingRoomManager:
             del self.active_connections[user_id]
         if user_id in self.online_users:
             del self.online_users[user_id]
-        api_logger.info(f"Connection closed: {user_id}")
         challenge_manager.cleanup_user_challenges(user_id)
         await self.broadcast_user_list()
 
@@ -105,7 +103,6 @@ class WaitingRoomManager:
     async def broadcast_user_list(self):
         """Broadcast the list of online users to all connected clients"""
         if not self.active_connections:
-            api_logger.info('[WaitingRoom] No active connections, skip broadcast_user_list')
             return
 
         db = await get_database()
@@ -146,7 +143,6 @@ class WaitingRoomManager:
         for user_id, connection in list(self.active_connections.items()):
             try:
                 await connection.send_json(message)
-                api_logger.info(f"[WaitingRoom] Sent user_list to {user_id} ({len(online_users)} users)")
             except Exception as e:
                 # Remove disconnected user
                 disconnected_users.append(user_id)
@@ -171,15 +167,133 @@ class WaitingRoomManager:
     async def handle_message(self, websocket: WebSocket, user_id: str, message: dict):
         """Handle incoming WebSocket messages"""
         message_type = message.get("type")
-        api_logger.info(f"[WaitingRoom] handle_message: type={message_type}, from={user_id}, to={message.get('to')}")
-        print(f"[WaitingRoom] handle_message: type={message_type}, from={user_id}, to={message.get('to')}")
+        print(f"[WaitingRoom] handle_message: Received message type={message_type}, from={user_id}, to={message.get('to')}")
         
-        if message_type == "challenge_request":
+        if message_type == "chat_message":
+            # Handle chat message
+            chat_message = message.get("message", "")
+            if chat_message:
+                # Get sender info (from online_users for current info)
+                sender_info = self.online_users.get(user_id, {})
+                
+                # Create message object to SAVE TO DATABASE (only store ID)
+                message_obj_db = {
+                    "from_id": user_id,
+                    "message": chat_message,
+                    "timestamp": datetime.utcnow()
+                }
+                
+                # Save to database
+                chat_messages = await get_chat_messages_collection()
+                await chat_messages.insert_one(message_obj_db)
+                
+                # Create message object to BROADCAST (include current name/avatar)
+                message_obj_broadcast = {
+                    "type": "chat_message",
+                    "from": {
+                        "id": user_id,
+                        "name": sender_info.get("name", "Anonymous"),
+                        "avatar": sender_info.get("avatar", "")
+                    },
+                    "message": chat_message,
+                    "timestamp": message_obj_db["timestamp"].isoformat()
+                }
+                
+                # Broadcast chat message to all users
+                await self.broadcast(message_obj_broadcast)
+        
+        elif message_type == "get_chat_history":
+            api_logger.info(f"[WaitingRoom] Received get_chat_history request from {user_id}")
+            try:
+                chat_messages_collection = await get_chat_messages_collection()
+                # Get last 50 messages
+                messages_from_db = await chat_messages_collection.find().sort("timestamp", -1).limit(50).to_list(length=50)
+                
+                api_logger.info(f"[WaitingRoom] Fetched {len(messages_from_db)} messages from DB for history.")
+                if not messages_from_db:
+                    api_logger.info("[WaitingRoom] No chat history found in DB.")
+                    # Send empty history if none found
+                    await self.send_personal_message({"type": "chat_history", "messages": []}, user_id)
+                    return # Exit function if no messages
+
+                messages_from_db.reverse()
+
+                # Populate sender info for historical messages
+                populated_messages = []
+                users_collection = await get_database()
+
+                for msg_db in messages_from_db:
+                    api_logger.info(f"[WaitingRoom] Processing DB message: {msg_db.get('_id')}") # Log message ID for tracking
+
+                    from_id = msg_db.get("from_id")
+                    if not from_id:
+                        api_logger.warning(f"[WaitingRoom] DB message {msg_db.get('_id')} is missing from_id! Skipping.")
+                        continue # Skip message if from_id is missing
+
+                    api_logger.info(f"[WaitingRoom] Message {msg_db.get('_id')}: from_id={from_id}")
+
+                    # First check if user is online
+                    sender_info = self.online_users.get(from_id)
+                    
+                    if sender_info:
+                        api_logger.info(f"[WaitingRoom] Message {msg_db.get('_id')}: Found user {from_id} in online_users. Info: {sender_info}")
+                        processed_sender_info = {
+                            "id": sender_info.get("id", from_id),
+                            "name": sender_info.get("name", "Anonymous"),
+                            "avatar": sender_info.get("avatar", "")
+                        }
+                    else:
+                        api_logger.info(f"[WaitingRoom] Message {msg_db.get('_id')}: User {from_id} not online, fetching from DB")
+                        try:
+                            # Query users collection using ObjectId
+                            user_data = await users_collection.find_one({"_id": ObjectId(from_id)})
+                            if user_data:
+                                processed_sender_info = {
+                                    "id": str(user_data["_id"]),
+                                    "name": user_data.get("name", "Anonymous"),
+                                    "avatar": user_data.get("avatar", ""),
+                                    "user_type": user_data.get("user_type", "user"),
+                                    "role": user_data.get("role", "user"),
+                                    "is_active": user_data.get("is_active", True),
+                                    "is_verified": user_data.get("is_verified", False),
+                                    "trend": user_data.get("trend", "neutral"),
+                                    "level": user_data.get("level", 1),
+                                    "is_pro": user_data.get("is_pro", False)
+                                }
+                                api_logger.info(f"[WaitingRoom] Message {msg_db.get('_id')}: Found user {from_id} in DB. Info: {processed_sender_info}")
+                            else:
+                                processed_sender_info = {"id": from_id, "name": "Unknown User", "avatar": ""}
+                                api_logger.warning(f"[WaitingRoom] Message {msg_db.get('_id')}: User {from_id} not found in DB!")
+                        except Exception as e:
+                            processed_sender_info = {"id": from_id, "name": "Error User", "avatar": ""}
+                            api_logger.error(f"[WaitingRoom] Message {msg_db.get('_id')}: Error fetching user {from_id} from DB: {e}")
+
+                    # Use the processed_sender_info for the message
+                    populated_messages.append({
+                        "type": "chat_message",
+                        "from": processed_sender_info,
+                        "message": msg_db["message"],
+                        "timestamp": msg_db["timestamp"].isoformat()
+                    })
+
+                api_logger.info(f"[WaitingRoom] Finished populating {len(populated_messages)} messages for history.")
+                # Log a sample of the populated messages to check format before sending
+                api_logger.info(f"[WaitingRoom] Sending chat history to {user_id}. Sample message (first 3): {populated_messages[:3]}")
+                await self.send_personal_message({
+                    "type": "chat_history",
+                    "messages": populated_messages
+                }, user_id)
+
+            except Exception as e:
+                api_logger.error(f"[WaitingRoom] Error in get_chat_history handler for user {user_id}: {e}")
+                # Optionally send an error message back to the client
+                await self.send_personal_message({"type": "error", "message": "Failed to load chat history."}, user_id)
+        
+        elif message_type == "challenge_request":
             to_id = message.get("to")
             if to_id:
                 await challenge_manager.handle_challenge_request(websocket, user_id, to_id, self.active_connections)
             else:
-                api_logger.info(f"[WaitingRoom] challenge_request missing 'to' field: {message}")
                 print(f"[WaitingRoom] challenge_request missing 'to' field: {message}")
         
         elif message_type == "challenge_accept":
@@ -192,6 +306,13 @@ class WaitingRoomManager:
             if to_id:
                 await challenge_manager.handle_challenge_response(websocket, user_id, to_id, False, self.active_connections)
         
+        elif message_type == "user_updated":
+            # Update user info in online_users
+            if user_id in self.online_users:
+                self.online_users[user_id].update(message.get("user", {}))
+                # Broadcast updated user list to all clients
+                await self.broadcast_user_list()
+        
         elif message_type == "ping":
             await websocket.send_json({"type": "pong"})
 
@@ -202,7 +323,6 @@ async def validate_user(websocket: WebSocket) -> dict:
     try:
         # Lấy token từ query params hoặc header
         access_token = websocket.query_params.get("access_token") or websocket.headers.get("authorization", "").replace("Bearer ", "")
-        api_logger.info(f"Received access token: {access_token[:10]}...")
         
         if not access_token:
             api_logger.error("No access token provided")
@@ -217,8 +337,7 @@ async def validate_user(websocket: WebSocket) -> dict:
             if exp and datetime.utcnow().timestamp() > exp:
                 api_logger.error("Token expired")
                 raise HTTPException(status_code=401, detail="Token expired")
-                
-            api_logger.info(f"Decoded token data - user_id: {user_id}")
+
             
             if not user_id:
                 api_logger.error("No user_id in token")
@@ -233,8 +352,7 @@ async def validate_user(websocket: WebSocket) -> dict:
         if not user_data:
             api_logger.error(f"User not found with id: {user_id}")
             raise HTTPException(status_code=401, detail="User not found")
-        
-        api_logger.info(f"User validated successfully: {user_id}")
+
         return user_data
     except Exception as e:
         api_logger.error(f"Error validating user: {str(e)}")
@@ -242,39 +360,32 @@ async def validate_user(websocket: WebSocket) -> dict:
 
 async def websocket_endpoint(websocket: WebSocket):
     try:
-        api_logger.info("New WebSocket connection attempt")
         
         # Validate user from WebSocket connection
         user_data = await validate_user(websocket)
         user_id = str(user_data["_id"])
-        api_logger.info(f"User validated, connecting: {user_id}")
         
         await manager.connect(websocket, user_id, user_data)
-        api_logger.info(f"WebSocket connected for user: {user_id}")
         
         # Send user info
         await manager.send_personal_message({
             "type": "me",
             "user": manager.online_users[user_id]
         }, user_id)
-        api_logger.info(f"User info sent to: {user_id}")
         
         # Broadcast user joined
         await manager.broadcast({
             "type": "user_joined",
             "user": manager.online_users[user_id]
         }, user_id)
-        api_logger.info(f"User joined broadcast sent for: {user_id}")
         
         # Handle messages
         while True:
             try:
                 data = await websocket.receive_text()
                 message = json.loads(data)
-                api_logger.info(f"Received message from {user_id}: {message}")
                 await manager.handle_message(websocket, user_id, message)
             except WebSocketDisconnect:
-                api_logger.info(f"WebSocket disconnected for user: {user_id}")
                 break
             except Exception as e:
                 api_logger.error(f"Error handling message from {user_id}: {str(e)}")
@@ -291,4 +402,3 @@ async def websocket_endpoint(websocket: WebSocket):
                 "user_id": user_id,
                 "timestamp": datetime.utcnow().isoformat()
             })
-            api_logger.info(f"Cleanup completed for user: {user_id}") 
