@@ -23,6 +23,7 @@ class JWTAuthMiddleware(BaseHTTPMiddleware):
             "/api/skills/type/kicker",
             "/api/skills/type/goalkeeper",
             "/api/leaderboard",
+            "/api/users/{user_id}",
         ]:
             return await call_next(request)
 

@@ -31,6 +31,9 @@ class WebSocketService {
   private reconnectAttempts = 0;
   private maxReconnectAttempts = 5;
   private reconnectTimeout: NodeJS.Timeout | null = null;
+  private heartbeatInterval: NodeJS.Timeout | null = null;
+  private messageQueue: WebSocketMessage[] = [];
+  private isConnecting = false;
 
   constructor() {
     // Initialize callback sets
@@ -59,6 +62,24 @@ class WebSocketService {
     this.disconnect = this.disconnect.bind(this);
     this.sendMessage = this.sendMessage.bind(this);
     this.handleMessage = this.handleMessage.bind(this);
+    this.startHeartbeat = this.startHeartbeat.bind(this);
+    this.stopHeartbeat = this.stopHeartbeat.bind(this);
+  }
+
+  private startHeartbeat() {
+    this.stopHeartbeat(); // Clear any existing heartbeat
+    this.heartbeatInterval = setInterval(() => {
+      if (this.ws?.readyState === WebSocket.OPEN) {
+        this.sendMessage({ type: 'ping' });
+      }
+    }, 30000); // Send ping every 30 seconds
+  }
+
+  private stopHeartbeat() {
+    if (this.heartbeatInterval) {
+      clearInterval(this.heartbeatInterval);
+      this.heartbeatInterval = null;
+    }
   }
 
   public setCallbacks(callbacks: Partial<WebSocketCallbacks>) {
@@ -84,63 +105,85 @@ class WebSocketService {
   }
 
   public connect() {
-    if (this.ws?.readyState === WebSocket.OPEN) {
-      console.log('WebSocket already connected');
+    if (this.isConnecting || this.ws?.readyState === WebSocket.OPEN) {
       return;
     }
+
+    this.isConnecting = true;
 
     // Get access token from localStorage
     const accessToken = localStorage.getItem('access_token');
     if (!accessToken) {
       console.error('No access token found');
       this.callbacks.onError.forEach(callback => callback('No access token found'));
+      this.isConnecting = false;
       return;
     }
 
     // Connect to WebSocket with access token
     const wsUrl = `${API_ENDPOINTS.ws.waitingRoom}?access_token=${accessToken}`;
-    console.log('Connecting to WebSocket:', wsUrl);
     
-    this.ws = new WebSocket(wsUrl);
+    try {
+      this.ws = new WebSocket(wsUrl);
 
-    this.ws.onopen = () => {
-      console.log('WebSocket connected');
-      this.reconnectAttempts = 0;
-      this.callbacks.onConnect.forEach(callback => callback());
-    };
-
-    this.ws.onclose = (event) => {
-      console.log('WebSocket closed:', event.code, event.reason);
-      this.callbacks.onDisconnect.forEach(callback => callback());
-      
-      // Attempt to reconnect
-      if (this.reconnectAttempts < this.maxReconnectAttempts) {
-        this.reconnectAttempts++;
-        const delay = Math.min(1000 * Math.pow(2, this.reconnectAttempts), 30000);
-        console.log(`Attempting to reconnect in ${delay}ms...`);
+      this.ws.onopen = () => {
+        console.log('WebSocket connected');
+        this.isConnecting = false;
+        this.reconnectAttempts = 0;
+        this.startHeartbeat();
+        this.callbacks.onConnect.forEach(callback => callback());
         
-        this.reconnectTimeout = setTimeout(() => {
-          this.connect();
-        }, delay);
-      }
-    };
+        // Send any queued messages
+        while (this.messageQueue.length > 0) {
+          const message = this.messageQueue.shift();
+          if (message) {
+            this.sendMessage(message);
+          }
+        }
+      };
 
-    this.ws.onerror = (error) => {
-      console.error('WebSocket error:', error);
-      this.callbacks.onError.forEach(callback => callback('Connection error - Please refresh the page'));
-    };
+      this.ws.onclose = (event) => {
+        console.log('WebSocket closed:', event.code, event.reason);
+        this.isConnecting = false;
+        this.stopHeartbeat();
+        this.callbacks.onDisconnect.forEach(callback => callback());
+        
+        // Attempt to reconnect
+        if (this.reconnectAttempts < this.maxReconnectAttempts) {
+          this.reconnectAttempts++;
+          const delay = Math.min(1000 * Math.pow(2, this.reconnectAttempts), 30000);
+          console.log(`Attempting to reconnect in ${delay}ms...`);
+          
+          this.reconnectTimeout = setTimeout(() => {
+            this.connect();
+          }, delay);
+        }
+      };
 
-    this.ws.onmessage = (event) => {
-      try {
-        const message = JSON.parse(event.data);
-        this.handleMessage(message);
-      } catch (error) {
-        console.error('Error parsing WebSocket message:', error);
-      }
-    };
+      this.ws.onerror = (error) => {
+        console.error('WebSocket error:', error);
+        this.isConnecting = false;
+        this.callbacks.onError.forEach(callback => callback('Connection error - Please refresh the page'));
+      };
+
+      this.ws.onmessage = (event) => {
+        try {
+          const message = JSON.parse(event.data);
+          this.handleMessage(message);
+        } catch (error) {
+          console.error('Error parsing WebSocket message:', error);
+        }
+      };
+    } catch (error) {
+      console.error('Error creating WebSocket connection:', error);
+      this.isConnecting = false;
+      this.callbacks.onError.forEach(callback => callback('Failed to establish connection'));
+    }
   }
 
   public disconnect() {
+    this.stopHeartbeat();
+    
     if (this.reconnectTimeout) {
       clearTimeout(this.reconnectTimeout);
       this.reconnectTimeout = null;
@@ -158,10 +201,18 @@ class WebSocketService {
 
   public sendMessage(message: WebSocketMessage) {
     if (this.ws?.readyState === WebSocket.OPEN) {
-      this.ws.send(JSON.stringify(message));
+      try {
+        this.ws.send(JSON.stringify(message));
+      } catch (error) {
+        console.error('Error sending WebSocket message:', error);
+        this.callbacks.onError.forEach(callback => callback('Failed to send message'));
+      }
     } else {
-      console.error('WebSocket is not connected');
-      this.callbacks.onError.forEach(callback => callback('WebSocket is not connected'));
+      // Queue message for later if not connected
+      this.messageQueue.push(message);
+      if (!this.isConnecting) {
+        this.connect();
+      }
     }
   }
 

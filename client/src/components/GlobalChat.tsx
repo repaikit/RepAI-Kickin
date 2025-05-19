@@ -7,15 +7,34 @@ import { Button } from '@/components/ui/button';
 import { Send, Users, Smile, PaperclipIcon, ChevronDown } from 'lucide-react';
 import { format } from 'date-fns';
 import { AnimatePresence, motion } from 'framer-motion';
+import { API_ENDPOINTS, defaultFetchOptions } from '@/config/api';
 
 interface ChatMessage {
+  type: string;
+  from_id: string;
+  message: string;
+  timestamp: string;
   from: {
     id: string;
     name: string;
     avatar: string;
+    user_type: string;
+    role: string;
+    is_active: boolean;
+    is_verified: boolean;
+    trend: string;
+    level: number;
+    is_pro: boolean;
+    position: string;
+    total_point: number;
+    bonus_point: number;
+    total_kicked: number;
+    kicked_win: number;
+    total_keep: number;
+    keep_win: number;
+    legend_level: number;
+    vip_level: string;
   };
-  message: string;
-  timestamp: string;
 }
 
 interface UpdatedUser {
@@ -23,6 +42,32 @@ interface UpdatedUser {
   name?: string;
   avatar?: string;
   // add other fields if needed from the user_updated message
+}
+
+interface MessageGroup {
+  sender: {
+    id: string;
+    name: string;
+    avatar: string;
+    user_type: string;
+    role: string;
+    is_active: boolean;
+    is_verified: boolean;
+    trend: string;
+    level: number;
+    is_pro: boolean;
+    position: string;
+    total_point: number;
+    bonus_point: number;
+    total_kicked: number;
+    kicked_win: number;
+    total_keep: number;
+    keep_win: number;
+    legend_level: number;
+    vip_level: string;
+  };
+  messages: ChatMessage[];
+  timestamp: string;
 }
 
 export default function GlobalChat() {
@@ -49,27 +94,77 @@ export default function GlobalChat() {
   };
 
   useEffect(() => {
-    const handleMessage = (message: any) => {
-      console.log('GlobalChat received message:', message);
-      if (message.type === 'chat_history') {
-        // The messages are already in the correct format, no need to transform
-        setMessages(message.messages);
-        console.log('Chat History set:', message.messages);
-        setTimeout(scrollToBottom, 100);
-
-      } else if (message.type === 'chat_message') {
-        setMessages(prev => {
-          const newMessages = [...prev, message];
-          console.log('New Chat Message added and set:', message);
-          return newMessages;
-        });
-        if (isAtBottom) {
-          setTimeout(scrollToBottom, 100);
-        } else {
-          // If not at the bottom, show the new message button
-          setShowNewMessageButton(true);
+    const fetchChatHistory = async () => {
+      try {
+        const token = localStorage.getItem('access_token');
+        if (!token) {
+          console.error('Access token not found!');
+          return;
         }
+        const response = await fetch(API_ENDPOINTS.chat.getHistory, {
+          method: 'GET',
+          headers: {
+            ...defaultFetchOptions.headers,
+            'Authorization': `Bearer ${token}`,
+          },
+        });
+        const data = await response.json();
+        if (data.success) {
+          // Transform messages to ensure they have the required from field
+          const transformedMessages = data.data.messages.map((msg: any) => ({
+            ...msg,
+            from: msg.from || {
+              id: msg.from_id,
+              name: 'Unknown User',
+              avatar: '',
+              user_type: 'user',
+              role: 'user',
+              is_active: true,
+              is_verified: false,
+              trend: 'neutral',
+              level: 1,
+              is_pro: false,
+              position: 'both',
+              total_point: 0,
+              bonus_point: 0,
+              total_kicked: 0,
+              kicked_win: 0,
+              total_keep: 0,
+              keep_win: 0,
+              legend_level: 0,
+              vip_level: 'NONE'
+            }
+          }));
+          setMessages(transformedMessages);
+          // Use requestAnimationFrame for smoother scrolling
+          requestAnimationFrame(() => {
+            scrollToBottom();
+          });
+        }
+      } catch (error) {
+        console.error('Error fetching chat history:', error);
+      }
+    };
 
+    const handleMessage = (message: any) => {
+      if (message.type === 'chat_message') {
+        // Ensure the incoming message has the correct structure
+        const incomingMessage: ChatMessage = {
+          type: message.type,
+          from_id: String(message.from_id),
+          message: message.message,
+          timestamp: message.timestamp,
+          from: message.from
+        };
+
+        setMessages(prev => {
+          const newMessages = [...prev, incomingMessage];
+          // Sort messages by timestamp
+          return newMessages.sort((a, b) => 
+            new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+          );
+        });
+        // KHÔNG scroll ở đây nữa, scroll sẽ được xử lý trong useEffect bên dưới
       } else if (message.type === 'user_count') {
         setUserCount(message.count);
       } else if (message.type === 'typing_status') {
@@ -79,19 +174,21 @@ export default function GlobalChat() {
 
     const handleConnect = () => {
       console.log('GlobalChat: WebSocket connected');
-      // Request chat history after connection is established
-      console.log('GlobalChat: Requesting chat history...');
-      websocketService.sendMessage({ type: 'get_chat_history' });
-      console.log('GlobalChat: get_chat_history message sent.');
+      fetchChatHistory();
     };
 
     const handleUserUpdated = (updatedUser: UpdatedUser) => {
-      console.log('GlobalChat: User updated via WebSocket', updatedUser);
-      // Update the name and avatar in existing messages from this user
       setMessages(prevMessages =>
         prevMessages.map(msg =>
-          msg.from.id === updatedUser.id
-            ? { ...msg, from: { ...msg.from, name: updatedUser.name ?? msg.from.name, avatar: updatedUser.avatar ?? msg.from.avatar } }
+          msg.from_id === updatedUser.id
+            ? {
+                ...msg,
+                from: {
+                  ...msg.from,
+                  name: updatedUser.name || msg.from.name,
+                  avatar: updatedUser.avatar || msg.from.avatar,
+                }
+              }
             : msg
         )
       );
@@ -103,34 +200,29 @@ export default function GlobalChat() {
           setUserCount(users.length);
         }
       },
-      onChatHistory: handleMessage,
       onChatMessage: handleMessage,
       onConnect: handleConnect,
       onUserUpdated: handleUserUpdated
     });
 
     if (websocketService.isConnected()) {
-        console.log('GlobalChat: WebSocket already connected, requesting history immediately.');
-        handleConnect(); // Call handleConnect if already connected
+      fetchChatHistory();
     }
 
     return () => {
       websocketService.removeCallbacks({
-        onChatHistory: handleMessage,
         onChatMessage: handleMessage,
         onConnect: handleConnect,
         onUserUpdated: handleUserUpdated
       });
     };
-  }, [isAtBottom]); // Add isAtBottom as a dependency
+  }, []); // Remove isAtBottom dependency to prevent unnecessary re-renders
 
-  // Handle scrolling to update isAtBottom state
+  // Optimize scroll handling
   const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
     const { scrollTop, clientHeight, scrollHeight } = e.currentTarget;
-    const atBottom = scrollHeight - scrollTop <= clientHeight + 1; // Add a small buffer
+    const atBottom = scrollHeight - scrollTop <= clientHeight + 5;
     setIsAtBottom(atBottom);
-
-    // Hide new message button if user manually scrolls to bottom
     if (atBottom) {
       setShowNewMessageButton(false);
     }
@@ -138,33 +230,40 @@ export default function GlobalChat() {
 
   const handleSendMessage = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newMessage.trim()) return;
+    if (!newMessage.trim() || !user) return;
 
+    // Chỉ gửi lên server, KHÔNG thêm vào state ở đây nữa
     websocketService.sendMessage({
       type: 'chat_message',
       message: newMessage.trim()
     });
 
     setNewMessage('');
-    // After sending message, scroll to bottom and hide button
-    setTimeout(scrollToBottom, 100);
-    setShowNewMessageButton(false);
+    // Có thể scrollToBottom nếu muốn
+    requestAnimationFrame(() => {
+      scrollToBottom();
+      setShowNewMessageButton(false);
+    });
   };
 
-  const groupedMessages = messages.reduce((groups: any[], message, index) => {
+  const groupedMessages = messages.reduce<MessageGroup[]>((groups, message, index) => {
     const prevMessage = messages[index - 1];
 
+    // Explicitly cast IDs to string for reliable comparison
+    const currentUserId = user?._id ? String(user._id) : undefined;
+    const messageSenderId = String(message.from_id); // Use from_id for grouping as it's the source
+
     const shouldGroup = prevMessage &&
-                        prevMessage.from.id === message.from.id &&
-                        new Date(message.timestamp).getTime() - new Date(prevMessage.timestamp).getTime() < 60000; // 1 minute threshold
+      String(prevMessage.from_id) === messageSenderId && // Ensure both are strings
+      new Date(message.timestamp).getTime() - new Date(prevMessage.timestamp).getTime() < 60000;
 
     if (shouldGroup) {
       groups[groups.length - 1].messages.push(message);
     } else {
       groups.push({
-        sender: message.from,
+        sender: message.from, // Use the full sender info
         messages: [message],
-        timestamp: message.timestamp
+        timestamp: message.timestamp // Use message timestamp for group timestamp
       });
     }
 
@@ -190,6 +289,18 @@ export default function GlobalChat() {
       isTyping: e.target.value.length > 0
     });
   };
+
+  // Effect: Khi messages thay đổi, nếu đang ở cuối thì scroll xuống cuối, nếu không thì hiện nút tin nhắn mới
+  useEffect(() => {
+    if (isAtBottom) {
+      requestAnimationFrame(() => {
+        scrollToBottom();
+        setShowNewMessageButton(false);
+      });
+    } else {
+      setShowNewMessageButton(true);
+    }
+  }, [messages]);
 
   return (
     <section className="w-full bg-gradient-to-br from-slate-50 to-slate-100 rounded-xl shadow-lg p-2 flex flex-col h-[500px] border border-slate-200">
@@ -238,7 +349,9 @@ export default function GlobalChat() {
       <ScrollArea className="flex-1 px-4 py-2" ref={scrollAreaRef} onScroll={handleScroll}>
         <div className="space-y-4">
           {groupedMessages.map((group, groupIndex) => {
-            const isMyMessage = group.sender.id === user?._id;
+            // Ensure user?._id is treated as a string for comparison
+            const currentUserId = user?._id ? String(user._id) : undefined;
+            const isMyMessage = group.sender.id === currentUserId;
             return (
               <motion.div
                 key={groupIndex}
@@ -247,7 +360,6 @@ export default function GlobalChat() {
                 transition={{ duration: 0.3 }}
                 className={`flex ${isMyMessage ? 'justify-end' : 'justify-start'}`}
               >
-
                 <div className={`flex max-w-[80%] ${isMyMessage ? 'flex-row-reverse' : 'flex-row'}`}>
                   <div className={`flex-shrink-0 ${isMyMessage ? 'ml-2' : 'mr-2'}`}>
                     <div className="relative">
