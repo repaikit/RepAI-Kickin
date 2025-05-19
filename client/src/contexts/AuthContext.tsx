@@ -5,32 +5,32 @@ import { usePrivy } from '@privy-io/react-auth';
 
 interface User {
   _id: string;
-  user_type: string;
-  email?: string;
-  wallet: string;
   name: string;
-  avatar?: string;
-  session_id?: string;
-  kicker_skills?: string[];
-  goalkeeper_skills?: string[];
-  remaining_matches?: number;
-  total_kicked?: number;
-  kicked_win?: number;
-  total_keep?: number;
-  keep_win?: number;
-  total_point?: number;
-  total_extra_skill?: number;
-  extra_skill_win?: number;
-  is_pro?: boolean;
-  created_at?: string;
-  updated_at?: string;
-  last_login?: string;
-  level?: number;
-  legend_level?: number;
-  vip_level?: string;
+  email: string;
+  avatar: string;
+  user_type: string;
+  role: string;
+  is_active: boolean;
+  is_verified: boolean;
+  trend: string;
+  level: number;
+  is_pro: boolean;
+  position: string;
+  total_point: number;
+  bonus_point: number;
+  total_kicked: number;
+  kicked_win: number;
+  total_keep: number;
+  keep_win: number;
+  legend_level: number;
+  vip_level: string;
+  remaining_matches: number;
+  kicker_skills: string[];
+  goalkeeper_skills: string[];
+  wallet?: string;
   is_vip?: boolean;
+  created_at?: string;
   last_activity?: string;
-  position?: string;
 }
 
 interface AuthContextType {

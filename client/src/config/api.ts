@@ -52,6 +52,7 @@ export const API_ENDPOINTS = {
     updateProfile: `${API_BASE_URL}/api/me`,
 
     getById: (userId: string) => `${API_BASE_URL}/api/users/${userId}`,
+    
     getByEmail: (email: string) => `${API_BASE_URL}/api/users/email/${email}`,
     getByWallet: (wallet: string) => `${API_BASE_URL}/api/users/wallet/${wallet}`,
     deleteById: (userId: string) => `${API_BASE_URL}/api/users/${userId}`,
@@ -83,6 +84,11 @@ export const API_ENDPOINTS = {
   daily_tasks: {
     get: `${API_BASE_URL}/api/tasks/daily`,
     claim: `${API_BASE_URL}/api/tasks/daily/claim`,
+  },
+
+  // Chat APIs
+  chat: {
+    getHistory: `${API_BASE_URL}/api/chat/history`,
   },
 };
 

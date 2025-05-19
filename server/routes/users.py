@@ -399,4 +399,22 @@ async def refresh_guest_user(request: Request):
         "user": User(**updated_user)
     }
 
+@router.get("/users/{user_id}", response_model=User)
+async def get_user_by_id(user_id: str):
+    """
+    Lấy thông tin user theo ID
+    """
+    try:
+        users_collection = await get_users_collection()
+        user = await users_collection.find_one({"_id": ObjectId(user_id)})
+        
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+            
+        return User(**user)
+        
+    except Exception as e:
+        api_logger.error(f"Error getting user by ID {user_id}: {str(e)}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
 
