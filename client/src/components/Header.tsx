@@ -5,6 +5,8 @@ import { API_ENDPOINTS, defaultFetchOptions } from "@/config/api";
 import { Skeleton } from "@/components/ui/skeleton";
 import { usePrivy } from "@privy-io/react-auth";
 import TaskMysteryBoxDropdown from "./TaskMysteryBoxDropdown";
+import { websocketService } from '@/services/websocket';
+import { toast } from "sonner";
 
 export default function Header() {
   const { user, isAuthenticated, isLoading, logout, checkAuth } = useAuth();
@@ -45,7 +47,7 @@ export default function Header() {
     try {
       const token = localStorage.getItem('access_token');
       if (!token) {
-        alert('Access token not found!');
+        toast.error('Access token not found!');
         return;
       }
       const response = await fetch(API_ENDPOINTS.users.refreshGuest, {
@@ -61,9 +63,23 @@ export default function Header() {
       }
       const data = await response.json();
       await checkAuth();
-      alert('Refreshed turn and skills for guest!');
+      
+      // Emit websocket event to update waiting room
+      websocketService.sendMessage({
+        type: 'user_updated',
+        user: data.user
+      });
+      
+      toast.success(
+        <div className="flex items-center space-x-2">
+          <svg className="w-5 h-5 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+          </svg>
+          <span>Turn refreshed successfully!</span>
+        </div>
+      );
     } catch (err) {
-      alert('Failed to refresh turn!');
+      toast.error('Failed to refresh turn!');
     }
   };
 

@@ -8,6 +8,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
+import BotCard from './BotCard';
+import { API_ENDPOINTS, defaultFetchOptions } from "@/config/api";
 
 interface OnlineUser {
   id: string;
@@ -54,6 +56,10 @@ export default function WaitingRoom() {
   const [matchResult, setMatchResult] = useState<any | null>(null);
   const [pendingChallengeUserId, setPendingChallengeUserId] = useState<string | null>(null);
   const challengeTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const [botSkills, setBotSkills] = useState<{kicker_skills: string[], goalkeeper_skills: string[]}>({
+    kicker_skills: [],
+    goalkeeper_skills: []
+  });
 
   // Handle tab change
   const handleTabChange = (value: string) => {
@@ -67,7 +73,6 @@ export default function WaitingRoom() {
     if (!user) return;
 
     const handleUserList = (users: OnlineUser[]) => {
-      console.log('Received user list:', users);
       setOnlineUsers(users);
       setIsLoading(false);
     };
@@ -105,24 +110,20 @@ export default function WaitingRoom() {
       onUserUpdated: handleUserUpdated,
       onError: handleError,
       onConnect: () => {
-        console.log('WebSocket connected in WaitingRoom');
         setIsConnected(true);
         setError(null);
       },
       onDisconnect: () => {
-        console.log('WebSocket disconnected in WaitingRoom');
         setIsLoading(true);
         setIsConnected(false);
       },
       onChallengeInvite: (from, fromName) => {
-        console.log('Received challenge_invite', from, fromName);
         setChallengeInvite({ from, from_name: fromName });
       },
       onChallengeAccepted: (matchId) => {
         setChallengeStatus('Your challenge was accepted! Starting match...');
         clearChallengeTimeout();
         toast.success('Challenge accepted! Starting match...');
-        // TODO: Navigate to match page
       },
       onChallengeDeclined: () => {
         setChallengeStatus('Your challenge was declined.');
@@ -135,7 +136,6 @@ export default function WaitingRoom() {
       }
     });
 
-    // Cleanup function
     return () => {
       websocketService.removeCallbacks({
         onUserList: handleUserList,
@@ -144,17 +144,15 @@ export default function WaitingRoom() {
         onUserUpdated: handleUserUpdated,
         onError: handleError,
         onConnect: () => {
-          console.log('WebSocket connected in WaitingRoom');
+
         },
         onDisconnect: () => {
-          console.log('WebSocket disconnected in WaitingRoom');
           setIsLoading(true);
         }
       });
     };
   }, [user]);
 
-  // Timeout nếu không có phản hồi sau 10s
   useEffect(() => {
     if (pendingChallengeUserId) {
       const timeout = setTimeout(() => {
@@ -166,7 +164,6 @@ export default function WaitingRoom() {
     }
   }, [pendingChallengeUserId]);
 
-  // Filter users based on active tab
   const filteredUsers = onlineUsers.filter(player => {
     switch (activeTab) {
       case 'basic':
@@ -224,6 +221,38 @@ export default function WaitingRoom() {
       return () => clearTimeout(timeout);
     }
   }, [challengeStatus]);
+
+  // Add new effect to fetch bot skills
+  useEffect(() => {
+    const fetchBotSkills = async () => {
+      try {
+        const token = localStorage.getItem('access_token');
+        if (!token) {
+          alert('Access token not found!');
+          return;
+        }
+        const response = await fetch(API_ENDPOINTS.bot.getSkills, {
+          method: 'GET',
+          headers: {
+            ...defaultFetchOptions.headers,
+            'Authorization': `Bearer ${token}`,
+          },
+        });
+        const data = await response.json();
+        setBotSkills(data);
+      } catch (error) {
+        console.error('Error fetching bot skills:', error);
+      }
+    };
+    fetchBotSkills();
+  }, []);
+
+  // Add handler for playing with bot
+  const handlePlayWithBot = () => {
+    websocketService.sendChallengeRequest('bot');
+    toast.success('Starting match with Bot...');
+    // TODO: Navigate to match page
+  };
 
   if (!user) {
     return null;
@@ -330,6 +359,11 @@ export default function WaitingRoom() {
         <TabsContent value="basic">
           <div className="bg-white/80 rounded-xl p-6 min-h-[200px] shadow-inner">
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+              {/* Add Bot Card at the beginning */}
+              <BotCard 
+                onPlayWithBot={handlePlayWithBot}
+              />
+              
               {isLoading ? (
                 Array(8).fill(0).map((_, index) => (
                   <Card key={index} className="p-4">

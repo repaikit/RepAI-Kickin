@@ -44,3 +44,6 @@ redis>=4.0.0,<4.1.0
 
 #web3
 web3==7.11.0
+
+# Added from the code block
+APScheduler==3.10.4

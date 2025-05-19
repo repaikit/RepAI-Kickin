@@ -19,6 +19,10 @@ export const API_ENDPOINTS = {
     getHistory: `${API_BASE_URL}/api/history`,
   },
 
+  bot: {
+    getSkills: `${API_BASE_URL}/api/bot/skills`,
+  },
+
   task_claim_matches: {
     getStatus: `${API_BASE_URL}/api/tasks/claim-matches-status`,
     claimMatches: `${API_BASE_URL}/api/tasks/claim-matches`,
@@ -34,6 +38,7 @@ export const API_ENDPOINTS = {
     authWithPrivyLogin: `${API_BASE_URL}/api/auth/privy/login`,
     authWithPrivyRegister: `${API_BASE_URL}/api/auth/privy/register`,
 
+    refreshToken: `${API_BASE_URL}/api/auth/refresh`,
     // Upgrade Guest
     upgradeGuest: `${API_BASE_URL}/api/upgrade`,
 
@@ -44,11 +49,11 @@ export const API_ENDPOINTS = {
     leaderboard: `${API_BASE_URL}/api/leaderboard`,
     deleteMe: `${API_BASE_URL}/api/me`,
 
+    updateProfile: `${API_BASE_URL}/api/me`,
+
     getById: (userId: string) => `${API_BASE_URL}/api/users/${userId}`,
-    getByPrivyId: (privyId: string) => `${API_BASE_URL}/api/users/privy/${privyId}`,
     getByEmail: (email: string) => `${API_BASE_URL}/api/users/email/${email}`,
     getByWallet: (wallet: string) => `${API_BASE_URL}/api/users/wallet/${wallet}`,
-    updateById: (userId: string) => `${API_BASE_URL}/api/users/${userId}`,
     deleteById: (userId: string) => `${API_BASE_URL}/api/users/${userId}`,
   },
 
@@ -56,6 +61,7 @@ export const API_ENDPOINTS = {
   skills: {
     getByType: (skillType: string) => `${API_BASE_URL}/api/skills/type/${skillType}`,
     getUserSkills: () => `${API_BASE_URL}/api/skills/user`,
+    buySkill: `${API_BASE_URL}/api/buy_skill`,
   },
 
   // Matches APIs
@@ -71,6 +77,7 @@ export const API_ENDPOINTS = {
   // WebSocket endpoints
   ws: {
     waitingRoom: `${WS_BASE_URL}/ws/waitingroom`,
+    notifications: `${WS_BASE_URL}/ws/notifications`,
   },
 
   daily_tasks: {

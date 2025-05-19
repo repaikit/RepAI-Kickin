@@ -39,7 +39,6 @@ class Database:
                         serverSelectionTimeoutMS=5000
                     )
                     self._db = self._client[DATABASE_NAME]
-                    api_logger.info("Successfully connected to MongoDB")
         return self._db
 
     async def close(self):
@@ -47,7 +46,6 @@ class Database:
             # self._client.close()
             self._client = None
             self._db = None
-            api_logger.info("Database connection closed")
 
 # Global database instance
 _db_instance = None
@@ -84,8 +82,7 @@ async def init_db():
         await db.matches.create_index("created_at")
         await db.matches.create_index([("players", 1)])
         await db.skills.create_index("name", unique=True)
-        
-        api_logger.info("Database indexes created successfully")
+
     except Exception as e:
         api_logger.error(f"Failed to initialize database: {str(e)}")
         raise
@@ -116,4 +113,8 @@ async def get_matches_collection():
 async def get_skills_collection():
     """Get skills collection."""
     db = await get_database()
-    return db.skills 
+    return db.skills
+
+async def get_chat_messages_collection():
+    db = await get_database()
+    return db.chat_messages 

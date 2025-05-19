@@ -1,17 +1,17 @@
 import { QueryClientProvider } from "@tanstack/react-query";
 import { queryClient } from "@/lib/queryClient";
-import { Toaster } from "@/components/ui/toaster";
+import { Toaster } from "sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import type { AppProps } from "next/app";
 import "@/index.css";
 import { PrivyProvider } from '@privy-io/react-auth';
 import { AuthProvider } from '@/contexts/AuthContext';
-
+import AIChatPopup from "@/components/AIChatPopup";
 function MyApp({ Component, pageProps }: AppProps) {
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
-        <Toaster />
+        <Toaster position="bottom-right" richColors />
         <PrivyProvider
           appId="cmankoxe6005kky0m7conxm53"
           config={{
@@ -23,6 +23,7 @@ function MyApp({ Component, pageProps }: AppProps) {
         >
           <AuthProvider>
               <Component {...pageProps} />
+              <AIChatPopup />
           </AuthProvider>
         </PrivyProvider>
       </TooltipProvider>

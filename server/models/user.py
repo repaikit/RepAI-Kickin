@@ -33,6 +33,7 @@ class UserBase(BaseModel):
     match_history: List[Any] = []
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
+    last_activity: datetime = Field(default_factory=datetime.utcnow)
     last_login: Optional[datetime] = None
     # Leaderboard fields
     total_kicked: int = 0
@@ -45,7 +46,7 @@ class UserBase(BaseModel):
     legend_level: int = 0
     vip_level: str = "NONE"  # SILVER, GOLD, RUBY, EMERALD, DIAMOND
     vip_amount: float = 0.0
-    vip_year: int = 2024
+    vip_year: Optional[int] = None
     vip_payment_method: str = "NONE"  # VISA, NFT, NONE
     # --- Thêm các trường điểm tuần và lịch sử điểm tuần ---
     basic_week_point: int = 0

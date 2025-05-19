@@ -17,7 +17,6 @@ async def create_skill(skill: SkillCreate):
         skill_dict = skill.model_dump(by_alias=True)
         result = await skills_collection.insert_one(skill_dict)
         created_skill = await skills_collection.find_one({"_id": result.inserted_id})
-        api_logger.info(f"Created new skill with id: {result.inserted_id}")
         return Skill(**created_skill)
     except Exception as e:
         api_logger.error(f"Error creating skill: {str(e)}")
@@ -53,16 +52,13 @@ async def get_skills_by_type_raw(skill_type: str):
     Get raw skills data by type for debugging
     """
     try:
-        api_logger.info(f"Getting raw skills for type: {skill_type}")
         skills_collection = await get_skills_collection()
         
         # Log the query
         query = {"type": skill_type}
-        api_logger.info(f"MongoDB query: {query}")
         
         # Get skills
         skills = await skills_collection.find(query).to_list(length=None)
-        api_logger.info(f"Found {len(skills)} skills")
         
         # Convert ObjectId to string for JSON serialization
         result = []
@@ -84,16 +80,13 @@ async def get_skills_by_type(skill_type: str):
     Get all skills by type (kicker or goalkeeper)
     """
     try:
-        api_logger.info(f"Getting skills for type: {skill_type}")
         skills_collection = await get_skills_collection()
         
         # Log the query
         query = {"type": skill_type}
-        api_logger.info(f"MongoDB query: {query}")
         
         # Get skills
         skills = await skills_collection.find(query).to_list(length=None)
-        api_logger.info(f"Found {len(skills)} skills")
         
         # Convert to Skill models
         result = []
@@ -155,6 +148,8 @@ async def buy_skill(
     """
     Mua skill mới cho user, random skill chưa sở hữu, trừ điểm thắng tương ứng.
     - skill_type: 'kicker' hoặc 'goalkeeper'
+    - Kicker skills cost 10 kicked_win points
+    - Goalkeeper skills cost 5 keep_win points
     """
     # Lấy user_id từ JWT token (đã được xác thực bởi middleware)
     user_id = str(request.state.user["_id"])
@@ -171,18 +166,20 @@ async def buy_skill(
     if skill_type == "kicker":
         current_skills = user.get("kicker_skills", [])
         point_field = "kicked_win"
+        required_points = 10
     elif skill_type == "goalkeeper":
         current_skills = user.get("goalkeeper_skills", [])
         point_field = "keep_win"
+        required_points = 5
     else:
         raise HTTPException(status_code=400, detail="Invalid skill_type (must be 'kicker' or 'goalkeeper')")
 
-    # 3. Kiểm tra đủ điểm chưa (10 điểm)
+    # 3. Kiểm tra đủ điểm chưa
     user_points = user.get(point_field, 0)
-    if user_points < 10:
+    if user_points < required_points:
         raise HTTPException(
             status_code=400,
-            detail=f"Not enough {point_field.replace('_', ' ')} points to buy skill (need 10, have {user_points})"
+            detail=f"Not enough {point_field.replace('_', ' ')} points to buy skill (need {required_points}, have {user_points})"
         )
 
     # 4. Lấy danh sách skill hợp lệ từ DB
@@ -200,14 +197,15 @@ async def buy_skill(
     update_result = await db.users.update_one(
         {"_id": ObjectId(user_id)},
         {
-            "$inc": {point_field: -10},
+            "$inc": {point_field: -required_points},
             "$push": {
                 f"{skill_type}_skills": new_skill,
                 "skill_history": {
                     "type": skill_type,
                     "skill": new_skill,
                     "bought_at": datetime.utcnow().isoformat(),
-                    "action": "buy"
+                    "action": "buy",
+                    "points_spent": required_points
                 }
             }
         }

@@ -7,6 +7,7 @@ interface User {
   _id: string;
   user_type: string;
   email?: string;
+  wallet: string;
   name: string;
   avatar?: string;
   session_id?: string;
@@ -25,6 +26,11 @@ interface User {
   updated_at?: string;
   last_login?: string;
   level?: number;
+  legend_level?: number;
+  vip_level?: string;
+  is_vip?: boolean;
+  last_activity?: string;
+  position?: string;
 }
 
 interface AuthContextType {
@@ -53,7 +59,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         router.push('/login');
         return;
       }
-      console.log("DEBUG /api/me token:", token)
+
       const response = await fetch(API_ENDPOINTS.users.getCurrentUser, {
         method: 'GET',
         headers: {
@@ -63,16 +69,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
       });
 
-
       if (response.ok) {
         const userData = await response.json();
         setUser(userData);
-      } else if (response.status === 401 || response.status === 403) {
+      } else {
         setUser(null);
         localStorage.removeItem('access_token');
         router.push('/login');
-      } else {
-        setUser(null);
       }
     } catch (error) {
       console.error('Auth check error:', error);

@@ -6,6 +6,7 @@ from database.database import get_database
 from bson import ObjectId
 from utils.logger import api_logger
 import random
+from database.database import get_skills_collection
 
 class ChallengeManager:
     def __init__(self):
@@ -13,14 +14,17 @@ class ChallengeManager:
 
     async def handle_challenge_request(self, websocket: WebSocket, from_id: str, to_id: str, active_connections: Dict[str, WebSocket]):
         """Handle a challenge request from one user to another"""
-        api_logger.info(f"[Challenge] Request from {from_id} to {to_id}. to_id in active_connections: {to_id in active_connections}")
         print(f"[Challenge] Request from {from_id} to {to_id}. to_id in active_connections: {to_id in active_connections}")
-        api_logger.info(f"[Challenge] active_connections keys: {list(active_connections.keys())}")
         print(f"[Challenge] active_connections keys: {list(active_connections.keys())}")
-        api_logger.info(f"[Challenge] from_id: {from_id}, to_id: {to_id}, type(from_id): {type(from_id)}, type(to_id): {type(to_id)}")
         print(f"[Challenge] from_id: {from_id}, to_id: {to_id}, type(from_id): {type(from_id)}, type(to_id): {type(to_id)}")
         db = await get_database()
         from_user = await db.users.find_one({"_id": ObjectId(from_id)})
+        
+        # Check if this is a bot challenge
+        if to_id == "bot":
+            await self.handle_bot_challenge(websocket, from_id, active_connections)
+            return
+            
         to_user = await db.users.find_one({"_id": ObjectId(to_id)})
         if from_user.get("remaining_matches", 0) <= 0 or to_user.get("remaining_matches", 0) <= 0:
             await websocket.send_json({
@@ -44,7 +48,6 @@ class ChallengeManager:
         }
 
         # Get user details for the notification
-        api_logger.info(f"[Challenge] Sending challenge_invite from {from_id} ({from_user.get('name', 'Anonymous')}) to {to_id}")
         print(f"[Challenge] Sending challenge_invite from {from_id} ({from_user.get('name', 'Anonymous')}) to {to_id}")
         await active_connections[to_id].send_json({
             "type": "challenge_invite",
@@ -63,12 +66,10 @@ class ChallengeManager:
         elif challenge_key2 in self.pending_challenges:
             challenge_key = challenge_key2
         else:
-            api_logger.info(f"[Challenge] No pending challenge found for {challenge_key1} or {challenge_key2}")
             return
 
         challenge = self.pending_challenges[challenge_key]
         if challenge["to_id"] != from_id:
-            api_logger.info(f"[Challenge] Invalid response from {from_id} for challenge {challenge_key}")
             return
 
         db = await get_database()
@@ -96,18 +97,23 @@ class ChallengeManager:
             goalkeeper_skills = goalkeeper.get("goalkeeper_skills", [])
 
             if not kicker_skills or not goalkeeper_skills:
-                api_logger.info(f"[Challenge] Missing skills for players: kicker={kicker_id}, goalkeeper={goalkeeper_id}")
                 return
 
             selected_kicker_skill = random.choice(kicker_skills)
             selected_goalkeeper_skill = random.choice(goalkeeper_skills)
 
-            # Determine winner based on skill matching
+            # Get kicker skill details from skills collection to check counter
+            skills_collection = await get_skills_collection()
+            kicker_skill_details = await skills_collection.find_one({"name": selected_kicker_skill})
+            
+            # Determine winner based on skill counter
             winner_id = None
-            if selected_kicker_skill == selected_goalkeeper_skill:
-                winner_id = goalkeeper_id  # Goalkeeper wins if skills match
+            if kicker_skill_details and kicker_skill_details.get("counter") == selected_goalkeeper_skill:
+                # If goalkeeper's skill is a counter to kicker's skill, goalkeeper wins
+                winner_id = goalkeeper_id
             else:
-                winner_id = kicker_id  # Kicker wins if skills don't match
+                # Otherwise kicker wins
+                winner_id = kicker_id
 
             # Update match statistics and points
             winner = await db.users.find_one({"_id": ObjectId(winner_id)})
@@ -126,8 +132,7 @@ class ChallengeManager:
                 board_type = "BASIC"
             
             await db.users.update_one({"_id": ObjectId(winner_id)}, {"$inc": {week_point_field: 1}})
-            api_logger.info(f"[Challenge] Updated {board_type} weekly point for winner {winner_id}")
-            # --- END cập nhật điểm tuần ---
+
 
             # Create match history record
             match_history = {
@@ -259,7 +264,6 @@ class ChallengeManager:
             }
 
             # Send result to both players
-            api_logger.info(f"Send challenge_result to kicker: {kicker_id}, goalkeeper: {goalkeeper_id}")
             await self.send_message(active_connections, kicker_id, result_message)
             await self.send_message(active_connections, goalkeeper_id, result_message)
 
@@ -325,7 +329,6 @@ class ChallengeManager:
 
         # Clean up the challenge
         del self.pending_challenges[challenge_key]
-        api_logger.info(f"[Challenge] Challenge {challenge_key} cleaned up")
 
     def cleanup_user_challenges(self, user_id: str):
         """Remove any pending challenges involving a user"""
@@ -350,6 +353,92 @@ class ChallengeManager:
             return (total_point // 20) * 10
         else:
             return (total_point // 10) * 1
+
+    async def handle_bot_challenge(self, websocket: WebSocket, from_id: str, active_connections: Dict[str, WebSocket]):
+        """Handle a challenge against the bot"""
+        try:
+            db = await get_database()
+            from_user = await db.users.find_one({"_id": ObjectId(from_id)})
+            bot = await db.bots.find_one({"username": "bot"})
+            
+            if not bot:
+                await websocket.send_json({
+                    "type": "error",
+                    "message": "Bot is not available at the moment."
+                })
+                return
+
+            # Randomly assign roles
+            roles = ["kicker", "goalkeeper"]
+            random.shuffle(roles)
+            is_player_kicker = roles[0] == "kicker"
+            
+            # Get player's skills based on role
+            player_skills = from_user.get("kicker_skills" if is_player_kicker else "goalkeeper_skills", [])
+            bot_skills = bot.get("kicker_skills" if not is_player_kicker else "goalkeeper_skills", [])
+
+            if not player_skills or not bot_skills:
+                await websocket.send_json({
+                    "type": "error",
+                    "message": "Missing required skills for the match."
+                })
+                return
+
+            # Randomly select one skill from each
+            player_skill = random.choice(player_skills)
+            bot_skill = random.choice(bot_skills)
+
+            # Get skill details from skills collection to check counter
+            skills_collection = await get_skills_collection()
+            
+            # Determine winner based on skill counter
+            winner_id = None
+            if is_player_kicker:
+                # If player is kicker, check if bot's skill counters player's skill
+                player_skill_details = await skills_collection.find_one({"name": player_skill})
+                if player_skill_details and player_skill_details.get("counter") == bot_skill:
+                    winner_id = "bot"  # Bot wins if it has the counter skill
+                else:
+                    winner_id = from_id  # Player wins if bot doesn't have counter
+            else:
+                # If player is goalkeeper, check if player's skill counters bot's skill
+                bot_skill_details = await skills_collection.find_one({"name": bot_skill})
+                if bot_skill_details and bot_skill_details.get("counter") == player_skill:
+                    winner_id = from_id  # Player wins if they have the counter skill
+                else:
+                    winner_id = "bot"  # Bot wins if player doesn't have counter
+            
+            # Prepare match result message (without match history)
+            result_message = {
+                "type": "challenge_result",
+                "kicker_id": from_id if is_player_kicker else "bot",
+                "goalkeeper_id": "bot" if is_player_kicker else from_id,
+                "kicker_skill": player_skill if is_player_kicker else bot_skill,
+                "goalkeeper_skill": bot_skill if is_player_kicker else player_skill,
+                "winner_id": winner_id,
+                "match_stats": {
+                    "winner": {
+                        "id": str(winner_id),
+                        "name": from_user.get("name", "Anonymous") if winner_id == from_id else "Bot",
+                        "role": "kicker" if (winner_id == from_id and is_player_kicker) or (winner_id == "bot" and not is_player_kicker) else "goalkeeper",
+                    },
+                    "loser": {
+                        "id": "bot" if winner_id == from_id else str(from_id),
+                        "name": "Bot" if winner_id == from_id else from_user.get("name", "Anonymous"),
+                        "role": "goalkeeper" if (winner_id == from_id and is_player_kicker) or (winner_id == "bot" and not is_player_kicker) else "kicker",
+                    }
+                }
+            }
+
+            # Send result to player
+            await self.send_message(active_connections, from_id, result_message)
+            
+        except Exception as e:
+            api_logger.error(f"Error in bot challenge: {str(e)}")
+            await websocket.send_json({
+                "type": "error",
+                "message": "An error occurred during the bot match."
+            })
 
 # Create a singleton instance
 challenge_manager = ChallengeManager() 

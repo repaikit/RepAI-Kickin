@@ -5,4 +5,4 @@ router = APIRouter()
 
 @router.websocket("/ws/waitingroom")
 async def waiting_room_websocket(websocket: WebSocket):
-    await websocket_endpoint(websocket) 
+    await websocket_endpoint(websocket)
