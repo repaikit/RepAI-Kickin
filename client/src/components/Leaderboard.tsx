@@ -32,6 +32,7 @@ export default function Leaderboard({
 }: LeaderboardProps) {
   const [activeTab, setActiveTab] = useState<PlayerType>('basic');
   const { data: players, isLoading } = useLeaderboard();
+  console.log('Leaderboard render version:', players);
   const { user } = useAuth();
 
   // Leaderboard history state
@@ -326,7 +327,7 @@ export default function Leaderboard({
               <TableBody>
                 {isLoading ? (
                   Array(5).fill(0).map((_, index) => (
-                    <TableRow key={index}>
+                    <TableRow key={`skeleton-${index}`}>
                       <TableCell><Skeleton className="h-6 w-6 rounded-full" /></TableCell>
                       <TableCell className="w-[250px] min-w-[250px]">
                         <div className="flex items-center overflow-hidden text-ellipsis whitespace-nowrap">
@@ -347,7 +348,7 @@ export default function Leaderboard({
                 ) : (
                   filteredPlayers.map((player, index) => (
                     <TableRow 
-                      key={player.id} 
+                      key={`${player.id}-${activeTab}-${index}`}
                       className="hover:bg-slate-50 transition-colors border-t border-slate-100"
                     >
                       <TableCell>
@@ -403,7 +404,7 @@ export default function Leaderboard({
               <TableBody>
                 {isLoading ? (
                   Array(5).fill(0).map((_, index) => (
-                    <TableRow key={index}>
+                    <TableRow key={`skeleton-${index}`}>
                       <TableCell><Skeleton className="h-6 w-6 rounded-full" /></TableCell>
                       <TableCell className="w-[250px] min-w-[250px]">
                         <div className="flex items-center overflow-hidden text-ellipsis whitespace-nowrap">
@@ -424,7 +425,7 @@ export default function Leaderboard({
                 ) : (
                   filteredPlayers.map((player, index) => (
                     <TableRow 
-                      key={player.id} 
+                      key={`${player.id}-${activeTab}-${index}`}
                       className="hover:bg-blue-50 transition-colors border-t border-blue-100"
                     >
                       <TableCell>
@@ -481,7 +482,7 @@ export default function Leaderboard({
               <TableBody>
                 {isLoading ? (
                   Array(5).fill(0).map((_, index) => (
-                    <TableRow key={index}>
+                    <TableRow key={`skeleton-${index}`}>
                       <TableCell><Skeleton className="h-6 w-6 rounded-full bg-yellow-200" /></TableCell>
                       <TableCell className="w-[250px] min-w-[250px]">
                         <div className="flex items-center overflow-hidden text-ellipsis whitespace-nowrap">
@@ -503,7 +504,7 @@ export default function Leaderboard({
                 ) : (
                   filteredPlayers.map((player, index) => (
                     <TableRow
-                      key={player.id}
+                      key={`${player.id}-${activeTab}-${index}`}
                       className="hover:shadow-lg transition-all duration-200 border-t border-yellow-100"
                       style={{
                         background: index % 2 === 0 
@@ -555,7 +556,7 @@ export default function Leaderboard({
                       <TableCell>{player.kicked_win}</TableCell>
                       <TableCell>{player.keep_win}</TableCell>
                       <TableCell className="font-bold text-yellow-600">{player.total_point}</TableCell>
-                      <TableCell className="font-bold text-amber-600">{player.total_extra_skill}</TableCell>
+                      <TableCell className="font-bold text-amber-600">{player.extra_point}</TableCell>
                       <TableCell className="font-bold text-yellow-600">{player.bonus_point}</TableCell>
                     </TableRow>
                   ))

@@ -1,5 +1,4 @@
 import React, { useEffect, useState } from "react";
-import { usePrivy } from '@privy-io/react-auth';
 import { useAuth } from "@/contexts/AuthContext";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
@@ -160,10 +159,11 @@ export default function Profile() {
   // Tính milestone tiếp theo cho progress bar
   const currentLevel = user?.level ?? 1;
   const currentPoint = user?.total_point_for_level ?? 0;
-  const nextMilestone = LEVEL_MILESTONES_BASIC[currentLevel] ?? (currentPoint + 100);
-  const prevMilestone = LEVEL_MILESTONES_BASIC[currentLevel - 1] ?? 0;
-  const progress = Math.max(0, Math.min(1, (currentPoint - prevMilestone) / (nextMilestone - prevMilestone)));
-
+  let nextMilestone = currentPoint + 100;
+  if (currentLevel > 0 && currentLevel < LEVEL_MILESTONES_BASIC.length) {
+    nextMilestone = LEVEL_MILESTONES_BASIC[currentLevel];
+  }
+  const progress = Math.max(0, Math.min(1, currentPoint / nextMilestone));
   return (
     <>
       {/* Animation overlay luôn luôn render, không phụ thuộc vào user/isLoading */}

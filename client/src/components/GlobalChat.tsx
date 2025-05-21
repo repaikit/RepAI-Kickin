@@ -101,12 +101,6 @@ export default function GlobalChat() {
           console.error('[GlobalChat] Access token not found!');
           return;
         }
-        console.log('[GlobalChat] Fetching chat history...');
-        console.log('[GlobalChat] API URL:', API_ENDPOINTS.chat.getHistory);
-        console.log('[GlobalChat] Headers:', {
-          ...defaultFetchOptions.headers,
-          'Authorization': `Bearer ${token}`,
-        });
 
         const response = await fetch(API_ENDPOINTS.chat.getHistory, {
           method: 'GET',
@@ -115,17 +109,12 @@ export default function GlobalChat() {
             'Authorization': `Bearer ${token}`,
           },
         });
-        
-        console.log('[GlobalChat] Response status:', response.status);
+
         const data = await response.json();
-        console.log('[GlobalChat] Chat history response:', data);
 
         if (data.success) {
-          console.log('[GlobalChat] Success flag is true');
-          console.log('[GlobalChat] Raw messages from API:', data.data.messages);
           
           const transformedMessages = data.data.messages.map((msg: any) => {
-            console.log('[GlobalChat] Transforming message:', msg);
             return {
               ...msg,
               from: msg.from || {
@@ -152,12 +141,9 @@ export default function GlobalChat() {
             };
           });
           
-          console.log('[GlobalChat] Transformed messages:', transformedMessages);
-          console.log('[GlobalChat] Setting messages state with length:', transformedMessages.length);
           setMessages(transformedMessages);
           
           requestAnimationFrame(() => {
-            console.log('[GlobalChat] Scrolling to bottom');
             scrollToBottom();
           });
         } else {
@@ -170,7 +156,6 @@ export default function GlobalChat() {
 
     const handleMessage = (message: any) => {
       if (message.type === 'chat_message') {
-        console.log('[GlobalChat] Received new message:', message);
         const incomingMessage: ChatMessage = {
           type: message.type,
           from_id: String(message.from_id),
@@ -180,9 +165,7 @@ export default function GlobalChat() {
         };
 
         setMessages(prev => {
-          console.log('[GlobalChat] Previous messages:', prev);
           const newMessages = [...prev, incomingMessage];
-          console.log('[GlobalChat] New messages after adding:', newMessages);
           return newMessages.sort((a, b) => 
             new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
           );
@@ -195,20 +178,19 @@ export default function GlobalChat() {
     };
 
     const handleConnect = () => {
-      console.log('[GlobalChat] WebSocket connected');
       fetchChatHistory();
     };
 
-    const handleUserUpdated = (updatedUser: UpdatedUser) => {
+    const handleUserUpdated = (message: { user_id: string; user: any }) => {
       setMessages(prevMessages =>
         prevMessages.map(msg =>
-          msg.from_id === updatedUser.id
+          msg.from_id === message.user_id
             ? {
                 ...msg,
                 from: {
                   ...msg.from,
-                  name: updatedUser.name || msg.from.name,
-                  avatar: updatedUser.avatar || msg.from.avatar,
+                  name: message.user.name || msg.from.name,
+                  avatar: message.user.avatar || msg.from.avatar,
                 }
               }
             : msg
@@ -216,15 +198,12 @@ export default function GlobalChat() {
       );
     };
 
-    console.log('[GlobalChat] Component mounted');
-    console.log('[GlobalChat] Initial messages state:', messages);
     fetchChatHistory();
     
     websocketService.setCallbacks({
-      onUserList: (users) => {
-        console.log('[GlobalChat] onUserList callback called with users:', users);
-        if (users && users.length) {
-          setUserCount(users.length);
+      onUserList: (message) => {
+        if (message.users && message.users.length) {
+          setUserCount(message.users.length);
         }
       },
       onChatMessage: handleMessage,
@@ -233,7 +212,6 @@ export default function GlobalChat() {
     });
 
     return () => {
-      console.log('[GlobalChat] Component unmounting');
       websocketService.removeCallbacks({
         onChatMessage: handleMessage,
         onConnect: handleConnect,
@@ -271,7 +249,6 @@ export default function GlobalChat() {
   };
 
   const groupedMessages = messages.reduce<MessageGroup[]>((groups, message, index) => {
-    console.log('[GlobalChat] Processing message for grouping:', message);
     const prevMessage = messages[index - 1];
     const currentUserId = user?._id ? String(user._id) : undefined;
     const messageSenderId = String(message.from_id);
@@ -291,8 +268,6 @@ export default function GlobalChat() {
 
     return groups;
   }, []);
-
-  console.log('[GlobalChat] Grouped messages:', groupedMessages);
 
   const renderMessageTime = (timestamp: string) => {
     const messageDate = new Date(timestamp);
@@ -328,8 +303,6 @@ export default function GlobalChat() {
 
   // Add effect to log messages state changes
   useEffect(() => {
-    console.log('[GlobalChat] Messages state updated. Length:', messages.length);
-    console.log('[GlobalChat] Messages content:', messages);
   }, [messages]);
 
   return (

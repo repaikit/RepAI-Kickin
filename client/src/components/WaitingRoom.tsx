@@ -10,6 +10,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import BotCard from './BotCard';
 import { API_ENDPOINTS, defaultFetchOptions } from "@/config/api";
+import { useWebSocket } from '@/hooks/useWebSocket';
 
 interface OnlineUser {
   id: string;
@@ -44,6 +45,23 @@ interface AuthUser {
   remaining_matches: number;
 }
 
+interface User {
+  id: string;
+  name: string;
+  avatar: string;
+  is_online: boolean;
+  is_playing: boolean;
+}
+
+interface ChallengeResultMessage {
+  type: string;
+  kicker_id: string;
+  goalkeeper_id: string;
+  kicker_skill: string;
+  goalkeeper_skill: string;
+  match_stats: any;
+}
+
 export default function WaitingRoom() {
   const { user } = useAuth();
   const [onlineUsers, setOnlineUsers] = useState<OnlineUser[]>([]);
@@ -60,98 +78,113 @@ export default function WaitingRoom() {
     kicker_skills: [],
     goalkeeper_skills: []
   });
+  const [users, setUsers] = useState<User[]>([]);
 
-  // Handle tab change
-  const handleTabChange = (value: string) => {
-    if (user?.user_type === 'guest' && value !== 'basic') {
-      return; // Prevent changing to pro/vip tabs for guests
-    }
-    setActiveTab(value as PlayerType);
-  };
-
-  useEffect(() => {
-    if (!user) return;
-
-    const handleUserList = (users: OnlineUser[]) => {
-      setOnlineUsers(users);
+  const {
+    sendMessage,
+    sendChallengeRequest,
+    acceptChallenge,
+    declineChallenge,
+    sendUserUpdate
+  } = useWebSocket({
+    onUserList: (message) => {
+      console.log('WaitingRoom: Received user list:', message);
+      if (!message.users || !Array.isArray(message.users)) {
+        console.error('WaitingRoom: Invalid user list format:', message);
+        return;
+      }
+      const uniqueUsers = message.users.filter((user, index, self) =>
+        index === self.findIndex((u) => u.id === user.id)
+      );
+      console.log('WaitingRoom: Setting users:', uniqueUsers);
+      setOnlineUsers(uniqueUsers);
+      setUsers(uniqueUsers.map(u => ({
+        id: u.id,
+        name: u.name,
+        avatar: u.avatar,
+        is_online: u.is_online,
+        is_playing: u.is_playing
+      })));
       setIsLoading(false);
-    };
-
-    const handleUserJoined = (newUser: OnlineUser) => {
+    },
+    onUserJoined: (message) => {
+      console.log('WaitingRoom: User joined:', message);
+      const newUser = message.user;
       setOnlineUsers(prev => {
-        if (prev.some(u => u.id === newUser.id)) return prev;
+        // Check if user already exists
+        if (prev.some(u => u.id === newUser.id)) {
+          return prev;
+        }
         return [...prev, newUser];
       });
-    };
-
-    const handleUserLeft = (userId: string) => {
-      setOnlineUsers(prev => prev.filter(u => u.id !== userId));
-    };
-
-    const handleUserUpdated = (updatedUser: OnlineUser) => {
-      setOnlineUsers(prev => prev.map(u => u.id === updatedUser.id ? updatedUser : u));
-    };
-
-    const handleError = (error: string) => {
-      console.error('WebSocket error:', error);
-      setIsLoading(false);
-    };
-
-    // Initialize WebSocket connection if not already connected
-    if (!websocketService.isConnected()) {
-      websocketService.connect();
-    }
-
-    // Set up WebSocket callbacks
-    websocketService.setCallbacks({
-      onUserList: handleUserList,
-      onUserJoined: handleUserJoined,
-      onUserLeft: handleUserLeft,
-      onUserUpdated: handleUserUpdated,
-      onError: handleError,
-      onConnect: () => {
-        setIsConnected(true);
-        setError(null);
-      },
-      onDisconnect: () => {
-        setIsLoading(true);
-        setIsConnected(false);
-      },
-      onChallengeInvite: (from, fromName) => {
-        setChallengeInvite({ from, from_name: fromName });
-      },
-      onChallengeAccepted: (matchId) => {
-        setChallengeStatus('Your challenge was accepted! Starting match...');
+      setUsers(prev => {
+        // Check if user already exists
+        if (prev.some(u => u.id === newUser.id)) {
+          return prev;
+        }
+        return [...prev, {
+          id: newUser.id,
+          name: newUser.name,
+          avatar: newUser.avatar,
+          is_online: newUser.is_online,
+          is_playing: newUser.is_playing
+        }];
+      });
+    },
+    onUserLeft: (message) => {
+      console.log('WaitingRoom: User left:', message);
+      setOnlineUsers(prev => prev.filter(u => u.id !== message.user_id));
+      setUsers(prev => prev.filter(u => u.id !== message.user_id));
+    },
+    onUserUpdated: (message) => {
+      console.log('WaitingRoom: User updated:', message);
+      setOnlineUsers(prev => prev.map(u => u.id === message.user_id ? message.user : u));
+    },
+    onChallengeInvite: (message) => {
+      setChallengeInvite({ from: message.from, from_name: message.from_name });
+    },
+    onChallengeResult: (message) => {
+      if (message.kicker_id && message.goalkeeper_id) {
+        setChallengeStatus('Match created! Starting game...');
         clearChallengeTimeout();
-        toast.success('Challenge accepted! Starting match...');
-      },
-      onChallengeDeclined: () => {
+        toast.success('Match created! Starting game...');
+        setMatchResult(message);
+      } else {
         setChallengeStatus('Your challenge was declined.');
         clearChallengeTimeout();
         toast.error('Challenge was declined');
-      },
-      onChallengeResult: (result) => {
-        setMatchResult(result);
-        clearChallengeTimeout();
       }
-    });
+    },
+    onError: (errorMessage) => {
+      console.error('WaitingRoom: WebSocket error:', errorMessage);
+      setError(errorMessage);
+      setIsLoading(false);
+    },
+    onConnect: () => {
+      console.log('WaitingRoom: WebSocket connected');
+      setIsConnected(true);
+      setError(null);
+      // Request user list when connected
+      sendMessage({ type: 'get_user_list' });
+    },
+    onDisconnect: () => {
+      console.log('WaitingRoom: WebSocket disconnected');
+      setIsLoading(true);
+      setIsConnected(false);
+    }
+  });
 
-    return () => {
-      websocketService.removeCallbacks({
-        onUserList: handleUserList,
-        onUserJoined: handleUserJoined,
-        onUserLeft: handleUserLeft,
-        onUserUpdated: handleUserUpdated,
-        onError: handleError,
-        onConnect: () => {
+  // Add effect to request user list periodically
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (isConnected) {
+        console.log('WaitingRoom: Requesting user list...');
+        sendMessage({ type: 'get_user_list' });
+      }
+    }, 30000); // Request every 30 seconds
 
-        },
-        onDisconnect: () => {
-          setIsLoading(true);
-        }
-      });
-    };
-  }, [user]);
+    return () => clearInterval(interval);
+  }, [isConnected, sendMessage]);
 
   useEffect(() => {
     if (pendingChallengeUserId) {
@@ -177,9 +210,30 @@ export default function WaitingRoom() {
     }
   });
 
+  const handleTabChange = (value: string) => {
+    if (user?.user_type === 'guest' && value !== 'basic') {
+      return; // Prevent changing to pro/vip tabs for guests
+    }
+    setActiveTab(value as PlayerType);
+  };
+
+  const handleAcceptChallenge = () => {
+    if (challengeInvite) {
+      acceptChallenge(challengeInvite.from);
+      setChallengeInvite(null);
+    }
+  };
+
+  const handleDeclineChallenge = () => {
+    if (challengeInvite) {
+      declineChallenge(challengeInvite.from);
+      setChallengeInvite(null);
+    }
+  };
+
   const handleChallenge = (userId: string) => {
     setPendingChallengeUserId(userId);
-    websocketService.sendChallengeRequest(userId);
+    sendChallengeRequest(userId);
     const challengedUser = onlineUsers.find(u => u.id === userId);
     const challengedName = challengedUser ? challengedUser.name : userId;
     setChallengeStatus(`Challenge request sent to ${challengedName}`);
@@ -249,10 +303,36 @@ export default function WaitingRoom() {
 
   // Add handler for playing with bot
   const handlePlayWithBot = () => {
-    websocketService.sendChallengeRequest('bot');
+    sendChallengeRequest('bot');
     toast.success('Starting match with Bot...');
     // TODO: Navigate to match page
   };
+
+  useEffect(() => {
+    // Send user update when component mounts
+    if (user) {
+      sendUserUpdate({
+        id: user._id,
+        name: user.name,
+        avatar: user.avatar,
+        is_online: true,
+        is_playing: false
+      });
+    }
+
+    // Cleanup when component unmounts
+    return () => {
+      if (user) {
+        sendUserUpdate({
+          id: user._id,
+          name: user.name,
+          avatar: user.avatar,
+          is_online: false,
+          is_playing: false
+        });
+      }
+    };
+  }, [user, sendUserUpdate]);
 
   if (!user) {
     return null;
@@ -279,7 +359,7 @@ export default function WaitingRoom() {
                         authUser.remaining_matches > 0;
 
     return (
-      <Card key={player.id} className={`relative ${isCurrentUser ? 'border-2 border-green-500 bg-green-50' : ''}`}>
+      <Card key={`${player.id}-${player.user_type}`} className={`relative ${isCurrentUser ? 'border-2 border-green-500 bg-green-50' : ''}`}>
         <CardContent className="p-4">
           <div className="flex items-start">
             <Avatar className="h-12 w-12 mr-3">
@@ -463,23 +543,13 @@ export default function WaitingRoom() {
             <div className="flex justify-center gap-4">
               <button
                 className="px-5 py-2 bg-green-500 hover:bg-green-600 text-white rounded font-semibold transition shadow"
-                onClick={() => {
-                  if (challengeInvite) {
-                    websocketService.acceptChallenge(challengeInvite.from);
-                    setChallengeInvite(null);
-                  }
-                }}
+                onClick={handleAcceptChallenge}
               >
                 Accept
               </button>
               <button
                 className="px-5 py-2 bg-red-500 hover:bg-red-600 text-white rounded font-semibold transition shadow"
-                onClick={() => {
-                  if (challengeInvite) {
-                    websocketService.declineChallenge(challengeInvite.from);
-                    setChallengeInvite(null);
-                  }
-                }}
+                onClick={handleDeclineChallenge}
               >
                 Decline
               </button>

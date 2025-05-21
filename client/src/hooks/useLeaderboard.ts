@@ -1,33 +1,36 @@
-import { useState, useEffect } from "react";
-import { websocketService } from "@/services/websocket";
+import { useState, useEffect, useRef } from 'react';
+import { useWebSocket } from './useWebSocket';
 import { useAuth } from "@/contexts/AuthContext";
 import { API_ENDPOINTS, defaultFetchOptions } from "@/config/api";
 import { fetchWithApiCache } from '@/utils/apiCache';
-import { useWebSocketData } from '@/contexts/WebSocketContext';
 
 export interface LeaderboardPlayer {
   id: string;
   name: string;
   avatar: string;
+  level: number;
   total_kicked: number;
   kicked_win: number;
   total_keep: number;
   keep_win: number;
-  is_pro: boolean;
-  is_vip: boolean;
-  total_extra_skill: number;
-  extra_skill_win: number;
   total_point: number;
   bonus_point: number;
-  level: number;
+  is_pro: boolean;
+  is_vip: boolean;
+  extra_point?: number;
 }
 
-export const useLeaderboard = (page: number = 1, limit: number = 10) => {
+export function useLeaderboard() {
   const { user } = useAuth();
-  const { leaderboard } = useWebSocketData();
   const [data, setData] = useState<LeaderboardPlayer[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
+  // Optional: paging, or just use default
+  const page = 1;
+  const limit = 10;
+
+  // Fetch initial leaderboard from API
   const fetchInitialData = async () => {
     try {
       const url = API_ENDPOINTS.users.leaderboard + `?page=${page}&limit=${limit}`;
@@ -43,26 +46,46 @@ export const useLeaderboard = (page: number = 1, limit: number = 10) => {
         keep_win: user.keep_win,
         is_pro: user.is_pro,
         is_vip: user.is_vip,
-        total_extra_skill: user.total_extra_skill,
-        extra_skill_win: user.extra_skill_win,
         total_point: user.total_point,
         bonus_point: user.bonus_point,
         level: user.level,
+        extra_point: user.extra_point,
       })));
       setIsLoading(false);
     } catch (error) {
       console.error('Error fetching initial leaderboard:', error);
       setIsLoading(false);
+      setError('Failed to load leaderboard');
     }
   };
 
-  // Fetch initial data
+  // Fetch once on mount
   useEffect(() => {
     fetchInitialData();
-  }, [page, limit]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  // Always use realtime data if available, otherwise fallback to fetched data
-  const result = leaderboard && leaderboard.length > 0 ? leaderboard : data;
+  // Listen for websocket leaderboard updates
+  useWebSocket({
+    onLeaderboardUpdate: (message: { leaderboard: LeaderboardPlayer[] }) => {
+      if (message && Array.isArray(message.leaderboard)) {
+        setData([...message.leaderboard]);
+        setIsLoading(false);
+      } else {
+        setData([]);
+        setIsLoading(false);
+      }
+    },
+    onError: (err) => {
+      setError(err);
+      setIsLoading(false);
+    }
+  });
 
-  return { data: result, isLoading, fetchInitialData };
-}; 
+  return {
+    data,
+    isLoading,
+    error,
+    fetchInitialData,
+  };
+} 

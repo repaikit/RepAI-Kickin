@@ -1,81 +1,90 @@
 import { API_ENDPOINTS } from '@/config/api';
 
-type WebSocketMessage = {
+// Types
+export interface LeaderboardEntry {
+  id: string;
+  name: string;
+  avatar: string;
+  level: number;
+  total_kicked: number;
+  kicked_win: number;
+  total_keep: number;
+  keep_win: number;
+  extra_point: number;
+  total_point: number;
+  bonus_point: number;
+  is_pro: boolean;
+  is_vip: boolean;
+}
+
+export interface WebSocketMessage {
   type: string;
   [key: string]: any;
-};
+}
 
 type WebSocketCallbacks = {
-  onUserList?: (users: any[]) => void;
-  onChallengeInvite?: (from: string, fromName: string) => void;
-  onChallengeAccepted?: (matchId: string) => void;
-  onChallengeDeclined?: () => void;
+  onLeaderboardUpdate?: (message: { leaderboard: LeaderboardEntry[] }) => void;
+  onUserList?: (message: { users: any[] }) => void;
+  onUserJoined?: (message: { user: any }) => void;
+  onUserLeft?: (message: { user_id: string }) => void;
+  onUserUpdated?: (message: { user_id: string; user: any }) => void;
+  onChallengeInvite?: (message: { from: string; from_name: string }) => void;
+  onChallengeResult?: (message: { 
+    type: string;
+    kicker_id: string;
+    goalkeeper_id: string;
+    kicker_skill: string;
+    goalkeeper_skill: string;
+    match_stats: any;
+  }) => void;
   onError?: (message: string) => void;
   onConnect?: () => void;
   onDisconnect?: () => void;
-  onChallengeResult?: (result: any) => void;
-  onLeaderboardUpdate?: (message: WebSocketMessage) => void;
-  onUserJoined?: (user: any) => void;
-  onUserLeft?: (userId: string) => void;
-  onUserUpdated?: (user: any) => void;
-  onMysteryBoxOpened?: (data: any) => void;
-  onTaskCompleted?: (data: any) => void;
-  onMatchesClaimed?: (data: any) => void;
-  onChatHistory?: (message: WebSocketMessage) => void;
-  onChatMessage?: (message: WebSocketMessage) => void;
+  onChatMessage?: (message: any) => void;
 };
+
+type CallbackKey = keyof WebSocketCallbacks;
 
 class WebSocketService {
   private ws: WebSocket | null = null;
-  private messageHandlers: ((message: any) => void)[] = [];
-  private connectHandlers: (() => void)[] = [];
-  private disconnectHandlers: (() => void)[] = [];
-  private callbacks: { [key: string]: Set<Function> } = {};
+  private callbacks: Record<CallbackKey, Set<Function>> = {
+    onLeaderboardUpdate: new Set(),
+    onUserList: new Set(),
+    onUserJoined: new Set(),
+    onUserLeft: new Set(),
+    onUserUpdated: new Set(),
+    onChallengeInvite: new Set(),
+    onChallengeResult: new Set(),
+    onError: new Set(),
+    onConnect: new Set(),
+    onDisconnect: new Set(),
+    onChatMessage: new Set(),
+  };
   private reconnectAttempts = 0;
   private maxReconnectAttempts = 5;
   private reconnectTimeout: NodeJS.Timeout | null = null;
   private heartbeatInterval: NodeJS.Timeout | null = null;
-  private messageQueue: WebSocketMessage[] = [];
   private isConnecting = false;
+  private readonly HEARTBEAT_INTERVAL = 15000; // 15 seconds
+  private readonly RECONNECT_DELAY = 1000; // Base delay of 1 second
+  private readonly MAX_RECONNECT_DELAY = 30000; // Max delay of 30 seconds
 
   constructor() {
-    // Initialize callback sets
-    this.callbacks = {
-      onUserList: new Set(),
-      onChallengeInvite: new Set(),
-      onChallengeAccepted: new Set(),
-      onChallengeDeclined: new Set(),
-      onError: new Set(),
-      onConnect: new Set(),
-      onDisconnect: new Set(),
-      onChallengeResult: new Set(),
-      onLeaderboardUpdate: new Set(),
-      onUserJoined: new Set(),
-      onUserLeft: new Set(),
-      onUserUpdated: new Set(),
-      onMysteryBoxOpened: new Set(),
-      onTaskCompleted: new Set(),
-      onMatchesClaimed: new Set(),
-      onChatHistory: new Set(),
-      onChatMessage: new Set()
-    };
-
     // Bind methods
     this.connect = this.connect.bind(this);
     this.disconnect = this.disconnect.bind(this);
-    this.sendMessage = this.sendMessage.bind(this);
     this.handleMessage = this.handleMessage.bind(this);
     this.startHeartbeat = this.startHeartbeat.bind(this);
     this.stopHeartbeat = this.stopHeartbeat.bind(this);
   }
 
   private startHeartbeat() {
-    this.stopHeartbeat(); // Clear any existing heartbeat
+    this.stopHeartbeat();
     this.heartbeatInterval = setInterval(() => {
       if (this.ws?.readyState === WebSocket.OPEN) {
         this.sendMessage({ type: 'ping' });
       }
-    }, 30000); // Send ping every 30 seconds
+    }, this.HEARTBEAT_INTERVAL);
   }
 
   private stopHeartbeat() {
@@ -85,12 +94,37 @@ class WebSocketService {
     }
   }
 
+  private reconnect() {
+    if (this.reconnectTimeout) {
+      clearTimeout(this.reconnectTimeout);
+    }
+
+    if (this.reconnectAttempts >= this.maxReconnectAttempts) {
+      console.error('WebSocketService: Max reconnection attempts reached');
+      this.callbacks.onError.forEach(callback => callback('Max reconnection attempts reached'));
+      return;
+    }
+
+    const delay = Math.min(
+      this.RECONNECT_DELAY * Math.pow(2, this.reconnectAttempts),
+      this.MAX_RECONNECT_DELAY
+    );
+
+    console.log(`WebSocketService: Attempting to reconnect in ${delay}ms (attempt ${this.reconnectAttempts + 1}/${this.maxReconnectAttempts})`);
+
+    this.reconnectTimeout = setTimeout(() => {
+      this.reconnectAttempts++;
+      console.log('WebSocketService: Executing reconnect attempt', this.reconnectAttempts);
+      this.connect();
+    }, delay);
+  }
+
   public setCallbacks(callbacks: Partial<WebSocketCallbacks>) {
     Object.entries(callbacks).forEach(([key, callback]) => {
       if (callback) {
-        this.callbacks[key].add(callback);
-        if (key === 'onUserList') {
-          console.log('WebSocketService: Registered onUserList callback');
+        const callbackKey = key as CallbackKey;
+        if (this.callbacks[callbackKey]) {
+          this.callbacks[callbackKey].add(callback as Function);
         }
       }
     });
@@ -99,9 +133,9 @@ class WebSocketService {
   public removeCallbacks(callbacks: Partial<WebSocketCallbacks>) {
     Object.entries(callbacks).forEach(([key, callback]) => {
       if (callback) {
-        this.callbacks[key].delete(callback);
-        if (key === 'onUserList') {
-          console.log('WebSocketService: Removed onUserList callback');
+        const callbackKey = key as CallbackKey;
+        if (this.callbacks[callbackKey]) {
+          this.callbacks[callbackKey].delete(callback);
         }
       }
     });
@@ -114,9 +148,8 @@ class WebSocketService {
     }
 
     this.isConnecting = true;
-    console.log('WebSocketService: Connecting...');
+    console.log('WebSocketService: Starting connection...');
 
-    // Get access token from localStorage
     const accessToken = localStorage.getItem('access_token');
     if (!accessToken) {
       console.error('WebSocketService: No access token found');
@@ -125,7 +158,6 @@ class WebSocketService {
       return;
     }
 
-    // Connect to WebSocket with access token
     const wsUrl = `${API_ENDPOINTS.ws.waitingRoom}?access_token=${accessToken}`;
     console.log('WebSocketService: Connecting to', wsUrl);
     
@@ -133,36 +165,30 @@ class WebSocketService {
       this.ws = new WebSocket(wsUrl);
 
       this.ws.onopen = () => {
-        console.log('WebSocketService: Connected successfully');
+        console.log('WebSocketService: Connection opened successfully');
         this.isConnecting = false;
         this.reconnectAttempts = 0;
         this.startHeartbeat();
-        this.connectHandlers.forEach(handler => handler());
+        this.callbacks.onConnect.forEach(handler => handler());
         
-        // Send any queued messages
-        while (this.messageQueue.length > 0) {
-          const message = this.messageQueue.shift();
-          if (message) {
-            this.sendMessage(message);
-          }
-        }
+        // Request user list after connection
+        console.log('WebSocketService: Requesting initial user list');
+        this.sendMessage({ type: 'get_user_list' });
       };
 
       this.ws.onclose = (event) => {
-        console.log('WebSocketService: Connection closed:', event.code, event.reason);
+        console.log('WebSocketService: Connection closed:', {
+          code: event.code,
+          reason: event.reason,
+          wasClean: event.wasClean
+        });
         this.isConnecting = false;
         this.stopHeartbeat();
-        this.disconnectHandlers.forEach(handler => handler());
+        this.callbacks.onDisconnect.forEach(handler => handler());
         
-        // Attempt to reconnect
-        if (this.reconnectAttempts < this.maxReconnectAttempts) {
-          this.reconnectAttempts++;
-          const delay = Math.min(1000 * Math.pow(2, this.reconnectAttempts), 30000);
-          console.log(`WebSocketService: Attempting to reconnect in ${delay}ms...`);
-          
-          this.reconnectTimeout = setTimeout(() => {
-            this.connect();
-          }, delay);
+        if (event.code !== 1000 && this.reconnectAttempts < this.maxReconnectAttempts) {
+          console.log('WebSocketService: Attempting to reconnect...');
+          this.reconnect();
         }
       };
 
@@ -174,11 +200,86 @@ class WebSocketService {
 
       this.ws.onmessage = (event) => {
         try {
+          console.log('WebSocketService: Raw message received:', event.data);
           const message = JSON.parse(event.data);
-          console.log('WebSocketService: Received message:', message);
-          this.handleMessage(message);
+          console.log('WebSocketService: Parsed message:', message);
+
+          switch (message.type) {
+            case 'pong':
+              console.log('WebSocketService: Received pong');
+              break;
+            case 'leaderboard_update':
+              console.log('WebSocketService: Handling leaderboard_update', message);
+              if (!message.leaderboard || !Array.isArray(message.leaderboard)) {
+                console.error('WebSocketService: Invalid leaderboard_update message format', message);
+                return;
+              }
+              console.log('WebSocketService: Leaderboard data received:', {
+                count: message.leaderboard.length,
+                data: message.leaderboard
+              });
+              this.callbacks.onLeaderboardUpdate.forEach(callback => {
+                console.log('WebSocketService: Calling onLeaderboardUpdate callback');
+                callback(message);
+              });
+              break;
+            case 'user_list':
+              console.log('WebSocketService: Handling user_list', message);
+              if (!message.users || !Array.isArray(message.users)) {
+                console.error('WebSocketService: Invalid user_list message format', message);
+                return;
+              }
+              this.callbacks.onUserList.forEach(callback => callback(message));
+              break;
+            case 'user_joined':
+              console.log('WebSocketService: Handling user_joined', message);
+              if (!message.user) {
+                console.error('WebSocketService: Invalid user_joined message format', message);
+                return;
+              }
+              this.callbacks.onUserJoined.forEach(callback => callback(message));
+              break;
+            case 'user_left':
+              console.log('WebSocketService: Handling user_left', message);
+              if (!message.user_id) {
+                console.error('WebSocketService: Invalid user_left message format', message);
+                return;
+              }
+              this.callbacks.onUserLeft.forEach(callback => callback(message));
+              break;
+            case 'user_updated':
+              console.log('WebSocketService: Handling user_updated', message);
+              if (!message.user_id || !message.user) {
+                console.error('WebSocketService: Invalid user_updated message format', message);
+                return;
+              }
+              this.callbacks.onUserUpdated.forEach(callback => callback(message));
+              break;
+            case 'challenge_invite':
+              console.log('WebSocketService: Handling challenge_invite', message);
+              if (!message.from || !message.from_name) {
+                console.error('WebSocketService: Invalid challenge_invite message format', message);
+                return;
+              }
+              this.callbacks.onChallengeInvite.forEach(callback => callback(message));
+              break;
+            case 'challenge_result':
+              console.log('WebSocketService: Handling challenge_result', message);
+              if (!message.match_stats) {
+                console.error('WebSocketService: Invalid challenge_result message format', message);
+                return;
+              }
+              this.callbacks.onChallengeResult.forEach(callback => callback(message));
+              break;
+            case 'chat_message':
+              console.log('WebSocketService: Handling chat_message', message);
+              this.callbacks.onChatMessage.forEach(callback => callback(message));
+              break;
+            default:
+              console.log('WebSocketService: Unknown message type:', message.type, message);
+          }
         } catch (error) {
-          console.error('WebSocketService: Error parsing message:', error);
+          console.error('WebSocketService: Error parsing message:', error, 'Raw data:', event.data);
         }
       };
     } catch (error) {
@@ -197,7 +298,7 @@ class WebSocketService {
     }
 
     if (this.ws) {
-      this.ws.close();
+      this.ws.close(1000, 'Client disconnecting');
       this.ws = null;
     }
   }
@@ -207,179 +308,154 @@ class WebSocketService {
   }
 
   public sendMessage(message: WebSocketMessage) {
-    if (this.ws?.readyState === WebSocket.OPEN) {
-      try {
-        console.log('WebSocketService: Sending message:', message);
-        this.ws.send(JSON.stringify(message));
-      } catch (error) {
-        console.error('Error sending WebSocket message:', error);
-        this.callbacks.onError.forEach(callback => callback('Failed to send message'));
-      }
-    } else {
-      console.log('WebSocketService: Connection not open, queueing message:', message);
-      // Queue message for later if not connected
-      this.messageQueue.push(message);
-      if (!this.isConnecting) {
-        this.connect();
-      }
+    if (!this.ws) {
+      console.error('WebSocketService: Cannot send message - WebSocket is null');
+      return;
+    }
+
+    if (this.ws.readyState !== WebSocket.OPEN) {
+      console.error('WebSocketService: Cannot send message - WebSocket is not open. Current state:', this.ws.readyState);
+      return;
+    }
+
+    try {
+      console.log('WebSocketService: Sending message:', message);
+      this.ws.send(JSON.stringify(message));
+    } catch (error) {
+      console.error('WebSocketService: Error sending message:', error);
+      this.callbacks.onError.forEach(callback => callback('Failed to send message'));
     }
   }
 
-  public sendChallengeRequest(toUserId: string) {
+  private handleMessage(event: MessageEvent) {
+    try {
+      console.log('WebSocketService: Raw message received:', event.data);
+      const message = JSON.parse(event.data);
+      console.log('WebSocketService: Parsed message:', message);
+
+      switch (message.type) {
+        case 'pong':
+          console.log('WebSocketService: Received pong');
+          break;
+
+        case 'leaderboard_update':
+          console.log('WebSocketService: Handling leaderboard_update', message);
+          if (!message.leaderboard || !Array.isArray(message.leaderboard)) {
+            console.error('WebSocketService: Invalid leaderboard_update message format', message);
+            return;
+          }
+          console.log('WebSocketService: Leaderboard data received:', {
+            count: message.leaderboard.length,
+            data: message.leaderboard
+          });
+          console.log('WebSocketService: Number of onLeaderboardUpdate callbacks:', this.callbacks.onLeaderboardUpdate.size);
+          this.callbacks.onLeaderboardUpdate.forEach(callback => {
+            console.log('WebSocketService: Calling onLeaderboardUpdate callback with data:', message);
+            callback(message);
+          });
+          break;
+
+        case 'user_list':
+          console.log('WebSocketService: Handling user_list', message);
+          if (!message.users || !Array.isArray(message.users)) {
+            console.error('WebSocketService: Invalid user_list message format', message);
+            return;
+          }
+          console.log('WebSocketService: User list received:', {
+            count: message.users.length,
+            users: message.users
+          });
+          this.callbacks.onUserList.forEach(callback => {
+            console.log('WebSocketService: Calling onUserList callback');
+            callback(message);
+          });
+          break;
+
+        case 'user_joined':
+          console.log('WebSocketService: Handling user_joined', message);
+          if (!message.user) {
+            console.error('WebSocketService: Invalid user_joined message format', message);
+            return;
+          }
+          this.callbacks.onUserJoined.forEach(callback => callback(message));
+          break;
+
+        case 'user_left':
+          console.log('WebSocketService: Handling user_left', message);
+          if (!message.user_id) {
+            console.error('WebSocketService: Invalid user_left message format', message);
+            return;
+          }
+          this.callbacks.onUserLeft.forEach(callback => callback(message));
+          break;
+
+        case 'user_updated':
+          console.log('WebSocketService: Handling user_updated', message);
+          if (!message.user_id || !message.user) {
+            console.error('WebSocketService: Invalid user_updated message format', message);
+            return;
+          }
+          this.callbacks.onUserUpdated.forEach(callback => callback(message));
+          break;
+
+        case 'challenge_invite':
+          console.log('WebSocketService: Handling challenge_invite', message);
+          if (!message.from || !message.from_name) {
+            console.error('WebSocketService: Invalid challenge_invite message format', message);
+            return;
+          }
+          this.callbacks.onChallengeInvite.forEach(callback => callback(message));
+          break;
+
+        case 'challenge_result':
+          console.log('WebSocketService: Handling challenge_result', message);
+          if (!message.match_stats) {
+            console.error('WebSocketService: Invalid challenge_result message format', message);
+            return;
+          }
+          this.callbacks.onChallengeResult.forEach(callback => callback(message));
+          break;
+
+        case 'chat_message':
+          console.log('WebSocketService: Handling chat_message', message);
+          this.callbacks.onChatMessage.forEach(callback => callback(message));
+          break;
+
+        default:
+          console.log('WebSocketService: Unknown message type:', message.type);
+      }
+    } catch (error) {
+      console.error('WebSocketService: Error handling message:', error);
+    }
+  }
+
+  // Helper methods for common operations
+  public sendChallengeRequest(toId: string) {
     this.sendMessage({
       type: 'challenge_request',
-      to: toUserId
+      to: toId
     });
   }
 
-  public acceptChallenge(challengerId: string) {
+  public acceptChallenge(fromId: string) {
     this.sendMessage({
       type: 'challenge_accept',
-      to: challengerId
+      to: fromId
     });
   }
 
-  public declineChallenge(challengerId: string) {
+  public declineChallenge(fromId: string) {
     this.sendMessage({
       type: 'challenge_decline',
-      to: challengerId
+      to: fromId
     });
   }
 
   public sendUserUpdate(userData: any) {
     this.sendMessage({
-      type: 'user_update',
+      type: 'user_updated',
       user: userData
     });
-  }
-
-  private handleMessage(message: WebSocketMessage) {
-    console.log('WebSocketService: Received message:', message);
-
-    switch (message.type) {
-      case 'user_list':
-        console.log('WebSocketService: Handling user_list', message.users);
-        this.callbacks.onUserList.forEach(callback => {
-          console.log('WebSocketService: Calling onUserList callback');
-          callback(message.users);
-        });
-        break;
-
-      case 'chat_history':
-        console.log('WebSocketService: Handling chat_history. Message content:', message);
-        this.callbacks.onChatHistory.forEach(callback => {
-          console.log('WebSocketService: Calling onChatHistory callback with message:', message);
-          callback(message);
-        });
-        break;
-
-      case 'chat_message':
-        console.log('WebSocketService: Handling chat_message. Message content:', message);
-        this.callbacks.onChatMessage.forEach(callback => {
-          console.log('WebSocketService: Calling onChatMessage callback with message:', message);
-          callback(message);
-        });
-        break;
-
-      case 'challenge_invite':
-        console.log('WebSocketService: Handling challenge_invite');
-        this.callbacks.onChallengeInvite.forEach(callback => callback(message.from, message.from_name));
-        break;
-
-      case 'challenge_accepted':
-        console.log('WebSocketService: Handling challenge_accepted');
-        this.callbacks.onChallengeAccepted.forEach(callback => callback(message.match_id));
-        break;
-
-      case 'challenge_declined':
-        console.log('WebSocketService: Handling challenge_declined');
-        this.callbacks.onChallengeDeclined.forEach(callback => callback());
-        break;
-
-      case 'challenge_result':
-        console.log('WebSocketService: Handling challenge_result');
-        this.callbacks.onChallengeResult.forEach(callback => callback(message));
-        break;
-
-      case 'error':
-        console.log('WebSocketService: Handling error');
-        this.callbacks.onError.forEach(callback => callback(message.message));
-        break;
-
-      case 'ping':
-        console.log('WebSocketService: Handling ping');
-        this.sendMessage({ type: 'pong' });
-        break;
-
-      case 'leaderboard_update':
-        console.log('WebSocketService: Handling leaderboard_update', message);
-        if (this.callbacks.onLeaderboardUpdate.size > 0) {
-          console.log('WebSocketService: Calling onLeaderboardUpdate callbacks');
-          this.callbacks.onLeaderboardUpdate.forEach(callback => callback(message));
-        } else {
-          console.log('WebSocketService: No onLeaderboardUpdate callbacks registered');
-        }
-        break;
-
-      case 'user_joined':
-        console.log('WebSocketService: Handling user_joined');
-        this.callbacks.onUserJoined.forEach(callback => callback(message.user));
-        break;
-
-      case 'user_left':
-        console.log('WebSocketService: Handling user_left');
-        this.callbacks.onUserLeft.forEach(callback => callback(message.user_id));
-        break;
-
-      case 'user_updated':
-        console.log('WebSocketService: Handling user_updated', message.user);
-        this.callbacks.onUserUpdated.forEach(callback => callback(message.user));
-        break;
-
-      case 'mystery_box_opened':
-        console.log('WebSocketService: Handling mystery_box_opened');
-        this.callbacks.onMysteryBoxOpened.forEach(callback => callback(message));
-        break;
-
-      case 'task_completed':
-        console.log('WebSocketService: Handling task_completed');
-        this.callbacks.onTaskCompleted.forEach(callback => callback(message));
-        break;
-
-      case 'matches_claimed':
-        console.log('WebSocketService: Handling matches_claimed');
-        this.callbacks.onMatchesClaimed.forEach(callback => callback(message));
-        break;
-
-      case 'me':
-        console.log('WebSocketService: Handling me message');
-        // Store the user data if needed
-        break;
-
-      default:
-        console.log('WebSocketService: Unknown message type:', message.type);
-    }
-  }
-
-  onMessage(handler: (message: any) => void) {
-    this.messageHandlers.push(handler);
-    return () => {
-      this.messageHandlers = this.messageHandlers.filter(h => h !== handler);
-    };
-  }
-
-  onConnect(handler: () => void) {
-    this.connectHandlers.push(handler);
-    return () => {
-      this.connectHandlers = this.connectHandlers.filter(h => h !== handler);
-    };
-  }
-
-  onDisconnect(handler: () => void) {
-    this.disconnectHandlers.push(handler);
-    return () => {
-      this.disconnectHandlers = this.disconnectHandlers.filter(h => h !== handler);
-    };
   }
 }
 
