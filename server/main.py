@@ -12,7 +12,7 @@ from fastapi.responses import JSONResponse, Response
 from contextlib import asynccontextmanager
 
 # Import routers using absolute imports
-from routes import users, matches, skills, ws_handlers, mystery_box, bot, daily_tasks, chat
+from routes import users, skills, ws_handlers, mystery_box, bot, daily_tasks, chat, cache, leaderboard
 from middleware.database import database_middleware, DatabaseMiddleware
 from middleware.rate_limit import RateLimitMiddleware
 from middleware.cache import InMemoryCacheMiddleware
@@ -108,7 +108,6 @@ async def get_db():
 
 # Include routers
 app.include_router(users.router, prefix="/api", tags=["users"])
-app.include_router(matches.router, prefix="/api", tags=["matches"])
 app.include_router(skills.router, prefix="/api", tags=["skills"])
 app.include_router(mystery_box.router, prefix="/api", tags=["mystery_box"])
 app.include_router(task_claim_matches_router, prefix="/api", tags=["task_claim_matches"])
@@ -116,6 +115,8 @@ app.include_router(daily_tasks_router, prefix="/api", tags=["daily_tasks"])
 app.include_router(bot.router, prefix="/api", tags=["bot"])
 app.include_router(ws_handlers.router, tags=["ws_handlers"])
 app.include_router(chat.router, prefix="/api/chat", tags=["chat"])
+app.include_router(cache.router, prefix="/api", tags=["cache"])
+app.include_router(leaderboard.router, prefix="/api", tags=["leaderboard"])
 
 @app.middleware("http")
 async def metrics_middleware(request: Request, call_next):

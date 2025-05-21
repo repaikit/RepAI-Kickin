@@ -13,6 +13,12 @@ export const WS_BASE_URL = isDevelopment
 
 // API endpoints
 export const API_ENDPOINTS = {
+
+  leaderboard: {
+    weekly: `${API_BASE_URL}/api/leaderboard/weekly`,
+    monthly: `${API_BASE_URL}/api/leaderboard/monthly`,
+  },
+
   mystery_box: {
     getStatus: `${API_BASE_URL}/api/status`,
     openBox: `${API_BASE_URL}/api/open`,
@@ -50,6 +56,7 @@ export const API_ENDPOINTS = {
     deleteMe: `${API_BASE_URL}/api/me`,
 
     updateProfile: `${API_BASE_URL}/api/me`,
+    levelUp: `${API_BASE_URL}/api/level-up`,
 
     getById: (userId: string) => `${API_BASE_URL}/api/users/${userId}`,
     

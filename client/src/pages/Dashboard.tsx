@@ -10,6 +10,8 @@ import { useState, useEffect, useCallback } from 'react';
 import WaitingRoom from "@/components/WaitingRoom";
 import { useAuth } from "@/contexts/AuthContext";
 import GlobalChatPlaceholder from "@/components/GlobalChatPlaceholder";
+import { fetchWithApiCache } from '@/utils/apiCache';
+import { usePage } from '@/contexts/PageContext';
 
 
 interface Skill {
@@ -26,33 +28,11 @@ const RETRY_DELAY = 1000; // 1 second
 
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
-const fetchSkills = async (type: string, retryCount = 0): Promise<Skill[]> => {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), TIMEOUT_DURATION);
-
-  try {
-    const response = await fetch(API_ENDPOINTS.skills.getByType(type), {
-      ...defaultFetchOptions,
-      signal: controller.signal
-    });
-
-    if (!response.ok) {
-      throw new Error(`Failed to fetch ${type} skills: ${response.status}`);
-    }
-
-    const data = await response.json();
-    return data;
-  } catch (error) {
-    
-    if (retryCount < MAX_RETRIES) {
-      await sleep(RETRY_DELAY);
-      return fetchSkills(type, retryCount + 1);
-    }
-    
-    return [];
-  } finally {
-    clearTimeout(timeoutId);
-  }
+const fetchSkills = async (type: string) => {
+  const url = API_ENDPOINTS.skills.getByType(type);
+  const cacheKey = `skills-${type}`;
+  const data = await fetchWithApiCache(cacheKey, url, defaultFetchOptions);
+  return data;
 };
 
 export default function Dashboard() {
@@ -69,6 +49,8 @@ export default function Dashboard() {
   const [goalkeeperSkills, setGoalkeeperSkills] = useState<Skill[]>([]);
   const [isSkillsLoading, setIsSkillsLoading] = useState(true);
   const [skillsError, setSkillsError] = useState<string | null>(null);
+
+  const { activePage } = usePage();
 
   const refreshUserData = useCallback(async () => {
     try {
@@ -89,7 +71,7 @@ export default function Dashboard() {
       // Update skills states
       setKickerSkills(prevSkills => {
         const newSkills = [...prevSkills];
-        kicker.forEach(newSkill => {
+        kicker.forEach((newSkill: any) => {
           const index = newSkills.findIndex(s => s._id === newSkill._id);
           if (index !== -1) {
             newSkills[index] = newSkill;
@@ -102,7 +84,7 @@ export default function Dashboard() {
 
       setGoalkeeperSkills(prevSkills => {
         const newSkills = [...prevSkills];
-        goalkeeper.forEach(newSkill => {
+        goalkeeper.forEach((newSkill: any) => {
           const index = newSkills.findIndex(s => s._id === newSkill._id);
           if (index !== -1) {
             newSkills[index] = newSkill;
@@ -182,6 +164,8 @@ export default function Dashboard() {
                 isLoading={isSkillsLoading}
                 userPoints={user?.kicked_win || 0}
                 onSkillBought={refreshSkills}
+                kickedWin={user?.kicked_win || 0}
+                keepWin={user?.keep_win || 0}
               />
               <SkillsSidebar
                 skills={goalkeeperSkills}
@@ -190,6 +174,8 @@ export default function Dashboard() {
                 isLoading={isSkillsLoading}
                 userPoints={user?.keep_win || 0}
                 onSkillBought={refreshSkills}
+                kickedWin={user?.kicked_win || 0}
+                keepWin={user?.keep_win || 0}
               />
             </>
           )}

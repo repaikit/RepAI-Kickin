@@ -1,6 +1,10 @@
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Request, Depends
+from typing import Optional
 from datetime import datetime, timedelta
 from database.database import get_database
+from utils.time_utils import get_vietnam_time, to_vietnam_time, format_vietnam_time
+from utils.logger import api_logger
+from ws_handlers.waiting_room import manager as waiting_room_manager
 
 router = APIRouter()
 
@@ -13,14 +17,18 @@ async def claim_matches_status(request: Request):
     if not user:
         raise HTTPException(status_code=401, detail="Not authorized")
     last_claim = user.get("last_claim_matches")
-    now = datetime.utcnow()
+    now = get_vietnam_time()
     if not last_claim:
         can_claim = True
         next_claim = None
         time_until_claim = 0
     else:
+        # Convert last_claim to Vietnam timezone if it's a string or naive datetime
         if isinstance(last_claim, str):
-            last_claim = datetime.fromisoformat(last_claim)
+            last_claim = to_vietnam_time(datetime.fromisoformat(last_claim.replace('Z', '+00:00')))
+        elif isinstance(last_claim, datetime) and last_claim.tzinfo is None:
+            last_claim = to_vietnam_time(last_claim)
+            
         can_claim = (now - last_claim) >= timedelta(hours=CLAIM_INTERVAL_HOURS)
         next_claim = last_claim + timedelta(hours=CLAIM_INTERVAL_HOURS)
         time_until_claim = int((next_claim - now).total_seconds()) if not can_claim else 0
@@ -28,7 +36,7 @@ async def claim_matches_status(request: Request):
         "success": True,
         "data": {
             "can_claim": can_claim,
-            "next_claim": next_claim.replace(microsecond=0).isoformat() + "Z" if next_claim else None,
+            "next_claim": format_vietnam_time(next_claim) if next_claim else None,
             "time_until_claim": time_until_claim
         }
     }
@@ -40,31 +48,56 @@ async def claim_matches(request: Request):
         raise HTTPException(status_code=401, detail="Not authorized")
     db = await get_database()
     last_claim = user.get("last_claim_matches")
-    now = datetime.utcnow()
+    now = get_vietnam_time()
     if last_claim:
+        # Convert last_claim to Vietnam timezone if it's a string or naive datetime
         if isinstance(last_claim, str):
-            last_claim = datetime.fromisoformat(last_claim)
+            last_claim = to_vietnam_time(datetime.fromisoformat(last_claim.replace('Z', '+00:00')))
+        elif isinstance(last_claim, datetime) and last_claim.tzinfo is None:
+            last_claim = to_vietnam_time(last_claim)
+            
         if (now - last_claim) < timedelta(hours=CLAIM_INTERVAL_HOURS):
             next_claim = last_claim + timedelta(hours=CLAIM_INTERVAL_HOURS)
             time_until_claim = int((next_claim - now).total_seconds())
             return {
                 "success": False,
                 "message": "You need to wait before claiming again.",
-                "next_claim": next_claim.replace(microsecond=0).isoformat() + "Z",
+                "next_claim": next_claim.isoformat(),
                 "time_until_claim": time_until_claim
             }
     # Cộng 50 matches và cập nhật last_claim_matches
+    next_claim_time = now + timedelta(hours=CLAIM_INTERVAL_HOURS)
     await db.users.update_one(
         {"_id": user["_id"]},
         {
             "$inc": {"remaining_matches": CLAIM_AMOUNT},
-            "$set": {"last_claim_matches": now}
+            "$set": {
+                "last_claim_matches": now.isoformat(),
+                "next_claim_matches": next_claim_time.isoformat(),
+            }
         }
     )
+    # Broadcast user update
+    updated_user = await db.users.find_one({"_id": user["_id"]})
+    if waiting_room_manager:
+        await waiting_room_manager.broadcast({
+            "type": "user_updated",
+            "user": {
+                "id": str(updated_user["_id"]),
+                "name": updated_user.get("name", "Anonymous"),
+                "avatar": updated_user.get("avatar", ""),
+                "user_type": updated_user.get("user_type", "guest"),
+                "remaining_matches": updated_user.get("remaining_matches", 0),
+                "level": updated_user.get("level", 1),
+                "kicker_skills": updated_user.get("kicker_skills", []),
+                "goalkeeper_skills": updated_user.get("goalkeeper_skills", []),
+                "total_point": updated_user.get("total_point", 0),
+            }
+        })
     return {
         "success": True,
         "data": {
             "claimed": CLAIM_AMOUNT,
-            "now": now.replace(microsecond=0).isoformat() + "Z"
+            "now": format_vietnam_time(now)
         }
     }

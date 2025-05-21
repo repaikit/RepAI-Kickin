@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { CheckCircle2, Circle } from "lucide-react";
 import BuySkillButton from "./BuySkillButton";
@@ -17,6 +17,8 @@ interface SkillsSidebarProps {
   title: string;
   isLoading: boolean;
   userPoints: number;
+  kickedWin?: number;
+  keepWin?: number;
   onSkillBought?: () => void;
 }
 
@@ -26,6 +28,8 @@ export default function SkillsSidebar({
   title = "Player Skills",
   isLoading,
   userPoints,
+  kickedWin = 0,
+  keepWin = 0,
   onSkillBought
 }: SkillsSidebarProps) {
   // Check if user has learned a skill by comparing skill names
@@ -45,6 +49,12 @@ export default function SkillsSidebar({
   // Determine skill type from title
   const skillType = title.toLowerCase().includes('kicker') ? 'kicker' : 'goalkeeper';
 
+  // Tổng skill_point
+  const skillPoint = kickedWin + keepWin;
+
+  // Giá skill cố định cho cả hai loại
+  const skillCost = 10;
+
   return (
     <div className="bg-white rounded-xl shadow-sm p-5 h-full flex flex-col">
       <div className="flex items-center justify-between mb-5">
@@ -56,6 +66,11 @@ export default function SkillsSidebar({
           <div className="text-xs text-slate-500 bg-slate-50 px-2 py-0.5 rounded">
             {skills.filter(s => hasLearnedSkill(s.name)).length} / {skills.length}
           </div>
+          <div className="text-xs text-blue-600 font-semibold flex items-center gap-2">
+            Skill Points: {skillPoint}
+            <span className="text-xs text-slate-400">|</span>
+            <span className="text-xs text-purple-600">Cost: {skillCost}</span>
+          </div>
         </div>
         {isLoading ? (
           <div className="space-y-1.5">
@@ -64,7 +79,7 @@ export default function SkillsSidebar({
             ))}
           </div>
         ) : (
-          <div className="space-y-1 max-h-[calc(100vh-300px)] overflow-y-auto pr-1.5 custom-scrollbar">
+          <div className="space-y-1 max-h-56 overflow-y-auto pr-1.5 custom-scrollbar">
             {sortedSkills.map((skill) => {
               const isLearned = hasLearnedSkill(skill.name);
               return (
@@ -97,9 +112,13 @@ export default function SkillsSidebar({
       <div className="mt-4 pt-4 border-t border-slate-100">
         <BuySkillButton 
           skillType={skillType}
-          userPoints={userPoints}
+          userPoints={skillPoint}
+          skillCost={skillCost}
           onSuccess={onSkillBought}
         />
+        <div className="text-xs text-slate-500 mt-2 text-center">
+          Each skill purchase (Kicker or Goalkeeper) costs <span className="font-semibold text-purple-600">10</span> skill points.
+        </div>
       </div>
     </div>
   );

@@ -27,6 +27,9 @@ type WebSocketCallbacks = {
 
 class WebSocketService {
   private ws: WebSocket | null = null;
+  private messageHandlers: ((message: any) => void)[] = [];
+  private connectHandlers: (() => void)[] = [];
+  private disconnectHandlers: (() => void)[] = [];
   private callbacks: { [key: string]: Set<Function> } = {};
   private reconnectAttempts = 0;
   private maxReconnectAttempts = 5;
@@ -106,15 +109,17 @@ class WebSocketService {
 
   public connect() {
     if (this.isConnecting || this.ws?.readyState === WebSocket.OPEN) {
+      console.log('WebSocketService: Already connected or connecting');
       return;
     }
 
     this.isConnecting = true;
+    console.log('WebSocketService: Connecting...');
 
     // Get access token from localStorage
     const accessToken = localStorage.getItem('access_token');
     if (!accessToken) {
-      console.error('No access token found');
+      console.error('WebSocketService: No access token found');
       this.callbacks.onError.forEach(callback => callback('No access token found'));
       this.isConnecting = false;
       return;
@@ -122,16 +127,17 @@ class WebSocketService {
 
     // Connect to WebSocket with access token
     const wsUrl = `${API_ENDPOINTS.ws.waitingRoom}?access_token=${accessToken}`;
+    console.log('WebSocketService: Connecting to', wsUrl);
     
     try {
       this.ws = new WebSocket(wsUrl);
 
       this.ws.onopen = () => {
-        console.log('WebSocket connected');
+        console.log('WebSocketService: Connected successfully');
         this.isConnecting = false;
         this.reconnectAttempts = 0;
         this.startHeartbeat();
-        this.callbacks.onConnect.forEach(callback => callback());
+        this.connectHandlers.forEach(handler => handler());
         
         // Send any queued messages
         while (this.messageQueue.length > 0) {
@@ -143,16 +149,16 @@ class WebSocketService {
       };
 
       this.ws.onclose = (event) => {
-        console.log('WebSocket closed:', event.code, event.reason);
+        console.log('WebSocketService: Connection closed:', event.code, event.reason);
         this.isConnecting = false;
         this.stopHeartbeat();
-        this.callbacks.onDisconnect.forEach(callback => callback());
+        this.disconnectHandlers.forEach(handler => handler());
         
         // Attempt to reconnect
         if (this.reconnectAttempts < this.maxReconnectAttempts) {
           this.reconnectAttempts++;
           const delay = Math.min(1000 * Math.pow(2, this.reconnectAttempts), 30000);
-          console.log(`Attempting to reconnect in ${delay}ms...`);
+          console.log(`WebSocketService: Attempting to reconnect in ${delay}ms...`);
           
           this.reconnectTimeout = setTimeout(() => {
             this.connect();
@@ -161,7 +167,7 @@ class WebSocketService {
       };
 
       this.ws.onerror = (error) => {
-        console.error('WebSocket error:', error);
+        console.error('WebSocketService: Connection error:', error);
         this.isConnecting = false;
         this.callbacks.onError.forEach(callback => callback('Connection error - Please refresh the page'));
       };
@@ -169,13 +175,14 @@ class WebSocketService {
       this.ws.onmessage = (event) => {
         try {
           const message = JSON.parse(event.data);
+          console.log('WebSocketService: Received message:', message);
           this.handleMessage(message);
         } catch (error) {
-          console.error('Error parsing WebSocket message:', error);
+          console.error('WebSocketService: Error parsing message:', error);
         }
       };
     } catch (error) {
-      console.error('Error creating WebSocket connection:', error);
+      console.error('WebSocketService: Error creating connection:', error);
       this.isConnecting = false;
       this.callbacks.onError.forEach(callback => callback('Failed to establish connection'));
     }
@@ -202,12 +209,14 @@ class WebSocketService {
   public sendMessage(message: WebSocketMessage) {
     if (this.ws?.readyState === WebSocket.OPEN) {
       try {
+        console.log('WebSocketService: Sending message:', message);
         this.ws.send(JSON.stringify(message));
       } catch (error) {
         console.error('Error sending WebSocket message:', error);
         this.callbacks.onError.forEach(callback => callback('Failed to send message'));
       }
     } else {
+      console.log('WebSocketService: Connection not open, queueing message:', message);
       // Queue message for later if not connected
       this.messageQueue.push(message);
       if (!this.isConnecting) {
@@ -234,6 +243,13 @@ class WebSocketService {
     this.sendMessage({
       type: 'challenge_decline',
       to: challengerId
+    });
+  }
+
+  public sendUserUpdate(userData: any) {
+    this.sendMessage({
+      type: 'user_update',
+      user: userData
     });
   }
 
@@ -335,9 +351,35 @@ class WebSocketService {
         this.callbacks.onMatchesClaimed.forEach(callback => callback(message));
         break;
 
+      case 'me':
+        console.log('WebSocketService: Handling me message');
+        // Store the user data if needed
+        break;
+
       default:
         console.log('WebSocketService: Unknown message type:', message.type);
     }
+  }
+
+  onMessage(handler: (message: any) => void) {
+    this.messageHandlers.push(handler);
+    return () => {
+      this.messageHandlers = this.messageHandlers.filter(h => h !== handler);
+    };
+  }
+
+  onConnect(handler: () => void) {
+    this.connectHandlers.push(handler);
+    return () => {
+      this.connectHandlers = this.connectHandlers.filter(h => h !== handler);
+    };
+  }
+
+  onDisconnect(handler: () => void) {
+    this.disconnectHandlers.push(handler);
+    return () => {
+      this.disconnectHandlers = this.disconnectHandlers.filter(h => h !== handler);
+    };
   }
 }
 

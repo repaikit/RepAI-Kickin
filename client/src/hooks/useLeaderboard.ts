@@ -2,6 +2,8 @@ import { useState, useEffect } from "react";
 import { websocketService } from "@/services/websocket";
 import { useAuth } from "@/contexts/AuthContext";
 import { API_ENDPOINTS, defaultFetchOptions } from "@/config/api";
+import { fetchWithApiCache } from '@/utils/apiCache';
+import { useWebSocketData } from '@/contexts/WebSocketContext';
 
 export interface LeaderboardPlayer {
   id: string;
@@ -22,17 +24,15 @@ export interface LeaderboardPlayer {
 
 export const useLeaderboard = (page: number = 1, limit: number = 10) => {
   const { user } = useAuth();
+  const { leaderboard } = useWebSocketData();
   const [data, setData] = useState<LeaderboardPlayer[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   const fetchInitialData = async () => {
     try {
       const url = API_ENDPOINTS.users.leaderboard + `?page=${page}&limit=${limit}`;
-      const response = await fetch(url, defaultFetchOptions);
-      if (!response.ok) {
-        throw new Error(`Failed to fetch leaderboard: ${response.status} ${response.statusText}`);
-      }
-      const initialData = await response.json();
+      const cacheKey = `leaderboard-${page}-${limit}`;
+      const initialData = await fetchWithApiCache(cacheKey, url, defaultFetchOptions);
       setData(initialData.map((user: any) => ({
         id: user._id,
         name: user.name,
@@ -61,92 +61,8 @@ export const useLeaderboard = (page: number = 1, limit: number = 10) => {
     fetchInitialData();
   }, [page, limit]);
 
-  // Set up WebSocket for realtime updates
-  useEffect(() => {
-    if (!user) return;
+  // Always use realtime data if available, otherwise fallback to fetched data
+  const result = leaderboard && leaderboard.length > 0 ? leaderboard : data;
 
-    // Không cập nhật leaderboard cho user_type là guest
-    if (user.user_type === 'guest') return;
-
-    const handleLeaderboardUpdate = (message: any) => {
-      console.log('Received leaderboard update in hook:', message);
-      if (message.type === 'leaderboard_update' && Array.isArray(message.leaderboard)) {
-        const updatedData = message.leaderboard.map((player: any) => ({
-          id: player.id,
-          name: player.name,
-          avatar: player.avatar,
-          total_kicked: player.total_kicked,
-          kicked_win: player.kicked_win,
-          total_keep: player.total_keep,
-          keep_win: player.keep_win,
-          is_pro: player.is_pro,
-          is_vip: player.is_vip,
-          total_extra_skill: player.total_extra_skill,
-          extra_skill_win: player.extra_skill_win,
-          total_point: player.total_point,
-          bonus_point: player.bonus_point,
-          level: player.level,
-        }));
-        console.log('Updating leaderboard with:', updatedData);
-        setData(prevData => {
-          // Merge new data with existing data to maintain order
-          const mergedData = [...prevData];
-          updatedData.forEach((newPlayer: LeaderboardPlayer) => {
-            const existingIndex = mergedData.findIndex(p => p.id === newPlayer.id);
-            if (existingIndex !== -1) {
-              mergedData[existingIndex] = newPlayer;
-            } else {
-              mergedData.push(newPlayer);
-            }
-          });
-          // Sort by total points
-          return mergedData.sort((a, b) => b.total_point - a.total_point);
-        });
-        setIsLoading(false);
-      }
-    };
-
-    // Initialize WebSocket connection if not already connected
-    if (!websocketService.isConnected()) {
-      websocketService.connect();
-    }
-
-    // Set up WebSocket callbacks
-    websocketService.setCallbacks({
-      onLeaderboardUpdate: handleLeaderboardUpdate,
-      onConnect: () => {
-        console.log('WebSocket connected in useLeaderboard');
-        // Fetch initial data when connected
-        fetchInitialData();
-      },
-      onDisconnect: () => {
-        console.log('WebSocket disconnected in useLeaderboard');
-        setIsLoading(true);
-      },
-      onError: (error) => {
-        console.error('WebSocket error in useLeaderboard:', error);
-        setIsLoading(true);
-      }
-    });
-
-    // Cleanup function
-    return () => {
-      websocketService.removeCallbacks({
-        onLeaderboardUpdate: handleLeaderboardUpdate,
-        onConnect: () => {
-          console.log('WebSocket connected in useLeaderboard');
-        },
-        onDisconnect: () => {
-          console.log('WebSocket disconnected in useLeaderboard');
-          setIsLoading(true);
-        },
-        onError: (error) => {
-          console.error('WebSocket error in useLeaderboard:', error);
-          setIsLoading(true);
-        }
-      });
-    };
-  }, [user]);
-
-  return { data, isLoading };
+  return { data: result, isLoading, fetchInitialData };
 }; 

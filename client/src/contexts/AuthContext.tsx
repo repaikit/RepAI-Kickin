@@ -17,6 +17,8 @@ interface User {
   is_pro: boolean;
   position: string;
   total_point: number;
+  total_point_for_level: number;
+  can_level_up: boolean;
   bonus_point: number;
   total_kicked: number;
   kicked_win: number;

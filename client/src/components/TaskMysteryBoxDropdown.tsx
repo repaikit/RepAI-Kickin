@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { API_ENDPOINTS, defaultFetchOptions } from '@/config/api';
 import { useAuth } from '@/contexts/AuthContext';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
 import { Progress } from "@/components/ui/progress";
 import { websocketService } from '@/services/websocket';
+import { useApi } from '@/hooks/useApi';
 
 interface BoxStatus {
   can_open: boolean;
@@ -43,7 +44,8 @@ const MYSTERY_BOX_REWARDS = {
   } as const
 };
 
-const CountdownTimer = ({ timeLeft }: { timeLeft: string }) => {
+// CountdownTimer tối ưu với React.memo
+const CountdownTimer = React.memo(({ timeLeft }: { timeLeft: string }) => {
   const [hours, setHours] = useState<number>(0);
   const [minutes, setMinutes] = useState<number>(0);
   const [seconds, setSeconds] = useState<number>(0);
@@ -53,19 +55,16 @@ const CountdownTimer = ({ timeLeft }: { timeLeft: string }) => {
       const now = new Date().getTime();
       const nextOpen = new Date(timeLeft).getTime();
       const diff = nextOpen - now;
-
       if (diff <= 0) {
         setHours(0);
         setMinutes(0);
         setSeconds(0);
         return;
       }
-
       setHours(Math.floor(diff / (1000 * 60 * 60)));
       setMinutes(Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60)));
       setSeconds(Math.floor((diff % (1000 * 60)) / 1000));
     };
-
     updateTimer();
     const timer = setInterval(updateTimer, 1000);
     return () => clearInterval(timer);
@@ -88,10 +87,34 @@ const CountdownTimer = ({ timeLeft }: { timeLeft: string }) => {
       </div>
     </div>
   );
-};
+});
+
+// Cache duration in milliseconds (5 minutes)
+const CACHE_DURATION = 5 * 60 * 1000;
+
+function getLocalCache(key: string) {
+  try {
+    const item = localStorage.getItem(key);
+    if (!item) return null;
+    const parsed = JSON.parse(item);
+    if (Date.now() - parsed.timestamp < CACHE_DURATION) {
+      return parsed.data;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+function setLocalCache(key: string, data: any) {
+  try {
+    localStorage.setItem(key, JSON.stringify({ data, timestamp: Date.now() }));
+  } catch {}
+}
 
 export default function TaskMysteryBoxDropdown() {
   const { user, checkAuth } = useAuth();
+  const { fetchWithCache, clearCache } = useApi();
   const [isOpen, setIsOpen] = useState(false);
   const [boxStatus, setBoxStatus] = useState<BoxStatus | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -102,54 +125,219 @@ export default function TaskMysteryBoxDropdown() {
   const dropdownRef = useRef<HTMLDivElement>(null);
   const [dailyTasks, setDailyTasks] = useState<any[]>([]);
   const [isClaimingTask, setIsClaimingTask] = useState<string | null>(null);
+  const [boxStatusRetry, setBoxStatusRetry] = useState(0);
+  const [claimStatusRetry, setClaimStatusRetry] = useState(0);
+  const [dailyTasksRetry, setDailyTasksRetry] = useState(0);
+  const MAX_RETRY = 2;
 
   // Get user's level
   const userLevel = (user as User)?.level || 1;
 
-  const getPossibleRewards = () => {
+  // Debounce khi mở dropdown
+  const debounceTimeout = useRef<NodeJS.Timeout | null>(null);
+  useEffect(() => {
+    if (isOpen) {
+      if (debounceTimeout.current) clearTimeout(debounceTimeout.current);
+      debounceTimeout.current = setTimeout(() => {
+        const cachedBox = getLocalCache('boxStatus');
+        if (cachedBox) setBoxStatus(cachedBox);
+        fetchBoxStatus(true);
+        const cachedClaim = getLocalCache('claimStatus');
+        if (cachedClaim) setClaimStatus(cachedClaim);
+        fetchClaimStatus(true);
+        const cachedTasks = getLocalCache('dailyTasks');
+        if (cachedTasks) setDailyTasks(cachedTasks);
+        fetchDailyTasks(true);
+      }, 250);
+    }
+    return () => {
+      if (debounceTimeout.current) clearTimeout(debounceTimeout.current);
+    };
+    // eslint-disable-next-line
+  }, [isOpen]);
+
+  // useMemo cho getPossibleRewards
+  const possibleRewards = useMemo(() => {
     const level = userLevel >= 4 ? 4 : userLevel;
     return {
       shots: MYSTERY_BOX_REWARDS.shots[level as keyof typeof MYSTERY_BOX_REWARDS.shots],
       skill: MYSTERY_BOX_REWARDS.skill[level as keyof typeof MYSTERY_BOX_REWARDS.skill]
     };
-  };
+  }, [userLevel]);
 
-  // Fetch box status
-  const fetchBoxStatus = async () => {
+  // Lazy load lịch sử box (giả sử có tab 'mystery-box-history')
+  const [activeTab, setActiveTab] = useState('tasks');
+  const [boxHistory, setBoxHistory] = useState<any[] | null>(null);
+  const [isLoadingHistory, setIsLoadingHistory] = useState(false);
+  const fetchBoxHistory = useCallback(async () => {
+    setIsLoadingHistory(true);
+    try {
+      const token = localStorage.getItem('access_token');
+      if (!token) return;
+      const res = await fetch(API_ENDPOINTS.mystery_box.getHistory, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      const data = await res.json();
+      if (data.success) setBoxHistory(data.data);
+    } catch {}
+    setIsLoadingHistory(false);
+  }, []);
+  useEffect(() => {
+    if (activeTab === 'mystery-box-history' && boxHistory === null) {
+      fetchBoxHistory();
+    }
+  }, [activeTab, boxHistory, fetchBoxHistory]);
+
+  // Khi fetch thành công, lưu vào localStorage
+  const fetchBoxStatus = useCallback(async (forceRefresh = false) => {
     try {
       const token = localStorage.getItem('access_token');
       if (!token) {
-        console.error('No access token found');
+        toast.error('Please login to view mystery box');
         return;
       }
-
-      const response = await fetch(API_ENDPOINTS.mystery_box.getStatus, {
-        ...defaultFetchOptions,
-        headers: {
-          ...defaultFetchOptions.headers,
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        }
-      });
-
-      if (!response.ok) {
-        if (response.status === 401) {
-          // Token expired, try to refresh
-          await checkAuth();
-          return;
-        }
-        throw new Error('Failed to fetch box status');
-      }
-
-      const result = await response.json();
-      if (result.success) {
+      const result = await fetchWithCache(
+        API_ENDPOINTS.mystery_box.getStatus,
+        {
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          }
+        },
+        forceRefresh
+      );
+      if (result?.success === true) {
         setBoxStatus(result.data);
+        setLocalCache('boxStatus', result.data);
+        setBoxStatusRetry(0); // reset retry count
+      } else if (boxStatusRetry < MAX_RETRY) {
+        setBoxStatusRetry(prev => prev + 1);
+        setTimeout(() => fetchBoxStatus(true), 2000);
+      } else {
+        toast.error(result?.message || 'Failed to fetch box status');
+        setBoxStatusRetry(0);
       }
     } catch (error) {
-      console.error('Error fetching box status:', error);
-      toast.error('Failed to fetch box status');
+      if (boxStatusRetry < MAX_RETRY) {
+        setBoxStatusRetry(prev => prev + 1);
+        setTimeout(() => fetchBoxStatus(true), 2000);
+      } else {
+        toast.error('Failed to fetch box status. Please try again.');
+        setBoxStatusRetry(0);
+      }
     }
-  };
+  }, [boxStatusRetry, fetchWithCache]);
+
+  const fetchClaimStatus = useCallback(async (forceRefresh = false) => {
+    try {
+      const token = localStorage.getItem('access_token');
+      if (!token) {
+        toast.error('Please login to view claim status');
+        return;
+      }
+      const data = await fetchWithCache(
+        API_ENDPOINTS.task_claim_matches.getStatus,
+        {
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          }
+        },
+        forceRefresh
+      );
+      if (data?.success === true) {
+        setClaimStatus(data.data);
+        setLocalCache('claimStatus', data.data);
+        setClaimStatusRetry(0);
+      } else if (claimStatusRetry < MAX_RETRY) {
+        setClaimStatusRetry(prev => prev + 1);
+        setTimeout(() => fetchClaimStatus(true), 2000);
+      } else {
+        toast.error(data?.message || 'Failed to fetch claim status');
+        setClaimStatusRetry(0);
+      }
+    } catch (error) {
+      if (claimStatusRetry < MAX_RETRY) {
+        setClaimStatusRetry(prev => prev + 1);
+        setTimeout(() => fetchClaimStatus(true), 2000);
+      } else {
+        toast.error('Failed to fetch claim status. Please try again.');
+        setClaimStatusRetry(0);
+      }
+    }
+  }, [claimStatusRetry, fetchWithCache]);
+
+  const fetchDailyTasks = useCallback(async (forceRefresh = false) => {
+    try {
+      const token = localStorage.getItem('access_token');
+      if (!token) {
+        toast.error('Please login to view daily tasks');
+        return;
+      }
+      const data = await fetchWithCache(
+        API_ENDPOINTS.daily_tasks.get,
+        {
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          }
+        },
+        forceRefresh
+      );
+      if (data?.success === true) {
+        setDailyTasks(data.data);
+        setLocalCache('dailyTasks', data.data);
+        setDailyTasksRetry(0);
+      } else if (dailyTasksRetry < MAX_RETRY) {
+        setDailyTasksRetry(prev => prev + 1);
+        setTimeout(() => fetchDailyTasks(true), 2000);
+      } else {
+        toast.error(data?.message || 'Failed to fetch daily tasks');
+        setDailyTasksRetry(0);
+      }
+    } catch (error) {
+      if (dailyTasksRetry < MAX_RETRY) {
+        setDailyTasksRetry(prev => prev + 1);
+        setTimeout(() => fetchDailyTasks(true), 2000);
+      } else {
+        toast.error('Failed to fetch daily tasks. Please try again.');
+        setDailyTasksRetry(0);
+      }
+    }
+  }, [dailyTasksRetry, fetchWithCache]);
+
+  // Lắng nghe sự kiện websocket
+  useEffect(() => {
+    const callbacks = {
+      onUserUpdated: (updatedUser: any) => {
+        // Cập nhật user trong context
+        checkAuth();
+      },
+      onMysteryBoxOpened: (data: any) => {
+        // Cập nhật box status và user
+        fetchBoxStatus(true);
+        checkAuth();
+      },
+      onTaskCompleted: (data: any) => {
+        // Cập nhật daily tasks và user
+        fetchDailyTasks(true);
+        checkAuth();
+      },
+      onMatchesClaimed: (data: any) => {
+        // Cập nhật claim status và user
+        fetchClaimStatus(true);
+        checkAuth();
+      }
+    };
+
+    // Đăng ký các event listeners
+    websocketService.setCallbacks(callbacks);
+
+    // Cleanup
+    return () => {
+      websocketService.removeCallbacks(callbacks);
+    };
+  }, [checkAuth, fetchBoxStatus, fetchDailyTasks, fetchClaimStatus]);
 
   // Open mystery box
   const handleOpenBox = async () => {
@@ -202,19 +390,36 @@ export default function TaskMysteryBoxDropdown() {
           toast.success(`Congratulations! You received ${reward.value} matches!`);
         }
         
-        // Refresh auth and box status
+        // Cập nhật box status ngay lập tức
+        setBoxStatus((prev: BoxStatus | null) => ({
+          ...prev!,
+          can_open: false,
+          next_open: data.data.next_open
+        }));
+
+        // Cập nhật user context
         await checkAuth();
-        await fetchBoxStatus();
 
         // Emit websocket event to update waiting room
-        websocketService.sendMessage({
-          type: 'user_updated',
-          user: {
-            ...user,
-            remaining_matches: reward.type === 'remaining_matches' ? (user?.remaining_matches || 0) + Number(reward.value) : user?.remaining_matches,
-            kicker_skills: reward.type === 'skill' && reward.skill_type === 'kicker' ? [...(user?.kicker_skills || []), reward.skill_name] : user?.kicker_skills,
-            goalkeeper_skills: reward.type === 'skill' && reward.skill_type === 'goalkeeper' ? [...(user?.goalkeeper_skills || []), reward.skill_name] : user?.goalkeeper_skills
-          }
+        websocketService.sendUserUpdate({
+          ...user,
+          remaining_matches: reward.type === 'remaining_matches' ? (user?.remaining_matches || 0) + Number(reward.value) : user?.remaining_matches,
+          kicker_skills: reward.type === 'skill' && reward.skill_type === 'kicker' ? [...(user?.kicker_skills || []), reward.skill_name] : user?.kicker_skills,
+          goalkeeper_skills: reward.type === 'skill' && reward.skill_type === 'goalkeeper' ? [...(user?.goalkeeper_skills || []), reward.skill_name] : user?.goalkeeper_skills,
+          name: user?.name || "Guest Player",
+          user_type: user?.user_type || "guest",
+          avatar: user?.avatar || "",
+          role: user?.role || "user",
+          is_active: user?.is_active ?? true,
+          is_verified: user?.is_verified ?? false,
+          trend: user?.trend || "neutral",
+          level: user?.level || 1,
+          total_point: user?.total_point || 0,
+          total_kicked: user?.total_kicked || 0,
+          kicked_win: user?.kicked_win || 0,
+          total_keep: user?.total_keep || 0,
+          keep_win: user?.keep_win || 0,
+          is_pro: user?.is_pro || false,
         });
       } else {
         toast.error(data.message || 'Failed to open box');
@@ -254,53 +459,48 @@ export default function TaskMysteryBoxDropdown() {
     return () => clearInterval(timer);
   }, [boxStatus?.next_open]);
 
-  // Fetch status when dropdown opens
-  useEffect(() => {
-    if (isOpen) {
-      fetchBoxStatus();
-    }
-  }, [isOpen]);
-
-  const fetchClaimStatus = async () => {
-    const token = localStorage.getItem('access_token');
-    if (!token) return;
-    const res = await fetch(API_ENDPOINTS.task_claim_matches.getStatus, {
-      headers: { 'Authorization': `Bearer ${token}` }
-    });
-    const data = await res.json();
-    if (data.success) setClaimStatus(data.data);
-  };
-
   const handleClaimMatches = async () => {
     setIsClaiming(true);
-    const token = localStorage.getItem('access_token');
-    const res = await fetch(API_ENDPOINTS.task_claim_matches.claimMatches, {
-      method: 'POST',
-      headers: { 'Authorization': `Bearer ${token}` }
-    });
-    const data = await res.json();
-    if (data.success) {
-      toast.success('You have claimed 50 free matches!');
-      fetchClaimStatus();
-      await checkAuth(); // update user info
-      
-      // Emit websocket event to update waiting room
-      websocketService.sendMessage({
-        type: 'user_updated',
-        user: {
+    try {
+      const token = localStorage.getItem('access_token');
+      if (!token) {
+        toast.error('Please login to claim matches');
+        return;
+      }
+
+      const res = await fetch(API_ENDPOINTS.task_claim_matches.claimMatches, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      const data = await res.json();
+      if (data.success) {
+        toast.success('You have claimed 50 free matches!');
+        
+        // Cập nhật claim status ngay lập tức
+        setClaimStatus((prev: any) => ({
+          ...prev,
+          can_claim: false,
+          next_claim: data.data.next_claim
+        }));
+
+        // Cập nhật user context
+        await checkAuth();
+        
+        // Emit websocket event to update waiting room
+        websocketService.sendUserUpdate({
           ...user,
           remaining_matches: (user?.remaining_matches || 0) + 50
-        }
-      });
-    } else {
-      toast.error(data.message || 'You need to wait before claiming again!');
+        });
+      } else {
+        toast.error(data.message || 'You need to wait before claiming again!');
+      }
+    } catch (error) {
+      console.error('Error claiming matches:', error);
+      toast.error('Failed to claim matches. Please try again.');
+    } finally {
+      setIsClaiming(false);
     }
-    setIsClaiming(false);
   };
-
-  useEffect(() => {
-    if (isOpen) fetchClaimStatus();
-  }, [isOpen]);
 
   // Đóng dropdown khi click ra ngoài
   useEffect(() => {
@@ -313,44 +513,6 @@ export default function TaskMysteryBoxDropdown() {
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [isOpen]);
-
-  const fetchDailyTasks = async () => {
-    try {
-      const token = localStorage.getItem('access_token');
-      if (!token) {
-        console.error('No access token found');
-        return;
-      }
-      
-      const response = await fetch(API_ENDPOINTS.daily_tasks.get, {
-        ...defaultFetchOptions,
-        headers: {
-          ...defaultFetchOptions.headers,
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        }
-      });
-
-      if (!response.ok) {
-        if (response.status === 401) {
-          // Token expired, try to refresh
-          await checkAuth();
-          return;
-        }
-        throw new Error('Failed to fetch daily tasks');
-      }
-
-      const data = await response.json();
-      if (data.success) {
-        setDailyTasks(data.data);
-      } else {
-        toast.error(data.message || 'Failed to fetch daily tasks');
-      }
-    } catch (error) {
-      console.error('Error fetching daily tasks:', error);
-      toast.error('Failed to fetch daily tasks');
-    }
-  };
 
   const handleClaimTask = async (taskId: string) => {
     try {
@@ -384,17 +546,21 @@ export default function TaskMysteryBoxDropdown() {
 
       if (data.success) {
         toast.success(`Successfully claimed ${data.reward} Matches!`);
-        // Refresh tasks and user data
-        await fetchDailyTasks();
+        
+        // Cập nhật daily tasks ngay lập tức
+        setDailyTasks((prev: any[]) => prev.map(task => 
+          task.id === taskId 
+            ? { ...task, claimed: true }
+            : task
+        ));
+
+        // Cập nhật user context
         await checkAuth();
 
         // Emit websocket event to update waiting room
-        websocketService.sendMessage({
-          type: 'user_updated',
-          user: {
-            ...user,
-            total_point: (user?.total_point || 0) + data.reward
-          }
+        websocketService.sendUserUpdate({
+          ...user,
+          total_point: (user?.total_point || 0) + data.reward
         });
       } else {
         toast.error(data.message || 'Failed to claim reward');
@@ -406,10 +572,6 @@ export default function TaskMysteryBoxDropdown() {
       setIsClaimingTask(null);
     }
   };
-
-  useEffect(() => {
-    if (isOpen) fetchDailyTasks();
-  }, [isOpen]);
 
   return (
     <div className="relative" ref={dropdownRef}>
@@ -433,10 +595,11 @@ export default function TaskMysteryBoxDropdown() {
             exit={{ opacity: 0, y: 10 }}
             className="absolute right-0 mt-2 w-96 bg-white rounded-xl shadow-xl border border-slate-100 z-50"
           >
-            <Tabs defaultValue="tasks" className="w-full">
+            <Tabs defaultValue="tasks" className="w-full" onValueChange={setActiveTab}>
               <TabsList className="w-full bg-slate-50 p-1">
                 <TabsTrigger value="tasks" className="flex-1 data-[state=active]:bg-white data-[state=active]:shadow-sm">Tasks</TabsTrigger>
                 <TabsTrigger value="mystery-box" className="flex-1 data-[state=active]:bg-white data-[state=active]:shadow-sm">Mystery Box</TabsTrigger>
+                <TabsTrigger value="mystery-box-history" className="flex-1 data-[state=active]:bg-white data-[state=active]:shadow-sm">History</TabsTrigger>
               </TabsList>
 
               <TabsContent value="tasks" className="p-4">
@@ -484,16 +647,6 @@ export default function TaskMysteryBoxDropdown() {
                     >
                       {isClaiming ? 'Claiming...' : 'Claim now'}
                     </Button>
-                  </div>
-                  <div className="bg-slate-50 rounded-lg p-4">
-                    <p className="text-slate-500">Complete daily tasks to earn rewards!</p>
-                    <div className="mt-4 space-y-3">
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm text-slate-600">Play 5 matches</span>
-                        <span className="text-sm font-medium text-primary">+10 points</span>
-                      </div>
-                      <Progress value={0} className="h-2" />
-                    </div>
                   </div>
                 </div>
               </TabsContent>
@@ -571,11 +724,11 @@ export default function TaskMysteryBoxDropdown() {
                             <div className="space-y-2">
                               <div className="flex items-center justify-between">
                                 <span className="text-sm text-slate-600">Matches</span>
-                                <span className="text-sm font-medium text-primary">{getPossibleRewards().shots}</span>
+                                <span className="text-sm font-medium text-primary">{possibleRewards.shots}</span>
                               </div>
                               <div className="flex items-center justify-between">
                                 <span className="text-sm text-slate-600">Skill Points</span>
-                                <span className="text-sm font-medium text-primary">{getPossibleRewards().skill}</span>
+                                <span className="text-sm font-medium text-primary">{possibleRewards.skill}</span>
                               </div>
                             </div>
                           </div>
@@ -609,6 +762,23 @@ export default function TaskMysteryBoxDropdown() {
                     <Skeleton className="h-32" />
                   )}
                 </div>
+              </TabsContent>
+
+              <TabsContent value="mystery-box-history" className="p-4">
+                {isLoadingHistory ? (
+                  <Skeleton className="h-32" />
+                ) : Array.isArray(boxHistory) && boxHistory.length > 0 ? (
+                  <ul className="space-y-2">
+                    {boxHistory.map((item, idx) => (
+                      <li key={idx} className="bg-slate-50 rounded p-2 border border-slate-100">
+                        <div className="text-sm font-medium">{item.reward_type === 'skill' ? `Skill: ${item.skill_name}` : `Matches: ${item.amount}`}</div>
+                        <div className="text-xs text-slate-500">{item.timestamp}</div>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <div className="text-slate-400 text-sm">No history found.</div>
+                )}
               </TabsContent>
             </Tabs>
           </motion.div>
