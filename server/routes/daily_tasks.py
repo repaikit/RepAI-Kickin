@@ -5,6 +5,8 @@ from pydantic import BaseModel
 import logging
 import traceback
 from utils.logger import api_logger
+from utils.time_utils import get_vietnam_time, to_vietnam_time
+from ws_handlers.waiting_room import manager as waiting_room_manager
 
 router = APIRouter()
 
@@ -26,12 +28,12 @@ async def get_daily_tasks(request: Request):
     db = await get_database()
     user_tasks = user.get("daily_tasks", {})
 
-    # Lấy ngày hiện tại (UTC)
-    now = datetime.utcnow()
+    # Get current time in Vietnam timezone
+    now = get_vietnam_time()
     today = now.date()
 
     # Lọc match_history trong ngày hiện tại
-    matches_today = []
+    matches_today = 0
     for m in user.get("match_history", []):
         try:
             # Log each match entry
@@ -39,18 +41,26 @@ async def get_daily_tasks(request: Request):
             
             # Handle different timestamp formats
             timestamp_data = m.get("timestamp")
+            match_timestamp = None
             
             if timestamp_data:
-                if isinstance(timestamp_data, dict) and "$date" in timestamp_data:
-                    match_timestamp = datetime.fromisoformat(timestamp_data["$date"])
-                elif isinstance(timestamp_data, str):
-                     match_timestamp = datetime.fromisoformat(timestamp_data)
-                else:
-                    api_logger.warning(f"Unexpected timestamp format in match history: {timestamp_data}. Skipping entry.")
-                    continue # Skip this entry if timestamp format is unexpected
-                    
-                if match_timestamp.date() == today:
-                    matches_today.append(m)
+                try:
+                    if isinstance(timestamp_data, dict) and "$date" in timestamp_data:
+                        match_timestamp = to_vietnam_time(datetime.fromisoformat(timestamp_data["$date"].replace('Z', '+00:00')))
+                    elif isinstance(timestamp_data, str):
+                        match_timestamp = to_vietnam_time(datetime.fromisoformat(timestamp_data.replace('Z', '+00:00')))
+                    elif isinstance(timestamp_data, datetime):
+                        match_timestamp = to_vietnam_time(timestamp_data)
+                    else:
+                        api_logger.warning(f"Unexpected timestamp format in match history: {timestamp_data}. Skipping entry.")
+                        continue
+                    # Convert to ISO string for consistency
+                    match_timestamp = match_timestamp.isoformat()
+                    if datetime.fromisoformat(match_timestamp).date() == today:
+                        matches_today += 1
+                except Exception as e:
+                    api_logger.warning(f"Invalid timestamp format in match history: {timestamp_data}. Error: {str(e)}")
+                    continue
             else:
                 api_logger.warning(f"Match history entry missing timestamp: {m}. Skipping entry.")
 
@@ -60,9 +70,9 @@ async def get_daily_tasks(request: Request):
             continue
 
     # Đếm số trận, số trận thắng, v.v.
-    total_matches = len(matches_today)
+    total_matches = matches_today
     win_matches = sum(
-        1 for m in matches_today if m.get("winner_id") == str(user["_id"])
+        1 for m in user.get("match_history", []) if m.get("winner_id") == str(user["_id"])
     )
 
     # Xác định trạng thái từng nhiệm vụ và cập nhật vào daily_tasks
@@ -131,6 +141,24 @@ async def claim_daily_task(request: Request, task_request: TaskClaimRequest):
             "$set": {f"daily_tasks.{task_request.task_id}.claimed": True}
         }
     )
+    
+    # Broadcast user update
+    updated_user = await db.users.find_one({"_id": user["_id"]})
+    if waiting_room_manager:
+        await waiting_room_manager.broadcast({
+            "type": "user_updated",
+            "user": {
+                "id": str(updated_user["_id"]),
+                "name": updated_user.get("name", "Anonymous"),
+                "avatar": updated_user.get("avatar", ""),
+                "user_type": updated_user.get("user_type", "guest"),
+                "remaining_matches": updated_user.get("remaining_matches", 0),
+                "level": updated_user.get("level", 1),
+                "kicker_skills": updated_user.get("kicker_skills", []),
+                "goalkeeper_skills": updated_user.get("goalkeeper_skills", []),
+                "total_point": updated_user.get("total_point", 0),
+            }
+        })
     
     return {
         "success": True, 

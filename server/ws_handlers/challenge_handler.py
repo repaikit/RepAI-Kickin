@@ -1,4 +1,8 @@
-from fastapi import WebSocket, WebSocketDisconnect
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from fastapi import WebSocket, WebSocketDisconnect, APIRouter, Depends
 from typing import Dict
 import json
 from datetime import datetime
@@ -7,6 +11,90 @@ from bson import ObjectId
 from utils.logger import api_logger
 import random
 from database.database import get_skills_collection
+from utils.time_utils import get_vietnam_time, to_vietnam_time, VIETNAM_TZ
+from fastapi.responses import JSONResponse
+from utils.level_utils import get_total_point_for_level, get_basic_level, get_legend_level, get_vip_level, update_user_levels
+
+# Level-related constants
+LEVEL_MILESTONES_BASIC = [0, 100, 300, 600, 1000, 1500, 2100, 2800, 3600, 4500, 5500, 6600, 7800, 9100, 10500, 12000, 13600, 15300, 17100, 19000, 21000, 23100, 25300, 27600, 30000, 32500, 35100, 37800, 40600, 43500, 46500, 49600, 52800, 56100, 59500, 63000, 66600, 70300, 74100, 78000, 82000, 86100, 90300, 94600, 99000, 103500, 108100, 112800, 117600, 122500, 127500, 132600, 137800, 143100, 148500, 154000, 159600, 165300, 171100, 177000, 183000, 189100, 195300, 201600, 208000, 214500, 221100, 227800, 234600, 241500, 248500, 255600, 262800, 270100, 277500, 285000, 292600, 300300, 308100, 316000, 324000, 332100, 340300, 348600, 357000, 365500, 374100, 382800, 391600, 400500, 409500, 418600, 427800, 437100, 446500, 456000, 465600, 475300, 485100, 495000]
+LEGEND_STEP = 100
+LEGEND_MAX = 10
+VIP_LEVELS = [
+    ("SILVER", 50),
+    ("GOLD", 100),
+    ("RUBY", 150),
+    ("EMERALD", 200),
+    ("DIAMOND", 500)
+]
+
+def get_basic_level(total_win):
+    for i, milestone in enumerate(LEVEL_MILESTONES_BASIC):
+        if total_win < milestone:
+            return i
+    return len(LEVEL_MILESTONES_BASIC)
+
+def get_legend_level(total_win):
+    if total_win < LEVEL_MILESTONES_BASIC[99]:
+        return 0
+    legend = (total_win - LEVEL_MILESTONES_BASIC[99]) // LEGEND_STEP + 1
+    return min(legend, LEGEND_MAX)
+
+def get_vip_level(vip_amount):
+    level = "NONE"
+    for name, amount in VIP_LEVELS:
+        if vip_amount >= amount:
+            level = name
+    return level
+
+def get_total_point_for_level(user):
+    """Calculate total points for level up based on user type"""
+    if user.get("is_vip", False):
+        return user.get("total_point", 0)
+    else:
+        week_history_point = sum(w.get("point", 0) for w in user.get("week_history", []))
+        return week_history_point + user.get("total_point", 0)
+
+async def update_user_levels(user_id: str, db):
+    """Update user's level, legend level, and VIP level based on their stats"""
+    user = await db.users.find_one({"_id": ObjectId(user_id)})
+    if not user:
+        return None
+
+    # Tính tổng điểm thực sự để lên level
+    total_point_for_level = get_total_point_for_level(user)
+    current_level = user.get("level", 1)
+    new_level = get_basic_level(total_point_for_level)
+    
+    # Kiểm tra xem có đủ điểm lên level không
+    can_level_up = new_level > current_level
+    
+    is_pro = new_level >= 100
+    if is_pro:
+        new_level = 100
+        legend_level = get_legend_level(total_point_for_level)
+    else:
+        legend_level = 0
+    vip_amount = user.get("vip_amount", 0)
+    vip_level = get_vip_level(vip_amount)
+
+    await db.users.update_one(
+        {"_id": ObjectId(user_id)},
+        {"$set": {
+            "level": new_level,
+            "is_pro": is_pro,
+            "legend_level": legend_level,
+            "vip_level": vip_level
+        }}
+    )
+
+    return {
+        "level": new_level,
+        "is_pro": is_pro,
+        "legend_level": legend_level,
+        "vip_level": vip_level,
+        "total_point_for_level": total_point_for_level,
+        "can_level_up": can_level_up
+    }
 
 class ChallengeManager:
     def __init__(self):
@@ -39,12 +127,14 @@ class ChallengeManager:
             })
             return
 
-        # Store the challenge request
+        # Store the challenge request with Vietnam timezone
         challenge_id = f"{from_id}_{to_id}"
+        vietnam_time = get_vietnam_time().astimezone(VIETNAM_TZ)
         self.pending_challenges[challenge_id] = {
             "from_id": from_id,
             "to_id": to_id,
-            "timestamp": datetime.utcnow()
+            "timestamp": vietnam_time.isoformat(),
+            "timezone": "Asia/Ho_Chi_Minh"
         }
 
         # Get user details for the notification
@@ -52,7 +142,9 @@ class ChallengeManager:
         await active_connections[to_id].send_json({
             "type": "challenge_invite",
             "from": from_id,
-            "from_name": from_user.get("name", "Anonymous")
+            "from_name": from_user.get("name", "Anonymous"),
+            "timestamp": vietnam_time.isoformat(),
+            "timezone": "Asia/Ho_Chi_Minh"
         })
 
     async def handle_challenge_response(self, websocket: WebSocket, from_id: str, to_id: str, accepted: bool, active_connections: Dict[str, WebSocket]):
@@ -120,24 +212,10 @@ class ChallengeManager:
             loser_id = goalkeeper_id if winner_id == kicker_id else kicker_id
             loser = await db.users.find_one({"_id": ObjectId(loser_id)})
 
-            # --- Cập nhật điểm tuần đúng bảng cho winner ---
-            if winner.get("is_vip", False):
-                week_point_field = "vip_week_point"
-                board_type = "VIP"
-            elif winner.get("is_pro", False):
-                week_point_field = "pro_week_point"
-                board_type = "PRO"
-            else:
-                week_point_field = "basic_week_point"
-                board_type = "BASIC"
-            
-            await db.users.update_one({"_id": ObjectId(winner_id)}, {"$inc": {week_point_field: 1}})
-
-
             # Create match history record
             match_history = {
                 "match_id": str(ObjectId()),  # Generate new ObjectId for match
-                "timestamp": datetime.utcnow(),
+                "timestamp": get_vietnam_time().isoformat(),  # Format as ISO string
                 "kicker_id": kicker_id,
                 "goalkeeper_id": goalkeeper_id,
                 "kicker_skill": selected_kicker_skill,
@@ -148,53 +226,8 @@ class ChallengeManager:
                 "loser_role": "goalkeeper" if winner_id == kicker_id else "kicker"
             }
 
-            # Level milestone logic
-            LEVEL_MILESTONES_BASIC = [0, 100, 300, 600, 1000, 1500, 2100, 2800, 3600, 4500, 5500, 6600, 7800, 9100, 10500, 12000, 13600, 15300, 17100, 19000, 21000, 23100, 25300, 27600, 30000, 32500, 35100, 37800, 40600, 43500, 46500, 49600, 52800, 56100, 59500, 63000, 66600, 70300, 74100, 78000, 82000, 86100, 90300, 94600, 99000, 103500, 108100, 112800, 117600, 122500, 127500, 132600, 137800, 143100, 148500, 154000, 159600, 165300, 171100, 177000, 183000, 189100, 195300, 201600, 208000, 214500, 221100, 227800, 234600, 241500, 248500, 255600, 262800, 270100, 277500, 285000, 292600, 300300, 308100, 316000, 324000, 332100, 340300, 348600, 357000, 365500, 374100, 382800, 391600, 400500, 409500, 418600, 427800, 437100, 446500, 456000, 465600, 475300, 485100, 495000]
-            LEGEND_STEP = 100
-            LEGEND_MAX = 10
-            VIP_LEVELS = [
-                ("SILVER", 50),
-                ("GOLD", 100),
-                ("RUBY", 150),
-                ("EMERALD", 200),
-                ("DIAMOND", 500)
-            ]
-            def get_basic_level(total_win):
-                for i, milestone in enumerate(LEVEL_MILESTONES_BASIC):
-                    if total_win < milestone:
-                        return i
-                return len(LEVEL_MILESTONES_BASIC)
-            def get_legend_level(total_win):
-                if total_win < LEVEL_MILESTONES_BASIC[99]:
-                    return 0
-                legend = (total_win - LEVEL_MILESTONES_BASIC[99]) // LEGEND_STEP + 1
-                return min(legend, LEGEND_MAX)
-            def get_vip_level(vip_amount):
-                level = "NONE"
-                for name, amount in VIP_LEVELS:
-                    if vip_amount >= amount:
-                        level = name
-                return level
-            # Calculate total wins for winner
-            total_wins = winner.get("kicked_win", 0) + winner.get("keep_win", 0) + 1
-            # Determine new level
-            new_level = 1
-            for i, milestone in enumerate(LEVEL_MILESTONES_BASIC):
-                if total_wins >= milestone:
-                    new_level = i + 1
-                else:
-                    break
-            # Pro and legend logic
-            is_pro = winner.get("is_pro", False)
-            legend_level = winner.get("legend_level", 0)
-            if new_level >= 100:
-                is_pro = True
-                new_level = 100
-                # Legend logic: every 100 wins after level 100 increases legend_level
-                legend_level = (total_wins - LEVEL_MILESTONES_BASIC[99]) // 100 + 1 if total_wins > LEVEL_MILESTONES_BASIC[99] else 0
             # Update winner's stats and check for level up
             update_fields = {
-                "$set": {"level": new_level, "is_pro": is_pro, "legend_level": legend_level},
                 "$push": {"match_history": match_history}
             }
             if winner_id == kicker_id:
@@ -202,6 +235,7 @@ class ChallengeManager:
             else:
                 update_fields["$inc"] = {"keep_win": 1, "total_keep": 1, "total_point": 1, "remaining_matches": -1}
             await db.users.update_one({"_id": ObjectId(winner_id)}, update_fields)
+
             # Update loser's stats
             loser_update_fields = {"$push": {"match_history": match_history}}
             if winner_id == kicker_id:
@@ -209,26 +243,31 @@ class ChallengeManager:
             else:
                 loser_update_fields["$inc"] = {"total_kicked": 1, "remaining_matches": -1}
             await db.users.update_one({"_id": ObjectId(loser_id)}, loser_update_fields)
+
+            # Update levels for winner
+            new_levels = await update_user_levels(winner_id, db)
+            if new_levels:
+                level_up = new_levels["level"] > winner.get("level", 1)
+                new_skills = []
+                if level_up and not new_levels["is_pro"]:
+                    # Add new skills based on role
+                    if winner_id == kicker_id:
+                        new_skills = [f"kicker_skill_level_{new_levels['level']}"]
+                    else:
+                        new_skills = [f"goalkeeper_skill_level_{new_levels['level']}"]
+                    await db.users.update_one(
+                        {"_id": ObjectId(winner_id)},
+                        {"$push": {
+                            "kicker_skills" if winner_id == kicker_id else "goalkeeper_skills": {
+                                "$each": new_skills
+                            }
+                        }}
+                    )
+
             # Get updated user data
             updated_winner = await db.users.find_one({"_id": ObjectId(winner_id)})
             updated_loser = await db.users.find_one({"_id": ObjectId(loser_id)})
-            # Check if level up occurred
-            level_up = new_level > winner.get("level", 1)
-            new_skills = []
-            if level_up and not is_pro:
-                # Add new skills based on role
-                if winner_id == kicker_id:
-                    new_skills = [f"kicker_skill_level_{new_level}"]
-                else:
-                    new_skills = [f"goalkeeper_skill_level_{new_level}"]
-                await db.users.update_one(
-                    {"_id": ObjectId(winner_id)},
-                    {"$push": {
-                        "kicker_skills" if winner_id == kicker_id else "goalkeeper_skills": {
-                            "$each": new_skills
-                        }
-                    }}
-                )
+
             # Prepare match result message
             result_message = {
                 "type": "challenge_result",
@@ -248,7 +287,9 @@ class ChallengeManager:
                         "legend_level": updated_winner.get("legend_level", 0),
                         "level": updated_winner.get("level", 1),
                         "level_up": level_up,
-                        "new_skills": new_skills if level_up and not is_pro else []
+                        "new_skills": new_skills if level_up and not new_levels["is_pro"] else [],
+                        "can_level_up": new_levels.get("can_level_up", False),
+                        "total_point_for_level": new_levels.get("total_point_for_level", 0)
                     },
                     "loser": {
                         "id": str(updated_loser["_id"]),
@@ -441,4 +482,36 @@ class ChallengeManager:
             })
 
 # Create a singleton instance
-challenge_manager = ChallengeManager() 
+challenge_manager = ChallengeManager()
+
+# --- API cho user bấm nút Level Up ---
+router = APIRouter()
+
+@router.post("/user/level-up")
+async def level_up(user_id: str):
+    db = await get_database()
+    user = await db.users.find_one({"_id": ObjectId(user_id)})
+    if not user:
+        return JSONResponse(status_code=404, content={"error": "User not found"})
+    # Tính tổng điểm lên level realtime
+    total_point_for_level = get_total_point_for_level(user)
+    from ws_handlers.challenge_handler import get_basic_level, get_legend_level, get_vip_level
+    new_level = get_basic_level(total_point_for_level)
+    is_pro = new_level >= 100
+    if is_pro:
+        new_level = 100
+        legend_level = get_legend_level(total_point_for_level)
+    else:
+        legend_level = 0
+    vip_amount = user.get("vip_amount", 0)
+    vip_level = get_vip_level(vip_amount)
+    await db.users.update_one(
+        {"_id": ObjectId(user_id)},
+        {"$set": {
+            "level": new_level,
+            "is_pro": is_pro,
+            "legend_level": legend_level,
+            "vip_level": vip_level
+        }}
+    )
+    return {"level": new_level, "is_pro": is_pro, "legend_level": legend_level, "vip_level": vip_level, "total_point_for_level": total_point_for_level} 

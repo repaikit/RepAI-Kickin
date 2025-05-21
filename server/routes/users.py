@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException, Request, Depends, Body
 from typing import Optional, List
 from models.user import User, UserCreate, UserUpdate
-from database.database import get_users_collection, get_skills_collection
+from database.database import get_users_collection, get_skills_collection, get_database
 from datetime import datetime
 import uuid
 import random
@@ -9,6 +9,9 @@ from pydantic import BaseModel
 from utils.logger import api_logger
 from utils.jwt import create_access_token
 from bson import ObjectId
+from utils.cache_manager import cache_response
+from utils.time_utils import get_vietnam_time, to_vietnam_time
+from utils.level_utils import get_total_point_for_level, get_basic_level, get_legend_level, get_vip_level, update_user_levels
 
 router = APIRouter()
 
@@ -29,7 +32,7 @@ async def create_guest_user(request: Request):
     goalkeeper_skill = await get_random_skill(skills_collection, "goalkeeper")
     avatar_seed = str(uuid.uuid4())
     avatar_url = f"https://api.dicebear.com/7.x/adventurer/svg?seed={avatar_seed}"
-    now = datetime.utcnow()
+    now = get_vietnam_time()
     guest_user = UserCreate(
         user_type="guest",
         session_id=session_id,
@@ -37,9 +40,9 @@ async def create_guest_user(request: Request):
         kicker_skills=[kicker_skill],
         goalkeeper_skills=[goalkeeper_skill],
         avatar=avatar_url,
-        created_at=now,
-        updated_at=now,
-        last_activity=now,
+        created_at=now.isoformat(),
+        updated_at=now.isoformat(),
+        last_activity=now.isoformat(),
         total_point=0,
         bonus_point=0.0,
     ).dict(by_alias=True)
@@ -89,7 +92,7 @@ async def upgrade_guest_to_user(
 
     update_data = {
         "user_type": "user", 
-        "updated_at": datetime.utcnow()
+        "updated_at": get_vietnam_time().isoformat()
     }
     if data.email:
         update_data["email"] = data.email
@@ -112,6 +115,12 @@ async def get_current_user(request: Request):
     if not user:
         raise HTTPException(status_code=401, detail="Not authenticated")
     user["_id"] = str(user["_id"])
+    # TÍNH LẠI total_point_for_level và can_level_up
+    total_point_for_level = get_total_point_for_level(user)
+    new_level = get_basic_level(total_point_for_level)
+    can_level_up = new_level > user.get("level", 1)
+    user["total_point_for_level"] = total_point_for_level
+    user["can_level_up"] = can_level_up
     return user
 
 @router.patch("/me", response_model=User)
@@ -129,17 +138,12 @@ async def update_current_user(request: Request, user_update: UserUpdate):
     # Lấy dữ liệu cập nhật từ request body, bỏ qua các giá trị None
     update_data = user_update.model_dump(exclude_unset=True)
 
-    # Loại bỏ các trường không cho phép user tự cập nhật
-    # Ví dụ: user_type, session_id, created_at, last_login, last_activity, is_pro, is_vip
-    # Cần tùy chỉnh danh sách này dựa trên logic nghiệp vụ
     restricted_fields = [
         "user_type", "session_id", "created_at", "last_login", 
         "last_activity", "is_pro", "is_vip", "total_kicked", 
         "kicked_win", "total_keep", "keep_win", "total_point", 
         "bonus_point", "match_history", "vip_amount", "vip_year", 
-        "vip_payment_method", "basic_week_point", "pro_week_point", 
-        "vip_week_point", "basic_week_history", "pro_week_history", 
-        "vip_week_history", "mystery_box_history", "last_box_open", 
+        "vip_payment_method", "mystery_box_history", "last_box_open", 
         "last_claim_matches", "daily_tasks"
     ]
     
@@ -147,10 +151,8 @@ async def update_current_user(request: Request, user_update: UserUpdate):
         if field in update_data:
             del update_data[field]
 
-    # Thêm trường updated_at
-    update_data["updated_at"] = datetime.utcnow()
+    update_data["updated_at"] = get_vietnam_time().isoformat()
 
-    # Nếu không có gì để cập nhật ngoài updated_at, trả về user hiện tại
     if len(update_data) == 1 and "updated_at" in update_data:
         updated_user = await users_collection.find_one({"_id": ObjectId(user_id)})
         if not updated_user:
@@ -167,31 +169,47 @@ async def update_current_user(request: Request, user_update: UserUpdate):
 
     updated_user = await users_collection.find_one({"_id": ObjectId(user_id)})
     if not updated_user:
-        # Should not happen if matched_count > 0, but good to be safe
         raise HTTPException(status_code=404, detail="User not found after update")
 
-    # --- Emit WebSocket event for user update ---
-    # Assuming 'manager' (WaitingRoomManager) is accessible here or can be imported
-    # If manager is not directly accessible, we might need to send this via another mechanism
-    from server.ws_handlers.waiting_room import manager as waiting_room_manager
+    from ws_handlers.waiting_room import manager as waiting_room_manager
     if waiting_room_manager:
-        # Prepare simplified user data for broadcasting
         user_broadcast_data = {
             "id": str(updated_user["_id"]),
             "name": updated_user.get("name", "Anonymous"),
             "avatar": updated_user.get("avatar", ""),
             "user_type": updated_user.get("user_type", "guest"),
-            # Add other fields needed on client if any
         }
         await waiting_room_manager.broadcast({
             "type": "user_updated",
             "user": user_broadcast_data
         })
-    # ------------------------------------------
 
-    # Check if auth context needs refresh (e.g., if wallet changed)
-    # Note: Currently wallet is not updatable via this endpoint based on the client code.
-    # If it were, we'd need a way to signal auth context refresh.
+        # Broadcast leaderboard_update sau khi user đổi tên
+        db = await get_database()
+        leaderboard_users = await db.users.find().sort("total_point", -1).limit(10).to_list(length=10)
+        leaderboard_data = [
+            {
+                "id": str(u["_id"]),
+                "name": u.get("name", "Anonymous"),
+                "avatar": u.get("avatar", ""),
+                "level": u.get("level", 1),
+                "total_kicked": u.get("total_kicked", 0),
+                "kicked_win": u.get("kicked_win", 0),
+                "total_keep": u.get("total_keep", 0),
+                "keep_win": u.get("keep_win", 0),
+                "total_extra_skill": u.get("total_extra_skill", 0),
+                "extra_skill_win": u.get("extra_skill_win", 0),
+                "total_point": u.get("total_point", 0),
+                "bonus_point": u.get("bonus_point", 0.0),
+                "is_pro": u.get("is_pro", False),
+                "is_vip": u.get("is_vip", False),
+            }
+            for u in leaderboard_users
+        ]
+        await waiting_room_manager.broadcast({
+            "type": "leaderboard_update",
+            "leaderboard": leaderboard_data
+        })
 
     return User(**updated_user)
 
@@ -208,7 +226,7 @@ async def get_leaderboard(page: int = 1, limit: int = 10):
     page = max(1, min(page, 100))
     limit = max(1, min(limit, 100))
     skip = (page - 1) * limit
-    users = await users_collection.find({"user_type": "user"}).sort("kicked_win", -1).skip(skip).limit(limit).to_list(length=None)
+    users = await users_collection.find({"user_type": "user"}).sort("total_point", -1).skip(skip).limit(limit).to_list(length=None)
     return [User(**u) for u in users]
 
 # API xóa user
@@ -261,9 +279,9 @@ async def register_with_privy(data: PrivyAuthRequest):
             avatar=data.avatar,
             kicker_skills=[kicker_skill],
             goalkeeper_skills=[goalkeeper_skill],
-            created_at=datetime.utcnow(),
-            updated_at=datetime.utcnow(),
-            last_login=datetime.utcnow()
+            created_at=get_vietnam_time().isoformat(),
+            updated_at=get_vietnam_time().isoformat(),
+            last_login=get_vietnam_time().isoformat()
         ).dict(by_alias=True)
         
         result = await users_collection.insert_one(new_user)
@@ -308,8 +326,8 @@ async def login_with_privy(data: PrivyAuthRequest):
             
         # Cập nhật thông tin đăng nhập
         update_data = {
-            "last_login": datetime.utcnow(),
-            "updated_at": datetime.utcnow(),
+            "last_login": get_vietnam_time().isoformat(),
+            "updated_at": get_vietnam_time().isoformat(),
         }
         
         # Cập nhật email nếu có
@@ -357,15 +375,15 @@ async def refresh_guest_user(request: Request):
     # Random lại kỹ năng
     kicker_skill = await get_random_skill(skills_collection, "kicker")
     goalkeeper_skill = await get_random_skill(skills_collection, "goalkeeper")
-    now = datetime.utcnow()
+    now = get_vietnam_time()
 
     # Reset các trường theo User model
     update_data = {
         "remaining_matches": 5,
         "kicker_skills": [kicker_skill],
         "goalkeeper_skills": [goalkeeper_skill],
-        "updated_at": now,
-        "last_activity": now,
+        "updated_at": now.isoformat(),
+        "last_activity": now.isoformat(),
         "match_history": [],
         "total_kicked": 0,
         "kicked_win": 0,
@@ -400,6 +418,7 @@ async def refresh_guest_user(request: Request):
     }
 
 @router.get("/users/{user_id}", response_model=User)
+@cache_response(ttl=300)  # Cache for 5 minutes
 async def get_user_by_id(user_id: str):
     """
     Lấy thông tin user theo ID
@@ -416,5 +435,67 @@ async def get_user_by_id(user_id: str):
     except Exception as e:
         api_logger.error(f"Error getting user by ID {user_id}: {str(e)}")
         raise HTTPException(status_code=500, detail="Internal server error")
+
+@router.post("/level-up")
+async def level_up(request: Request):
+    """Handle user level up request"""
+    user = getattr(request.state, "user", None)
+    if not user:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    
+    users_collection = await get_users_collection()
+    user_db = await users_collection.find_one({"_id": ObjectId(user["_id"])})
+    if not user_db:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    # Calculate new level
+    total_point_for_level = get_total_point_for_level(user_db)
+    new_level = get_basic_level(total_point_for_level)
+    is_pro = new_level >= 100
+    
+    if is_pro:
+        new_level = 100
+        legend_level = get_legend_level(total_point_for_level)
+    else:
+        legend_level = 0
+    
+    vip_amount = user_db.get("vip_amount", 0)
+    vip_level = get_vip_level(vip_amount)
+    
+    # Update user in database
+    await users_collection.update_one(
+        {"_id": ObjectId(user["_id"])},
+        {"$set": {
+            "level": new_level,
+            "is_pro": is_pro,
+            "legend_level": legend_level,
+            "vip_level": vip_level
+        }}
+    )
+    
+    # Broadcast user update to waiting room
+    from ws_handlers.waiting_room import manager as waiting_room_manager
+    if waiting_room_manager:
+        user_broadcast_data = {
+            "id": str(user_db["_id"]),
+            "name": user_db.get("name", "Anonymous"),
+            "avatar": user_db.get("avatar", ""),
+            "level": new_level,
+            "is_pro": is_pro,
+            "legend_level": legend_level,
+            "vip_level": vip_level
+        }
+        await waiting_room_manager.broadcast({
+            "type": "user_updated",
+            "user": user_broadcast_data
+        })
+    
+    return {
+        "level": new_level,
+        "is_pro": is_pro,
+        "legend_level": legend_level,
+        "vip_level": vip_level,
+        "total_point_for_level": total_point_for_level
+    }
 
 

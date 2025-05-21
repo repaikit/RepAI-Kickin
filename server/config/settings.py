@@ -25,7 +25,7 @@ class Settings(BaseSettings):
     
     # Database settings
     MONGODB_URL: str = os.getenv("MONGODB_URL", "mongodb://localhost:27017")
-    DATABASE_NAME: str = os.getenv("DATABASE_NAME", "kickin")
+    DATABASE_NAME: str = os.getenv("DATABASE_NAME", "repai_kickin")
     
     # Rate limiting
     RATE_LIMIT_PER_MINUTE: int = int(os.getenv("RATE_LIMIT_PER_MINUTE", "60"))

@@ -98,9 +98,16 @@ export default function GlobalChat() {
       try {
         const token = localStorage.getItem('access_token');
         if (!token) {
-          console.error('Access token not found!');
+          console.error('[GlobalChat] Access token not found!');
           return;
         }
+        console.log('[GlobalChat] Fetching chat history...');
+        console.log('[GlobalChat] API URL:', API_ENDPOINTS.chat.getHistory);
+        console.log('[GlobalChat] Headers:', {
+          ...defaultFetchOptions.headers,
+          'Authorization': `Bearer ${token}`,
+        });
+
         const response = await fetch(API_ENDPOINTS.chat.getHistory, {
           method: 'GET',
           headers: {
@@ -108,47 +115,62 @@ export default function GlobalChat() {
             'Authorization': `Bearer ${token}`,
           },
         });
+        
+        console.log('[GlobalChat] Response status:', response.status);
         const data = await response.json();
+        console.log('[GlobalChat] Chat history response:', data);
+
         if (data.success) {
-          // Transform messages to ensure they have the required from field
-          const transformedMessages = data.data.messages.map((msg: any) => ({
-            ...msg,
-            from: msg.from || {
-              id: msg.from_id,
-              name: 'Unknown User',
-              avatar: '',
-              user_type: 'user',
-              role: 'user',
-              is_active: true,
-              is_verified: false,
-              trend: 'neutral',
-              level: 1,
-              is_pro: false,
-              position: 'both',
-              total_point: 0,
-              bonus_point: 0,
-              total_kicked: 0,
-              kicked_win: 0,
-              total_keep: 0,
-              keep_win: 0,
-              legend_level: 0,
-              vip_level: 'NONE'
-            }
-          }));
+          console.log('[GlobalChat] Success flag is true');
+          console.log('[GlobalChat] Raw messages from API:', data.data.messages);
+          
+          const transformedMessages = data.data.messages.map((msg: any) => {
+            console.log('[GlobalChat] Transforming message:', msg);
+            return {
+              ...msg,
+              from: msg.from || {
+                id: msg.from_id,
+                name: 'Unknown User',
+                avatar: '',
+                user_type: 'user',
+                role: 'user',
+                is_active: true,
+                is_verified: false,
+                trend: 'neutral',
+                level: 1,
+                is_pro: false,
+                position: 'both',
+                total_point: 0,
+                bonus_point: 0,
+                total_kicked: 0,
+                kicked_win: 0,
+                total_keep: 0,
+                keep_win: 0,
+                legend_level: 0,
+                vip_level: 'NONE'
+              }
+            };
+          });
+          
+          console.log('[GlobalChat] Transformed messages:', transformedMessages);
+          console.log('[GlobalChat] Setting messages state with length:', transformedMessages.length);
           setMessages(transformedMessages);
-          // Use requestAnimationFrame for smoother scrolling
+          
           requestAnimationFrame(() => {
+            console.log('[GlobalChat] Scrolling to bottom');
             scrollToBottom();
           });
+        } else {
+          console.error('[GlobalChat] API response success flag is false');
         }
       } catch (error) {
-        console.error('Error fetching chat history:', error);
+        console.error('[GlobalChat] Error fetching chat history:', error);
       }
     };
 
     const handleMessage = (message: any) => {
       if (message.type === 'chat_message') {
-        // Ensure the incoming message has the correct structure
+        console.log('[GlobalChat] Received new message:', message);
         const incomingMessage: ChatMessage = {
           type: message.type,
           from_id: String(message.from_id),
@@ -158,13 +180,13 @@ export default function GlobalChat() {
         };
 
         setMessages(prev => {
+          console.log('[GlobalChat] Previous messages:', prev);
           const newMessages = [...prev, incomingMessage];
-          // Sort messages by timestamp
+          console.log('[GlobalChat] New messages after adding:', newMessages);
           return newMessages.sort((a, b) => 
             new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
           );
         });
-        // KHÔNG scroll ở đây nữa, scroll sẽ được xử lý trong useEffect bên dưới
       } else if (message.type === 'user_count') {
         setUserCount(message.count);
       } else if (message.type === 'typing_status') {
@@ -173,7 +195,7 @@ export default function GlobalChat() {
     };
 
     const handleConnect = () => {
-      console.log('GlobalChat: WebSocket connected');
+      console.log('[GlobalChat] WebSocket connected');
       fetchChatHistory();
     };
 
@@ -194,8 +216,13 @@ export default function GlobalChat() {
       );
     };
 
+    console.log('[GlobalChat] Component mounted');
+    console.log('[GlobalChat] Initial messages state:', messages);
+    fetchChatHistory();
+    
     websocketService.setCallbacks({
       onUserList: (users) => {
+        console.log('[GlobalChat] onUserList callback called with users:', users);
         if (users && users.length) {
           setUserCount(users.length);
         }
@@ -205,18 +232,15 @@ export default function GlobalChat() {
       onUserUpdated: handleUserUpdated
     });
 
-    if (websocketService.isConnected()) {
-      fetchChatHistory();
-    }
-
     return () => {
+      console.log('[GlobalChat] Component unmounting');
       websocketService.removeCallbacks({
         onChatMessage: handleMessage,
         onConnect: handleConnect,
         onUserUpdated: handleUserUpdated
       });
     };
-  }, []); // Remove isAtBottom dependency to prevent unnecessary re-renders
+  }, []);
 
   // Optimize scroll handling
   const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
@@ -247,28 +271,28 @@ export default function GlobalChat() {
   };
 
   const groupedMessages = messages.reduce<MessageGroup[]>((groups, message, index) => {
+    console.log('[GlobalChat] Processing message for grouping:', message);
     const prevMessage = messages[index - 1];
-
-    // Explicitly cast IDs to string for reliable comparison
     const currentUserId = user?._id ? String(user._id) : undefined;
-    const messageSenderId = String(message.from_id); // Use from_id for grouping as it's the source
-
+    const messageSenderId = String(message.from_id);
     const shouldGroup = prevMessage &&
-      String(prevMessage.from_id) === messageSenderId && // Ensure both are strings
+      String(prevMessage.from_id) === messageSenderId &&
       new Date(message.timestamp).getTime() - new Date(prevMessage.timestamp).getTime() < 60000;
 
     if (shouldGroup) {
       groups[groups.length - 1].messages.push(message);
     } else {
       groups.push({
-        sender: message.from, // Use the full sender info
+        sender: message.from,
         messages: [message],
-        timestamp: message.timestamp // Use message timestamp for group timestamp
+        timestamp: message.timestamp
       });
     }
 
     return groups;
   }, []);
+
+  console.log('[GlobalChat] Grouped messages:', groupedMessages);
 
   const renderMessageTime = (timestamp: string) => {
     const messageDate = new Date(timestamp);
@@ -300,6 +324,12 @@ export default function GlobalChat() {
     } else {
       setShowNewMessageButton(true);
     }
+  }, [messages]);
+
+  // Add effect to log messages state changes
+  useEffect(() => {
+    console.log('[GlobalChat] Messages state updated. Length:', messages.length);
+    console.log('[GlobalChat] Messages content:', messages);
   }, [messages]);
 
   return (

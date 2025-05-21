@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Request, Depends
 from typing import Optional
 from datetime import datetime, timedelta
 from pydantic import BaseModel
@@ -6,6 +6,8 @@ from database.database import get_database
 from utils.logger import api_logger
 from bson import ObjectId
 import random
+from utils.time_utils import get_vietnam_time, to_vietnam_time, format_vietnam_time
+from ws_handlers.waiting_room import manager as waiting_room_manager
 
 router = APIRouter()
 
@@ -25,24 +27,29 @@ async def get_box_status(request: Request):
     
     # Get user's last box open time
     last_open = user.get("last_box_open")
-    now = datetime.utcnow()
     
-    # If never opened or last open was more than 5 hours ago
-    can_open = not last_open or (now - last_open) > timedelta(hours=5)
+    # Get current time in Vietnam timezone
+    now = get_vietnam_time()
     
-    if can_open:
-        next_open = None
-        time_until_open = 0
-    else:
+    # Calculate next open time
+    next_open = None
+    if last_open:
+        # Convert last_open to Vietnam timezone if it's a string or naive datetime
+        if isinstance(last_open, str):
+            last_open = to_vietnam_time(datetime.fromisoformat(last_open.replace('Z', '+00:00')))
+        elif isinstance(last_open, datetime) and last_open.tzinfo is None:
+            last_open = to_vietnam_time(last_open)
+            
         next_open = last_open + timedelta(hours=5)
-        time_until_open = int((next_open - now).total_seconds())
+        if next_open <= now:
+            next_open = None
     
     return {
         "success": True,
         "data": {
-            "can_open": can_open,
-            "next_open": next_open.replace(microsecond=0).isoformat() + "Z" if next_open else None,
-            "time_until_open": time_until_open
+            "can_open": next_open is None,
+            "next_open": format_vietnam_time(next_open) if next_open else None,
+            "time_until_open": int((next_open - now).total_seconds()) if next_open else 0
         }
     }
 
@@ -57,12 +64,26 @@ async def open_box(request: Request, box_request: BoxOpenRequest):
     
     db = await get_database()
     
+    # Get current time in Vietnam timezone
+    now = get_vietnam_time()
+    
     # Check if user can open box
     last_open = user.get("last_box_open")
-    now = datetime.utcnow()
     
-    if last_open and (now - last_open) <= timedelta(hours=5):
-        raise HTTPException(status_code=400, detail="Must wait 5 hours between box opens")
+    if last_open:
+        # Convert last_open to Vietnam timezone if it's a string or naive datetime
+        if isinstance(last_open, str):
+            last_open = to_vietnam_time(datetime.fromisoformat(last_open.replace('Z', '+00:00')))
+        elif isinstance(last_open, datetime) and last_open.tzinfo is None:
+            last_open = to_vietnam_time(last_open)
+            
+        if (now - last_open) <= timedelta(hours=5):
+            next_open = last_open + timedelta(hours=5)
+            time_until_open = int((next_open - now).total_seconds())
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Must wait 5 hours between box opens. Next open time: {format_vietnam_time(next_open)}"
+            )
     
     # Generate reward (only skill or remaining_matches)
     reward_type = random.choice(["skill", "remaining_matches"])
@@ -94,7 +115,10 @@ async def open_box(request: Request, box_request: BoxOpenRequest):
                 {"_id": user["_id"]},
                 {
                     "$push": {"kicker_skills": reward["name"]},
-                    "$set": {"last_box_open": now}
+                    "$set": {
+                        "last_box_open": format_vietnam_time(now),
+                        "next_box_open": format_vietnam_time(now + timedelta(hours=5))
+                    }
                 }
             )
         else:
@@ -102,7 +126,10 @@ async def open_box(request: Request, box_request: BoxOpenRequest):
                 {"_id": user["_id"]},
                 {
                     "$push": {"goalkeeper_skills": reward["name"]},
-                    "$set": {"last_box_open": now}
+                    "$set": {
+                        "last_box_open": format_vietnam_time(now),
+                        "next_box_open": format_vietnam_time(now + timedelta(hours=5))
+                    }
                 }
             )
             
@@ -116,19 +143,36 @@ async def open_box(request: Request, box_request: BoxOpenRequest):
                         "skill_type": skill_type,
                         "skill_name": reward["name"],
                         "skill_value": reward["point"],
-                        "opened_at": now.isoformat()
+                        "opened_at": format_vietnam_time(now)
                     }
                 }
             }
         )
-        
+        # Broadcast user update
+        updated_user = await db.users.find_one({"_id": user["_id"]})
+        if waiting_room_manager:
+            await waiting_room_manager.broadcast({
+                "type": "user_updated",
+                "user": {
+                    "id": str(updated_user["_id"]),
+                    "name": updated_user.get("name", "Anonymous"),
+                    "avatar": updated_user.get("avatar", ""),
+                    "user_type": updated_user.get("user_type", "guest"),
+                    "remaining_matches": updated_user.get("remaining_matches", 0),
+                    "level": updated_user.get("level", 1),
+                    "kicker_skills": updated_user.get("kicker_skills", []),
+                    "goalkeeper_skills": updated_user.get("goalkeeper_skills", []),
+                    "total_point": updated_user.get("total_point", 0),
+                }
+            })
         return {
             "success": True,
             "data": {
                 "reward_type": "skill",
                 "skill_type": skill_type,
                 "skill_name": reward["name"],
-                "skill_value": reward["point"]
+                "skill_value": reward["point"],
+                "next_open": format_vietnam_time(now + timedelta(hours=5))
             }
         }
     else:  # remaining_matches
@@ -141,7 +185,10 @@ async def open_box(request: Request, box_request: BoxOpenRequest):
             {"_id": user["_id"]},
             {
                 "$inc": {"remaining_matches": matches},
-                "$set": {"last_box_open": now}
+                "$set": {
+                    "last_box_open": format_vietnam_time(now),
+                    "next_box_open": format_vietnam_time(now + timedelta(hours=5))
+                }
             }
         )
         
@@ -153,17 +200,34 @@ async def open_box(request: Request, box_request: BoxOpenRequest):
                     "mystery_box_history": {
                         "reward_type": "remaining_matches",
                         "amount": matches,
-                        "opened_at": now.isoformat()
+                        "opened_at": format_vietnam_time(now)
                     }
                 }
             }
         )
-        
+        # Broadcast user update
+        updated_user = await db.users.find_one({"_id": user["_id"]})
+        if waiting_room_manager:
+            await waiting_room_manager.broadcast({
+                "type": "user_updated",
+                "user": {
+                    "id": str(updated_user["_id"]),
+                    "name": updated_user.get("name", "Anonymous"),
+                    "avatar": updated_user.get("avatar", ""),
+                    "user_type": updated_user.get("user_type", "guest"),
+                    "remaining_matches": updated_user.get("remaining_matches", 0),
+                    "level": updated_user.get("level", 1),
+                    "kicker_skills": updated_user.get("kicker_skills", []),
+                    "goalkeeper_skills": updated_user.get("goalkeeper_skills", []),
+                    "total_point": updated_user.get("total_point", 0),
+                }
+            })
         return {
             "success": True,
             "data": {
                 "reward_type": "remaining_matches",
-                "amount": matches
+                "amount": matches,
+                "next_open": format_vietnam_time(now + timedelta(hours=5))
             }
         }
 
@@ -198,4 +262,18 @@ async def get_box_history(request: Request, limit: int = 10, skip: int = 0):
         
     except Exception as e:
         api_logger.error(f"[MysteryBox] Error getting history: {str(e)}")
-        raise HTTPException(status_code=500, detail="Internal server error") 
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+    # Get current time in Vietnam timezone
+    now = get_vietnam_time()
+
+    # Update last open time
+    await db.users.update_one(
+        {"_id": user["_id"]},
+        {
+            "$set": {
+                "last_mystery_box_open": now.isoformat(),
+                "opened_at": now.isoformat()
+            }
+        }
+    ) 

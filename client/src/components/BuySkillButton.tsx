@@ -6,10 +6,11 @@ import { API_ENDPOINTS, defaultFetchOptions } from '@/config/api';
 interface BuySkillButtonProps {
   skillType: 'kicker' | 'goalkeeper';
   userPoints: number;
+  skillCost: number;
   onSuccess?: () => void;
 }
 
-export default function BuySkillButton({ skillType, userPoints, onSuccess }: BuySkillButtonProps) {
+export default function BuySkillButton({ skillType, userPoints, skillCost, onSuccess }: BuySkillButtonProps) {
   const [isLoading, setIsLoading] = useState(false);
   const requiredPoints = skillType === 'kicker' ? 10 : 5;
   const pointField = skillType === 'kicker' ? 'kicked_win' : 'keep_win';
@@ -21,6 +22,8 @@ export default function BuySkillButton({ skillType, userPoints, onSuccess }: Buy
         toast.error('Please login to buy skills');
         return;
       }
+
+      if (userPoints < skillCost) return;
 
       setIsLoading(true);
       const response = await fetch(API_ENDPOINTS.skills.buySkill, {
@@ -59,9 +62,9 @@ export default function BuySkillButton({ skillType, userPoints, onSuccess }: Buy
     <div className="flex flex-col items-center gap-2">
       <Button
         onClick={handleBuySkill}
-        disabled={isLoading || userPoints < requiredPoints}
+        disabled={isLoading || userPoints < skillCost}
         className={`w-full ${
-          userPoints >= requiredPoints 
+          userPoints >= skillCost 
             ? 'bg-green-600 hover:bg-green-700' 
             : 'bg-gray-400 cursor-not-allowed'
         }`}
@@ -69,7 +72,7 @@ export default function BuySkillButton({ skillType, userPoints, onSuccess }: Buy
         {isLoading ? (
           'Buying...'
         ) : (
-          `Buy New ${skillType.charAt(0).toUpperCase() + skillType.slice(1)} Skill (${requiredPoints} ${pointField.replace('_', ' ')} points)`
+          `Buy New Skill (${skillCost} skill_point)`
         )}
       </Button>
       <p className="text-xs text-gray-500">

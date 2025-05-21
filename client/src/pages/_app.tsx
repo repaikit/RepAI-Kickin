@@ -6,7 +6,14 @@ import type { AppProps } from "next/app";
 import "@/index.css";
 import { PrivyProvider } from '@privy-io/react-auth';
 import { AuthProvider } from '@/contexts/AuthContext';
+import { PageProvider } from '@/contexts/PageContext';
 import AIChatPopup from "@/components/AIChatPopup";
+import Dashboard from "./Dashboard";
+import Profile from "./profile";
+// import Matches from "./matches";
+// import Players from "./players";
+// import Statistics from "./statistics";
+
 function MyApp({ Component, pageProps }: AppProps) {
   return (
     <QueryClientProvider client={queryClient}>
@@ -22,8 +29,10 @@ function MyApp({ Component, pageProps }: AppProps) {
           }}
         >
           <AuthProvider>
+            <PageProvider>
               <Component {...pageProps} />
               <AIChatPopup />
+            </PageProvider>
           </AuthProvider>
         </PrivyProvider>
       </TooltipProvider>

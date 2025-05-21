@@ -146,43 +146,39 @@ async def buy_skill(
     skill_type: str = Body(..., embed=True)
 ):
     """
-    Mua skill mới cho user, random skill chưa sở hữu, trừ điểm thắng tương ứng.
+    Mua skill mới cho user, dùng tổng skill_point (kicked_win + keep_win).
     - skill_type: 'kicker' hoặc 'goalkeeper'
-    - Kicker skills cost 10 kicked_win points
-    - Goalkeeper skills cost 5 keep_win points
+    - Kicker skills cost 10 skill_point
+    - Goalkeeper skills cost 5 skill_point
     """
-    # Lấy user_id từ JWT token (đã được xác thực bởi middleware)
     user_id = str(request.state.user["_id"])
-    
     db = await get_database()
     skills_collection = await get_skills_collection()
 
-    # 1. Lấy user
     user = await db.users.find_one({"_id": ObjectId(user_id)})
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
-    # 2. Xác định trường điểm và skill hiện có
     if skill_type == "kicker":
         current_skills = user.get("kicker_skills", [])
-        point_field = "kicked_win"
         required_points = 10
     elif skill_type == "goalkeeper":
         current_skills = user.get("goalkeeper_skills", [])
-        point_field = "keep_win"
         required_points = 5
     else:
         raise HTTPException(status_code=400, detail="Invalid skill_type (must be 'kicker' or 'goalkeeper')")
 
-    # 3. Kiểm tra đủ điểm chưa
-    user_points = user.get(point_field, 0)
-    if user_points < required_points:
+    # Tổng skill_point
+    kicked_win = user.get("kicked_win", 0)
+    keep_win = user.get("keep_win", 0)
+    skill_point = kicked_win + keep_win
+
+    if skill_point < required_points:
         raise HTTPException(
             status_code=400,
-            detail=f"Not enough {point_field.replace('_', ' ')} points to buy skill (need {required_points}, have {user_points})"
+            detail=f"Not enough skill points to buy skill (need {required_points}, have {skill_point})"
         )
 
-    # 4. Lấy danh sách skill hợp lệ từ DB
     all_skills = await skills_collection.find({"type": skill_type}).to_list(length=None)
     all_skill_names = [s["name"] for s in all_skills]
     available_skills = [s for s in all_skill_names if s not in current_skills]
@@ -190,14 +186,19 @@ async def buy_skill(
     if not available_skills:
         raise HTTPException(status_code=400, detail="You already own all available skills of this type.")
 
-    # 5. Random skill mới
     new_skill = random.choice(available_skills)
 
-    # 6. Trừ điểm và lưu skill mới, lưu lịch sử
+    # Trừ điểm: ưu tiên trừ kicked_win trước, nếu không đủ thì trừ tiếp keep_win
+    kicked_to_deduct = min(kicked_win, required_points)
+    keep_to_deduct = required_points - kicked_to_deduct
+
     update_result = await db.users.update_one(
         {"_id": ObjectId(user_id)},
         {
-            "$inc": {point_field: -required_points},
+            "$inc": {
+                "kicked_win": -kicked_to_deduct,
+                "keep_win": -keep_to_deduct
+            },
             "$push": {
                 f"{skill_type}_skills": new_skill,
                 "skill_history": {
@@ -213,10 +214,11 @@ async def buy_skill(
     if update_result.modified_count == 0:
         raise HTTPException(status_code=500, detail="Failed to update user with new skill.")
 
-    # 7. Lấy lại user để trả về số điểm còn lại
     updated_user = await db.users.find_one({"_id": ObjectId(user_id)})
+    # Tính lại skill_point còn lại
+    remaining_skill_point = updated_user.get("kicked_win", 0) + updated_user.get("keep_win", 0)
     return {
         "message": "Skill bought successfully",
         "skill": new_skill,
-        "remaining_points": updated_user.get(point_field, 0)
+        "remaining_skill_point": remaining_skill_point
     } 

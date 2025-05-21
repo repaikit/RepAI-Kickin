@@ -11,6 +11,8 @@ from bson import ObjectId
 from jose import jwt, JWTError
 import os
 from .challenge_handler import challenge_manager
+from utils.time_utils import get_vietnam_time, to_vietnam_time, VIETNAM_TZ
+import pytz
 
 SECRET_KEY = os.getenv("JWT_KEY", "your-very-secret-key")
 ALGORITHM = "HS256"
@@ -20,7 +22,7 @@ class JSONEncoder(json.JSONEncoder):
         if isinstance(obj, ObjectId):
             return str(obj)
         if isinstance(obj, datetime):
-            return obj.isoformat()
+            return to_vietnam_time(obj).isoformat()
         return super().default(obj)
 
 class WaitingRoomManager:
@@ -58,7 +60,7 @@ class WaitingRoomManager:
                 "is_pro": user_data.get("is_pro", False),
                 "total_extra_skill": user_data.get("total_extra_skill", 0),
                 "extra_skill_win": user_data.get("extra_skill_win", 0),
-                "connected_at": datetime.utcnow().isoformat()
+                "connected_at": get_vietnam_time().isoformat()
             }
 
             await self.broadcast_user_list()
@@ -98,7 +100,8 @@ class WaitingRoomManager:
                     self.disconnect(user_id)
 
     def get_online_users(self):
-        return list(self.online_users.values())
+        # Lọc chỉ những user còn trận
+        return [u for u in self.online_users.values() if u.get("remaining_matches", 0) > 0]
 
     async def broadcast_user_list(self):
         """Broadcast the list of online users to all connected clients"""
@@ -130,7 +133,7 @@ class WaitingRoomManager:
                     "is_pro": user.get("is_pro", False),
                     "total_extra_skill": user.get("total_extra_skill", 0),
                     "extra_skill_win": user.get("extra_skill_win", 0),
-                    "connected_at": datetime.utcnow().isoformat(),
+                    "connected_at": get_vietnam_time().isoformat(),
                     "remaining_matches": user.get("remaining_matches", 0)
                 })
 
@@ -156,7 +159,7 @@ class WaitingRoomManager:
                 await asyncio.sleep(self.ping_interval)
                 for user_id in list(self.active_connections.keys()):
                     try:
-                        ping_data = json.dumps({"type": "ping", "timestamp": datetime.utcnow().isoformat()}, cls=JSONEncoder)
+                        ping_data = json.dumps({"type": "ping", "timestamp": get_vietnam_time().isoformat()}, cls=JSONEncoder)
                         await self.active_connections[user_id].send_text(ping_data)
                     except Exception as e:
                         api_logger.error(f"Error sending ping to {user_id}: {str(e)}")
@@ -196,12 +199,21 @@ class WaitingRoomManager:
                     })
                     return
 
-                # Create message object to SAVE TO DATABASE
-                message_obj_db = {
+                # Create message object to SAVE TO DATABASE with Vietnam timezone
+                vietnam_time = get_vietnam_time()
+                # Ensure the timestamp is stored with Vietnam timezone offset
+                vietnam_time = vietnam_time.astimezone(VIETNAM_TZ)
+                
+                # Convert to dict with explicit timezone info for MongoDB
+                message_dict = {
                     "from_id": user_id,
                     "message": chat_message,
-                    "timestamp": datetime.utcnow()
+                    "timestamp": vietnam_time.isoformat(),  # string ISO 8601, giữ nguyên +07:00
+                    "timezone": "Asia/Ho_Chi_Minh",
+                    "utc_offset": "+07:00"  # Explicitly store UTC offset
                 }
+                
+                print(f"[WaitingRoom] Message dict before save: {message_dict}")
                 
                 # Save to database with timeout and retry
                 max_retries = 3
@@ -209,10 +221,16 @@ class WaitingRoomManager:
                 while retry_count < max_retries:
                     try:
                         chat_messages = await get_chat_messages_collection()
-                        await asyncio.wait_for(
-                            chat_messages.insert_one(message_obj_db),
+                        # Use update_one with upsert to ensure proper timezone handling
+                        result = await asyncio.wait_for(
+                            chat_messages.update_one(
+                                {"_id": ObjectId()},  # Generate new ObjectId
+                                {"$set": message_dict},
+                                upsert=True
+                            ),
                             timeout=5.0
                         )
+                        print(f"[WaitingRoom] Save result: {result.raw_result}")
                         break
                     except asyncio.TimeoutError:
                         retry_count += 1
@@ -237,7 +255,8 @@ class WaitingRoomManager:
                     "type": "chat_message",
                     "from_id": user_id,
                     "message": chat_message,
-                    "timestamp": message_obj_db["timestamp"].isoformat(),
+                    "timestamp": vietnam_time.isoformat(),
+                    "timezone": "Asia/Ho_Chi_Minh",
                     "from": {
                         "id": user_id,
                         "name": sender_info.get("name", "Anonymous"),
@@ -298,6 +317,10 @@ class WaitingRoomManager:
                 # Broadcast updated user list to all clients
                 await self.broadcast_user_list()
         
+        elif message_type == "get_user_list":
+            users = self.get_online_users()
+            await websocket.send_json({"type": "user_list", "users": users})
+        
         elif message_type == "ping":
             await websocket.send_json({"type": "pong"})
 
@@ -319,7 +342,7 @@ async def validate_user(websocket: WebSocket) -> dict:
             exp = data.get("exp")
             
             # Check token expiration
-            if exp and datetime.utcnow().timestamp() > exp:
+            if exp and get_vietnam_time().timestamp() > exp:
                 api_logger.error("Token expired")
                 raise HTTPException(status_code=401, detail="Token expired")
 
@@ -385,5 +408,5 @@ async def websocket_endpoint(websocket: WebSocket):
             await manager.broadcast({
                 "type": "user_left",
                 "user_id": user_id,
-                "timestamp": datetime.utcnow().isoformat()
+                "timestamp": get_vietnam_time().isoformat()
             })

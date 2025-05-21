@@ -3,7 +3,7 @@ import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import asyncio
-from datetime import datetime
+from utils.time_utils import get_vietnam_time, to_vietnam_time
 from database.database import get_database, get_skills_collection
 from utils.logger import api_logger
 import random
@@ -13,7 +13,7 @@ os.makedirs('logs', exist_ok=True)
 
 # Log start time
 with open('logs/daily_reset.log', 'a') as f:
-    f.write(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Starting daily matches reset\n")
+    f.write(f"[{get_vietnam_time().strftime('%Y-%m-%d %H:%M:%S')}] Starting daily matches reset\n")
 
 async def reset_bot_skills():
     """Reset bot skills with new random skills"""
@@ -37,7 +37,7 @@ async def reset_bot_skills():
                 "$set": {
                     "kicker_skills": selected_kicker_skills,
                     "goalkeeper_skills": selected_goalkeeper_skills,
-                    "last_skill_update": datetime.utcnow()
+                    "last_skill_update": get_vietnam_time()
                 }
             },
             upsert=True
@@ -53,7 +53,7 @@ async def reset_daily_matches():
     """Reset remaining matches for all users to 5"""
     try:
         db = await get_database()
-        now = datetime.utcnow()
+        now = get_vietnam_time()
         current_date = now.strftime('%Y-%m-%d')
         
         # Reset remaining matches to 5 and daily_tasks to empty for all users
@@ -77,4 +77,4 @@ if __name__ == "__main__":
     finally:
         # Log completion time
         with open('logs/daily_reset.log', 'a') as f:
-            f.write(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Completed daily matches reset\n")
+            f.write(f"[{get_vietnam_time().strftime('%Y-%m-%d %H:%M:%S')}] Completed daily matches reset\n")

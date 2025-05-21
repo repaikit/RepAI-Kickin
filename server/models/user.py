@@ -3,6 +3,7 @@ from pydantic import BaseModel, Field, BeforeValidator
 from datetime import datetime
 from bson import ObjectId
 from pydantic.json_schema import JsonSchemaValue
+from utils.time_utils import get_vietnam_time, VIETNAM_TZ
 
 def validate_object_id(v: str) -> ObjectId:
     if not ObjectId.is_valid(v):
@@ -31,9 +32,9 @@ class UserBase(BaseModel):
     total_point: int = 0
     bonus_point: float = 0.0
     match_history: List[Any] = []
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
-    last_activity: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: get_vietnam_time().astimezone(VIETNAM_TZ).isoformat())
+    updated_at: datetime = Field(default_factory=lambda: get_vietnam_time().astimezone(VIETNAM_TZ).isoformat())
+    last_activity: datetime = Field(default_factory=lambda: get_vietnam_time().astimezone(VIETNAM_TZ).isoformat())
     last_login: Optional[datetime] = None
     # Leaderboard fields
     total_kicked: int = 0
@@ -48,13 +49,9 @@ class UserBase(BaseModel):
     vip_amount: float = 0.0
     vip_year: Optional[int] = None
     vip_payment_method: str = "NONE"  # VISA, NFT, NONE
-    # --- Thêm các trường điểm tuần và lịch sử điểm tuần ---
-    basic_week_point: int = 0
-    pro_week_point: int = 0
-    vip_week_point: int = 0
-    basic_week_history: List[dict] = []  # [{"week": "2024-21", "point": 10}]
-    pro_week_history: List[dict] = []
-    vip_week_history: List[dict] = []
+    # --- Thay thế các trường điểm tuần và lịch sử điểm tuần riêng biệt bằng trường chung ---
+    week_point: int = 0  # Điểm tuần hiện tại (dùng cho mọi loại user)
+    week_history: List[dict] = []  # Lịch sử điểm tuần, mỗi entry: {"week": ..., "point": ..., "total_point": ..., "reset_at": ...}
     # --- Thêm các trường mới ---
     last_box_open: Optional[datetime] = None
     mystery_box_history: List[dict] = []
@@ -90,7 +87,7 @@ class UserUpdate(BaseModel):
     total_point: Optional[int] = None
     bonus_point: Optional[float] = None
     match_history: Optional[List[Any]] = None
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=lambda: get_vietnam_time().astimezone(VIETNAM_TZ).isoformat())
     last_login: Optional[datetime] = None
     # Leaderboard fields
     total_kicked: Optional[int] = None

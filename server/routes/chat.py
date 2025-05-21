@@ -3,6 +3,8 @@ from database.database import get_chat_messages_collection, get_users_collection
 from bson import ObjectId
 from utils.logger import api_logger
 from datetime import datetime
+from utils.time_utils import to_vietnam_time, VIETNAM_TZ
+import pytz
 
 router = APIRouter()
 
@@ -43,6 +45,8 @@ async def get_chat_history(request: Request, limit: int = 50):
                     "from_id": 1,
                     "message": 1,
                     "timestamp": 1,
+                    "timezone": 1,
+                    "utc_offset": 1,
                     "from": {
                         "id": { "$toString": "$user_info._id" },
                         "name": "$user_info.name",
@@ -74,11 +78,23 @@ async def get_chat_history(request: Request, limit: int = 50):
         # Format messages to match the expected structure
         formatted_messages = []
         for msg in messages:
+            # Convert timestamp to Vietnam timezone if it's a datetime object
+            timestamp = msg["timestamp"]
+            if isinstance(timestamp, datetime):
+                # If timestamp is naive (no timezone), add Vietnam timezone
+                if timestamp.tzinfo is None:
+                    timestamp = VIETNAM_TZ.localize(timestamp)
+                else:
+                    # If it has timezone, convert to Vietnam time
+                    timestamp = timestamp.astimezone(VIETNAM_TZ)
+            
             formatted_messages.append({
                 "type": "chat_message",
                 "from_id": msg["from_id"],
                 "message": msg["message"],
-                "timestamp": msg["timestamp"].isoformat() if isinstance(msg["timestamp"], datetime) else msg["timestamp"],
+                "timestamp": timestamp.isoformat() if isinstance(timestamp, datetime) else timestamp,
+                "timezone": msg.get("timezone", "Asia/Ho_Chi_Minh"),
+                "utc_offset": msg.get("utc_offset", "+07:00"),
                 "from": msg["from"]
             })
         
