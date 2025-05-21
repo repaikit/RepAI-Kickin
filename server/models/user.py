@@ -95,7 +95,7 @@ class UserUpdate(BaseModel):
     total_keep: Optional[int] = None
     keep_win: Optional[int] = None
     is_pro: Optional[bool] = None
-    total_extra_skill: Optional[int] = None
+    extra_point: Optional[int] = None
     level: Optional[int] = None
     last_box_open: Optional[datetime] = None
     mystery_box_history: Optional[List[dict]] = None

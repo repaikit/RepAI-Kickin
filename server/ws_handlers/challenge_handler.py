@@ -14,6 +14,7 @@ from database.database import get_skills_collection
 from utils.time_utils import get_vietnam_time, to_vietnam_time, VIETNAM_TZ
 from fastapi.responses import JSONResponse
 from utils.level_utils import get_total_point_for_level, get_basic_level, get_legend_level, get_vip_level, update_user_levels
+import asyncio
 
 # Level-related constants
 LEVEL_MILESTONES_BASIC = [0, 100, 300, 600, 1000, 1500, 2100, 2800, 3600, 4500, 5500, 6600, 7800, 9100, 10500, 12000, 13600, 15300, 17100, 19000, 21000, 23100, 25300, 27600, 30000, 32500, 35100, 37800, 40600, 43500, 46500, 49600, 52800, 56100, 59500, 63000, 66600, 70300, 74100, 78000, 82000, 86100, 90300, 94600, 99000, 103500, 108100, 112800, 117600, 122500, 127500, 132600, 137800, 143100, 148500, 154000, 159600, 165300, 171100, 177000, 183000, 189100, 195300, 201600, 208000, 214500, 221100, 227800, 234600, 241500, 248500, 255600, 262800, 270100, 277500, 285000, 292600, 300300, 308100, 316000, 324000, 332100, 340300, 348600, 357000, 365500, 374100, 382800, 391600, 400500, 409500, 418600, 427800, 437100, 446500, 456000, 465600, 475300, 485100, 495000]
@@ -308,8 +309,36 @@ class ChallengeManager:
             await self.send_message(active_connections, kicker_id, result_message)
             await self.send_message(active_connections, goalkeeper_id, result_message)
 
-            updated_winner = await db.users.find_one({"_id": ObjectId(winner_id)})
-            updated_loser = await db.users.find_one({"_id": ObjectId(loser_id)})
+            # Update user levels first
+            total_win = updated_winner.get("kicked_win", 0) + updated_winner.get("keep_win", 0)
+            new_level = get_basic_level(total_win)
+            is_pro = new_level >= 100
+            if is_pro:
+                new_level = 100
+                legend_level = get_legend_level(total_win)
+            else:
+                legend_level = 0
+            vip_amount = updated_winner.get("vip_amount", 0)
+            vip_level = get_vip_level(vip_amount)
+
+            # Update all user data in database
+            await db.users.update_one(
+                {"_id": ObjectId(winner_id)},
+                {"$set": {
+                    "level": new_level,
+                    "is_pro": is_pro,
+                    "legend_level": legend_level,
+                    "vip_level": vip_level
+                }}
+            )
+
+            # Wait a bit longer to ensure database updates are complete
+            import time as _time
+            print("[Challenge] Sleeping before broadcasting leaderboard...")
+            await asyncio.sleep(0.5)
+            print("[Challenge] Done sleeping, fetching fresh leaderboard data after match")
+
+            # Now fetch fresh data for leaderboard
             from ws_handlers.waiting_room import manager
             leaderboard_users = await db.users.find().sort("total_point", -1).limit(10).to_list(length=10)
             leaderboard_data = [
@@ -322,15 +351,16 @@ class ChallengeManager:
                     "kicked_win": u.get("kicked_win", 0),
                     "total_keep": u.get("total_keep", 0),
                     "keep_win": u.get("keep_win", 0),
-                    "total_extra_skill": u.get("total_extra_skill", 0),
-                    "extra_skill_win": u.get("extra_skill_win", 0),
                     "total_point": u.get("total_point", 0),
                     "bonus_point": u.get("bonus_point", 0.0),
                     "is_pro": u.get("is_pro", False),
                     "is_vip": u.get("is_vip", False),
+                    # Always include extra_point for frontend compatibility
+                    "extra_point": u.get("extra_point", 0),
                 }
                 for u in leaderboard_users
             ]
+            print("[Challenge] Leaderboard data right before broadcast:", leaderboard_data)
             await manager.broadcast({
                 "type": "leaderboard_update",
                 "leaderboard": leaderboard_data
@@ -338,26 +368,6 @@ class ChallengeManager:
 
             # Broadcast updated user list for realtime update in waiting room
             await manager.broadcast_user_list()
-
-            total_win = updated_winner.get("kicked_win", 0) + updated_winner.get("keep_win", 0)
-            new_level = get_basic_level(total_win)
-            is_pro = new_level >= 100
-            if is_pro:
-                new_level = 100
-                legend_level = get_legend_level(total_win)
-            else:
-                legend_level = 0
-            vip_amount = updated_winner.get("vip_amount", 0)
-            vip_level = get_vip_level(vip_amount)
-            await db.users.update_one(
-                {"_id": ObjectId(winner_id)},
-                {"$set": {
-                    "level": new_level,
-                    "is_pro": is_pro,
-                    "legend_level": legend_level,
-                    "vip_level": vip_level
-                }}
-            )
 
         else:
             # Notify the challenger that the challenge was declined

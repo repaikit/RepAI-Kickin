@@ -145,6 +145,7 @@ export default function Header() {
   const displayName = user?.name || user?.email || 'Guest';
   const avatarInitial = displayName[0]?.toUpperCase() || 'G';
   const getAvatarUrl = () => user?.avatar;
+  console.log('Thông tin', user);
   const isGuestUser = user?.user_type === 'guest';
 
   return (

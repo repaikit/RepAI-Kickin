@@ -46,7 +46,7 @@ class Settings(BaseSettings):
     CACHE_TTL: int = 300
     CACHE_EXCLUDED_PATHS: List[str] = [
         "/api/ws/waitingroom/{user_id}",
-        "/api/users/me",
+        "/api/me",
         "/api/matches/active"
     ]
     
