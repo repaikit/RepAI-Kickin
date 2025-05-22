@@ -14,6 +14,7 @@ from utils.cache_manager import cache_response
 from utils.time_utils import get_vietnam_time, to_vietnam_time
 from utils.level_utils import get_total_point_for_level, get_basic_level, get_legend_level, get_vip_level, update_user_levels
 from utils.email import send_verification_email
+import traceback
 
 router = APIRouter()
 
@@ -375,52 +376,66 @@ async def register_user(data: RegularAuthRequest):
             detail=f"Registration failed: {str(e)}"
         )
 
+# --- GOOGLE AUTH LOGIC ---
+async def google_login_logic(auth_data: GoogleAuthRequest):
+    users_collection = await get_users_collection()
+    existing_user = await users_collection.find_one({"email": auth_data.email})
+    if not existing_user:
+        raise HTTPException(
+            status_code=404,
+            detail="User not found. Please register first."
+        )
+    update_data = {
+        "last_login": get_vietnam_time().isoformat(),
+        "updated_at": get_vietnam_time().isoformat(),
+        "name": auth_data.name,
+        "avatar": auth_data.picture
+    }
+    await users_collection.update_one(
+        {"_id": existing_user["_id"]},
+        {"$set": update_data}
+    )
+    access_token = create_access_token({"_id": str(existing_user["_id"])})
+    return {"access_token": access_token}
+
+async def google_register_logic(auth_data: GoogleAuthRequest):
+    users_collection = await get_users_collection()
+    skills_collection = await get_skills_collection()
+    existing_user = await users_collection.find_one({"email": auth_data.email})
+    if existing_user:
+        raise HTTPException(
+            status_code=400,
+            detail="Email already registered. Please login instead."
+        )
+    session_id = str(uuid.uuid4())
+    kicker_skill = await get_random_skill(skills_collection, "kicker")
+    goalkeeper_skill = await get_random_skill(skills_collection, "goalkeeper")
+    new_user = UserCreate(
+        user_type="user",
+        session_id=session_id,
+        email=auth_data.email,
+        name=auth_data.name,
+        avatar=auth_data.picture,
+        auth_provider="google",
+        kicker_skills=[kicker_skill],
+        goalkeeper_skills=[goalkeeper_skill],
+        created_at=get_vietnam_time().isoformat(),
+        updated_at=get_vietnam_time().isoformat(),
+        last_login=get_vietnam_time().isoformat()
+    ).dict(by_alias=True)
+    result = await users_collection.insert_one(new_user)
+    created_user = await users_collection.find_one({"_id": result.inserted_id})
+    access_token = create_access_token({"_id": str(created_user["_id"])})
+    return {"access_token": access_token}
+
 @router.post("/auth/google/register")
 async def register_with_google(data: GoogleAuthRequest):
     """Đăng ký tài khoản mới với Google"""
     try:
-        users_collection = await get_users_collection()
-        skills_collection = await get_skills_collection()
-        
-        # Kiểm tra email đã tồn tại chưa
-        existing_user = await users_collection.find_one({"email": data.email})
-        if existing_user:
-            raise HTTPException(
-                status_code=400,
-                detail="Email already registered. Please login instead."
-            )
-        
-        # Tạo user mới
-        session_id = str(uuid.uuid4())
-        kicker_skill = await get_random_skill(skills_collection, "kicker")
-        goalkeeper_skill = await get_random_skill(skills_collection, "goalkeeper")
-        
-        new_user = UserCreate(
-            user_type="user",
-            session_id=session_id,
-            email=data.email,
-            name=data.name,
-            avatar=data.picture,
-            auth_provider="google",
-            kicker_skills=[kicker_skill],
-            goalkeeper_skills=[goalkeeper_skill],
-            created_at=get_vietnam_time().isoformat(),
-            updated_at=get_vietnam_time().isoformat(),
-            last_login=get_vietnam_time().isoformat()
-        ).dict(by_alias=True)
-        
-        result = await users_collection.insert_one(new_user)
-        created_user = await users_collection.find_one({"_id": result.inserted_id})
-        
-        # Tạo access token
-        access_token = create_access_token({"_id": str(created_user["_id"])})
-        
-        return TokenResponse(
-            access_token=access_token
-        )
-        
+        return google_register_logic(data)
     except Exception as e:
         api_logger.error(f"Error in Google registration: {str(e)}")
+        api_logger.error(traceback.format_exc())
         raise HTTPException(
             status_code=500,
             detail=f"Registration failed: {str(e)}"
@@ -477,39 +492,10 @@ async def login_user(data: RegularAuthRequest):
 async def login_with_google(data: GoogleAuthRequest):
     """Đăng nhập với Google"""
     try:
-        users_collection = await get_users_collection()
-        
-        # Tìm user theo email
-        existing_user = await users_collection.find_one({"email": data.email})
-        
-        if not existing_user:
-            raise HTTPException(
-                status_code=404,
-                detail="User not found. Please register first."
-            )
-            
-        # Cập nhật thông tin đăng nhập
-        update_data = {
-            "last_login": get_vietnam_time().isoformat(),
-            "updated_at": get_vietnam_time().isoformat(),
-            "name": data.name,
-            "avatar": data.picture
-        }
-        
-        await users_collection.update_one(
-            {"_id": existing_user["_id"]},
-            {"$set": update_data}
-        )
-        
-        # Tạo access token
-        access_token = create_access_token({"_id": str(existing_user["_id"])})
-        
-        return TokenResponse(
-            access_token=access_token
-        )
-        
+        return google_login_logic(data)
     except Exception as e:
         api_logger.error(f"Error in Google login: {str(e)}")
+        api_logger.error(traceback.format_exc())
         raise HTTPException(
             status_code=500,
             detail=f"Login failed: {str(e)}"
