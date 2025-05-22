@@ -1,17 +1,19 @@
 from fastapi import APIRouter, HTTPException, Request, Depends, Body
 from typing import Optional, List
-from models.user import User, UserCreate, UserUpdate
+from models.user import User, UserCreate, UserUpdate, TokenResponse, GoogleAuthRequest
 from database.database import get_users_collection, get_skills_collection, get_database
 from datetime import datetime
 import uuid
 import random
-from pydantic import BaseModel
+from pydantic import BaseModel, EmailStr
 from utils.logger import api_logger
 from utils.jwt import create_access_token
+from utils.password import get_password_hash, verify_password
 from bson import ObjectId
 from utils.cache_manager import cache_response
 from utils.time_utils import get_vietnam_time, to_vietnam_time
 from utils.level_utils import get_total_point_for_level, get_basic_level, get_legend_level, get_vip_level, update_user_levels
+from utils.email import send_verification_email
 
 router = APIRouter()
 
@@ -57,56 +59,54 @@ async def create_guest_user(request: Request):
     }
 
 class UpgradeGuestRequest(BaseModel):
-    email: Optional[str] = None
-    wallet: Optional[str] = None
-    name: Optional[str] = None
+    email: EmailStr
+    password: str
+    name: str
 
-@router.post("/upgrade", response_model=User)
+@router.post("/upgrade")
 async def upgrade_guest_to_user(
     request: Request,
     data: UpgradeGuestRequest
 ):  
     user = getattr(request.state, "user", None)
-    if not user:
-        raise HTTPException(status_code=401, detail="Not authenticated")
+    if not user or user.get("user_type") != "guest":
+        raise HTTPException(status_code=401, detail="Not authenticated as guest")
 
     users_collection = await get_users_collection()
     user_id = user.get("_id")
     if not user_id:
         raise HTTPException(status_code=401, detail="Invalid user data")
 
-    user = await users_collection.find_one({"_id": ObjectId(user_id), "user_type": "guest"})
-    if not user:
-        raise HTTPException(status_code=404, detail="Guest user not found")
-
     # Check trùng email
-    if data.email:
-        existing_email = await users_collection.find_one({"email": data.email, "_id": {"$ne": ObjectId(user_id)}})
-        if existing_email:
-            raise HTTPException(status_code=400, detail="Email đã được sử dụng bởi tài khoản khác.")
-    # Check trùng wallet
-    if data.wallet:
-        existing_wallet = await users_collection.find_one({"wallet": data.wallet, "_id": {"$ne": ObjectId(user_id)}})
-        if existing_wallet:
-            raise HTTPException(status_code=400, detail="Wallet đã được sử dụng bởi tài khoản khác.")
+    existing_email = await users_collection.find_one({"email": data.email, "_id": {"$ne": ObjectId(user_id)}})
+    if existing_email:
+        raise HTTPException(status_code=400, detail="Email đã được sử dụng bởi tài khoản khác.")
 
+    hashed_password = get_password_hash(data.password)
+    email_verification_token = str(uuid.uuid4())
     update_data = {
         "user_type": "user", 
-        "updated_at": get_vietnam_time().isoformat()
+        "email": data.email,
+        "password": hashed_password,
+        "auth_provider": "email",
+        "name": data.name,
+        "updated_at": get_vietnam_time().isoformat(),
+        "is_verified": False,
+        "email_verification_token": email_verification_token
     }
-    if data.email:
-        update_data["email"] = data.email
-    if data.wallet:
-        update_data["wallet"] = data.wallet
-    if data.name:
-        update_data["name"] = data.name
 
     await users_collection.update_one(
         {"_id": ObjectId(user_id)}, 
         {"$set": update_data}
     )
+    # Gửi email xác thực
+    send_verification_email(data.email, email_verification_token)
     updated_user = await users_collection.find_one({"_id": ObjectId(user_id)})
-    return User(**updated_user)
+    
+    return {
+        "user": User(**updated_user),
+        "message": "Account upgraded successfully. Please check your email to verify your account."
+    }
 
 @router.get("/me")
 async def get_current_user(request: Request):
@@ -221,13 +221,75 @@ class PlayRequest(BaseModel):
 # API lấy leaderboard
 @router.get("/leaderboard", response_model=List[User])
 async def get_leaderboard(page: int = 1, limit: int = 10):
-    users_collection = await get_users_collection()
-    # Giới hạn tối đa 100 trang
-    page = max(1, min(page, 100))
-    limit = max(1, min(limit, 100))
-    skip = (page - 1) * limit
-    users = await users_collection.find({"user_type": "user"}).sort("total_point", -1).skip(skip).limit(limit).to_list(length=None)
-    return [User(**u) for u in users]
+    try:
+        api_logger.info(f"Fetching leaderboard with page={page}, limit={limit}")
+        
+        try:
+            users_collection = await get_users_collection()
+            api_logger.info("Successfully got users collection")
+        except Exception as e:
+            api_logger.error(f"Failed to get users collection: {str(e)}", exc_info=True)
+            raise HTTPException(status_code=500, detail=f"Database connection error: {str(e)}")
+        
+        # Giới hạn tối đa 100 trang
+        page = max(1, min(page, 100))
+        limit = max(1, min(limit, 100))
+        skip = (page - 1) * limit
+        
+        # Log query parameters
+        api_logger.info(f"Query parameters: skip={skip}, limit={limit}")
+        
+        # Get users with error handling
+        try:
+            api_logger.info("Attempting to query users collection")
+            users = await users_collection.find(
+                {"user_type": "user"}
+            ).sort("total_point", -1).skip(skip).limit(limit).to_list(length=None)
+            api_logger.info(f"Successfully queried users collection, found {len(users) if users else 0} users")
+            
+            if not users:
+                api_logger.info("No users found in leaderboard")
+                return []
+                
+            # Convert datetime fields to ISO format strings
+            for user in users:
+                if isinstance(user.get("created_at"), datetime):
+                    user["created_at"] = user["created_at"].isoformat()
+                if isinstance(user.get("updated_at"), datetime):
+                    user["updated_at"] = user["updated_at"].isoformat()
+                if isinstance(user.get("last_activity"), datetime):
+                    user["last_activity"] = user["last_activity"].isoformat()
+                if isinstance(user.get("last_login"), datetime):
+                    user["last_login"] = user["last_login"].isoformat()
+                if isinstance(user.get("last_box_open"), datetime):
+                    user["last_box_open"] = user["last_box_open"].isoformat()
+                if isinstance(user.get("last_claim_matches"), datetime):
+                    user["last_claim_matches"] = user["last_claim_matches"].isoformat()
+                
+            # Convert to User model with error handling
+            try:
+                api_logger.info("Converting users to User model")
+                return [User(**u) for u in users]
+            except Exception as e:
+                api_logger.error(f"Error converting users to model: {str(e)}", exc_info=True)
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"Error processing user data: {str(e)}"
+                )
+                
+        except Exception as e:
+            api_logger.error(f"Error querying database: {str(e)}", exc_info=True)
+            raise HTTPException(
+                status_code=500,
+                detail=f"Database query error: {str(e)}"
+            )
+            
+    except Exception as e:
+        api_logger.error(f"Error in leaderboard route: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to fetch leaderboard: {str(e)}"
+        )
 
 # API xóa user
 @router.delete("/me")
@@ -239,31 +301,94 @@ async def delete_user(session_id: str):
     await users_collection.delete_one({"session_id": session_id})
     return {"message": "User deleted successfully"}
 
-class PrivyAuthRequest(BaseModel):
-    email: Optional[str] = None
-    wallet: Optional[str] = None
+class RegularAuthRequest(BaseModel):
+    email: EmailStr
+    password: str
     name: Optional[str] = None
-    avatar: Optional[str] = None
 
-class TokenResponse(BaseModel):
-    access_token: str
-    token_type: str = "bearer"
+class GoogleAuthRequest(BaseModel):
+    email: EmailStr
+    name: str
+    picture: Optional[str] = None
 
-@router.post("/auth/privy/register")
-async def register_with_privy(data: PrivyAuthRequest):
-    """Đăng ký tài khoản mới với Privy"""
+@router.post("/auth/register")
+async def register_user(data: RegularAuthRequest):
+    """Đăng ký tài khoản mới với email và mật khẩu"""
     try:
         users_collection = await get_users_collection()
         skills_collection = await get_skills_collection()
         
         # Kiểm tra email đã tồn tại chưa
-        if data.email:
-            existing_user = await users_collection.find_one({"email": data.email})
-            if existing_user:
-                raise HTTPException(
-                    status_code=400,
-                    detail="Email already registered. Please login instead."
-                )
+        existing_user = await users_collection.find_one({"email": data.email})
+        if existing_user:
+            raise HTTPException(
+                status_code=400,
+                detail="Email already registered. Please login instead."
+            )
+        
+        # Sinh token xác thực email
+        email_verification_token = str(uuid.uuid4())
+        # Tạo user mới
+        session_id = str(uuid.uuid4())
+        kicker_skill = await get_random_skill(skills_collection, "kicker")
+        goalkeeper_skill = await get_random_skill(skills_collection, "goalkeeper")
+        # Hash password trước khi lưu
+        hashed_password = get_password_hash(data.password)
+        now = get_vietnam_time().isoformat()
+        avatar_seed = str(uuid.uuid4())
+        avatar_url = f"https://api.dicebear.com/7.x/adventurer/svg?seed={avatar_seed}"
+        new_user = UserCreate(
+            user_type="user",
+            session_id=session_id,
+            avatar=avatar_url,
+            email=data.email,
+            password=hashed_password,
+            auth_provider="email",
+            name=data.name or "Player",
+            kicker_skills=[kicker_skill],
+            goalkeeper_skills=[goalkeeper_skill],
+            created_at=now,
+            updated_at=now,
+            last_login=now,
+            is_verified=False,
+            email_verification_token=email_verification_token
+        ).dict(by_alias=True)
+        try:
+            result = await users_collection.insert_one(new_user)
+            if not result.inserted_id:
+                raise Exception("Failed to insert user into database")
+            # Gửi email xác thực
+            send_verification_email(data.email, email_verification_token)
+            return {"message": "Registration successful. Please check your email to verify your account."}
+        except Exception as db_error:
+            api_logger.error(f"Database error during registration: {str(db_error)}")
+            raise HTTPException(
+                status_code=500,
+                detail=f"Database error: {str(db_error)}"
+            )
+    except HTTPException as he:
+        raise he
+    except Exception as e:
+        api_logger.error(f"Error in registration: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Registration failed: {str(e)}"
+        )
+
+@router.post("/auth/google/register")
+async def register_with_google(data: GoogleAuthRequest):
+    """Đăng ký tài khoản mới với Google"""
+    try:
+        users_collection = await get_users_collection()
+        skills_collection = await get_skills_collection()
+        
+        # Kiểm tra email đã tồn tại chưa
+        existing_user = await users_collection.find_one({"email": data.email})
+        if existing_user:
+            raise HTTPException(
+                status_code=400,
+                detail="Email already registered. Please login instead."
+            )
         
         # Tạo user mới
         session_id = str(uuid.uuid4())
@@ -274,9 +399,9 @@ async def register_with_privy(data: PrivyAuthRequest):
             user_type="user",
             session_id=session_id,
             email=data.email,
-            wallet=data.wallet,
-            name=data.name or "Player",
-            avatar=data.avatar,
+            name=data.name,
+            avatar=data.picture,
+            auth_provider="google",
             kicker_skills=[kicker_skill],
             goalkeeper_skills=[goalkeeper_skill],
             created_at=get_vietnam_time().isoformat(),
@@ -295,28 +420,67 @@ async def register_with_privy(data: PrivyAuthRequest):
         )
         
     except Exception as e:
-        api_logger.error(f"Error in Privy registration: {str(e)}")
+        api_logger.error(f"Error in Google registration: {str(e)}")
         raise HTTPException(
             status_code=500,
             detail=f"Registration failed: {str(e)}"
         )
 
-@router.post("/auth/privy/login")
-async def login_with_privy(data: PrivyAuthRequest):
-    """Đăng nhập với Privy (chỉ kiểm tra email hoặc wallet)"""
+@router.post("/auth/login")
+async def login_user(data: RegularAuthRequest):
+    """Đăng nhập với email và mật khẩu"""
     try:
         users_collection = await get_users_collection()
         
-        # Tìm user theo email hoặc wallet
-        query = {"$or": []}
-        if data.email:
-            query["$or"].append({"email": data.email})
-        if data.wallet:
-            query["$or"].append({"wallet": data.wallet})
-        if not query["$or"]:
-            raise HTTPException(status_code=400, detail="Email hoặc wallet là bắt buộc để đăng nhập.")
+        # Tìm user theo email
+        existing_user = await users_collection.find_one({"email": data.email})
         
-        existing_user = await users_collection.find_one(query)
+        if not existing_user:
+            raise HTTPException(
+                status_code=404,
+                detail="User not found. Please register first."
+            )
+            
+        # Kiểm tra mật khẩu
+        if not verify_password(data.password, existing_user.get("password", "")):
+            raise HTTPException(
+                status_code=401,
+                detail="Invalid password"
+            )
+        
+        # Cập nhật thông tin đăng nhập
+        update_data = {
+            "last_login": get_vietnam_time().isoformat(),
+            "updated_at": get_vietnam_time().isoformat(),
+        }
+        
+        await users_collection.update_one(
+            {"_id": existing_user["_id"]},
+            {"$set": update_data}
+        )
+        
+        # Tạo access token
+        access_token = create_access_token({"_id": str(existing_user["_id"])})
+        
+        return TokenResponse(
+            access_token=access_token
+        )
+        
+    except Exception as e:
+        api_logger.error(f"Error in login: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Login failed: {str(e)}"
+        )
+
+@router.post("/auth/google/login")
+async def login_with_google(data: GoogleAuthRequest):
+    """Đăng nhập với Google"""
+    try:
+        users_collection = await get_users_collection()
+        
+        # Tìm user theo email
+        existing_user = await users_collection.find_one({"email": data.email})
         
         if not existing_user:
             raise HTTPException(
@@ -328,30 +492,24 @@ async def login_with_privy(data: PrivyAuthRequest):
         update_data = {
             "last_login": get_vietnam_time().isoformat(),
             "updated_at": get_vietnam_time().isoformat(),
+            "name": data.name,
+            "avatar": data.picture
         }
-        
-        # Cập nhật email nếu có
-        if data.email and data.email == existing_user.get("email"):
-            update_data["email"] = data.email
-        # Cập nhật wallet nếu có
-        if data.wallet:
-            update_data["wallet"] = data.wallet
         
         await users_collection.update_one(
             {"_id": existing_user["_id"]},
             {"$set": update_data}
         )
-        updated_user = await users_collection.find_one({"_id": existing_user["_id"]})
         
         # Tạo access token
-        access_token = create_access_token({"_id": str(updated_user["_id"])})
+        access_token = create_access_token({"_id": str(existing_user["_id"])})
         
         return TokenResponse(
             access_token=access_token
         )
         
     except Exception as e:
-        api_logger.error(f"Error in Privy login: {str(e)}")
+        api_logger.error(f"Error in Google login: {str(e)}")
         raise HTTPException(
             status_code=500,
             detail=f"Login failed: {str(e)}"
@@ -497,5 +655,17 @@ async def level_up(request: Request):
         "vip_level": vip_level,
         "total_point_for_level": total_point_for_level
     }
+
+@router.get("/auth/verify-email")
+async def verify_email(token: str):
+    users_collection = await get_users_collection()
+    user = await users_collection.find_one({"email_verification_token": token})
+    if not user:
+        raise HTTPException(status_code=400, detail="Invalid or expired token")
+    await users_collection.update_one(
+        {"_id": user["_id"]},
+        {"$set": {"is_verified": True}, "$unset": {"email_verification_token": ""}}
+    )
+    return {"message": "Email verified successfully"}
 
 

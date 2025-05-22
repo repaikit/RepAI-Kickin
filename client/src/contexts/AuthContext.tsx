@@ -1,15 +1,15 @@
 import { createContext, useContext, useEffect, useState } from 'react';
-import { useRouter } from 'next/router';
 import { API_ENDPOINTS, defaultFetchOptions } from '@/config/api';
-import { usePrivy } from '@privy-io/react-auth';
+import { useRouter } from 'next/router';
 
 interface User {
-  _id: string;
+    _id: string;
   user_type: string;
   email?: string;
   wallet: string;
   name: string;
   avatar?: string;
+  auth_provider: 'email' | 'google' | 'guest';
   session_id?: string;
   kicker_skills?: string[];
   goalkeeper_skills?: string[];
@@ -36,36 +36,56 @@ interface User {
   is_active?: boolean;
   is_verified?: boolean;
   trend?: string;
+  last_box_open?: string;
+  mystery_box_history?: string[];
+  last_claim_matches?: string;
+  daily_tasks?: string[];
+  vip_amount?: number;
+  vip_year?: number;
+  vip_payment_method?: string;
+  isAuthenticated?: boolean;
+  
 }
 
 interface AuthContextType {
   user: User | null;
-  isLoading: boolean;
+  loading: boolean;
   isAuthenticated: boolean;
+  isLoading: boolean;
   checkAuth: () => Promise<void>;
-  logout: () => Promise<void>;
+  logout: () => void;
 }
 
-const AuthContext = createContext<AuthContextType | undefined>(undefined);
+const AuthContext = createContext<AuthContextType>({
+  user: null,
+  loading: true,
+  isAuthenticated: false,
+  isLoading: true,
+  checkAuth: async () => {},
+  logout: () => {},
+});
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const [loading, setLoading] = useState(true);
   const router = useRouter();
-  const { logout: privyLogout } = usePrivy();
+  const publicRoutes = ['/login', '/register', '/verify-email'];
+  const isAuthenticated = !!user;
+  const isLoading = loading;
 
   const checkAuth = async () => {
     try {
-      setIsLoading(true);
       const token = localStorage.getItem('access_token');
       if (!token) {
         setUser(null);
-        setIsLoading(false);
-        router.push('/login');
+        setLoading(false);
+        if (!publicRoutes.includes(router.pathname)) {
+          router.push('/login');
+        }
         return;
       }
 
-      const response = await fetch(API_ENDPOINTS.users.getCurrentUser, {
+      const response = await fetch(API_ENDPOINTS.users.me, {
         method: 'GET',
         headers: {
           ...defaultFetchOptions.headers,
@@ -74,42 +94,30 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
       });
 
-      if (response.ok) {
-        const userData = await response.json();
-        setUser(userData);
-      } else {
-        setUser(null);
-        localStorage.removeItem('access_token');
-        router.push('/login');
+      if (!response.ok) {
+        if (response.status === 401) {
+          localStorage.removeItem('access_token');
+          setUser(null);
+          if (!router.pathname.startsWith('/login')) {
+            router.push('/login');
+          }
+        }
+        throw new Error('Failed to fetch user data');
       }
+
+      const userData = await response.json();
+      setUser(userData);
     } catch (error) {
       console.error('Auth check error:', error);
-      setUser(null);
-      localStorage.removeItem('access_token');
-      router.push('/login');
     } finally {
-      setIsLoading(false);
+      setLoading(false);
     }
   };
 
-  const logout = async () => {
-    try {
-      setIsLoading(true);
-      // Gọi Privy logout trước
-        await privyLogout();
-      // Sau đó xóa token và state local
-      localStorage.removeItem('access_token');
-      setUser(null);
-      router.push('/login');
-    } catch (error) {
-      console.error('Logout error:', error);
-      // Trong trường hợp có lỗi, vẫn xóa token và state local
-      localStorage.removeItem('access_token');
-      setUser(null);
-      router.push('/login');
-    } finally {
-      setIsLoading(false);
-    }
+  const logout = () => {
+    localStorage.removeItem('access_token');
+    setUser(null);
+    router.push('/login');
   };
 
   useEffect(() => {
@@ -117,24 +125,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   return (
-    <AuthContext.Provider
-      value={{
-        user,
-        isLoading,
-        isAuthenticated: !!user,
-        checkAuth,
-        logout
-      }}
-    >
+    <AuthContext.Provider value={{ user, loading, isAuthenticated, isLoading, checkAuth, logout }}>
       {children}
     </AuthContext.Provider>
   );
 }
 
-export function useAuth() {
-  const context = useContext(AuthContext);
-  if (context === undefined) {
-    throw new Error('useAuth must be used within an AuthProvider');
-  }
-  return context;
-} 
+export const useAuth = () => useContext(AuthContext); 

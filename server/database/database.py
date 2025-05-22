@@ -33,10 +33,14 @@ class Database:
                         MONGODB_URL,
                         maxPoolSize=50,
                         minPoolSize=10,
-                        maxIdleTimeMS=30000,
-                        waitQueueTimeoutMS=2500,
+                        maxIdleTimeMS=60000,
+                        waitQueueTimeoutMS=10000,
                         retryWrites=True,
-                        serverSelectionTimeoutMS=5000
+                        retryReads=True,
+                        serverSelectionTimeoutMS=30000,
+                        connectTimeoutMS=20000,
+                        socketTimeoutMS=20000,
+                        heartbeatFrequencyMS=10000
                     )
                     self._db = self._client[DATABASE_NAME]
         return self._db

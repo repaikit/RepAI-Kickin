@@ -12,20 +12,23 @@ class JWTAuthMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         # Bỏ qua xác thực cho request OPTIONS (preflight CORS) và các route public
         if request.method == "OPTIONS" or request.url.path in [
-            "/login", 
-            "/api/auth/privy/login", 
-            "/api/auth/privy/register",
+            "/api/auth/register",
+            "/api/auth/login",
+            "/api/auth/google",
+            "/api/auth/google/callback",
+            "/api/auth/google/register",
+            "/api/auth/google/login",
             "/api/guest", 
             "/health", 
             "/metrics", 
             "/api/leaderboard",
-            "/api/skills/",  # Add skills routes
+            "/api/skills/",
             "/api/skills/type/kicker",
             "/api/skills/type/goalkeeper",
-            "/api/leaderboard",
             "/api/users/{user_id}",
             "/api/leaderboard/weekly",
             "/api/leaderboard/monthly",
+            "/api/auth/verify-email",
         ]:
             return await call_next(request)
 
