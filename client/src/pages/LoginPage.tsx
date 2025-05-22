@@ -28,7 +28,22 @@ export default function WelcomeDirectionPage({ onDone }: LoginPageProps) {
   };
 
   const handleAuthSuccess = (data: any) => {
-    onDone?.();
+    if (data.requireVerification) {
+      // Hiển thị thông báo yêu cầu xác thực email
+      setError(null);
+      setAuthMode('login');
+      // Hiển thị thông báo thành công
+      const successMessage = data.message || "Registration successful. Please check your email to verify your account.";
+      setError(successMessage);
+      // Đổi màu thông báo thành xanh
+      const errorElement = document.querySelector('.bg-red-500\\/20');
+      if (errorElement) {
+        errorElement.classList.remove('bg-red-500/20', 'border-red-500/30');
+        errorElement.classList.add('bg-green-500/20', 'border-green-500/30');
+      }
+    } else {
+      onDone?.();
+    }
   };
 
   const handleAuthError = (error: string) => {
@@ -66,7 +81,7 @@ export default function WelcomeDirectionPage({ onDone }: LoginPageProps) {
               </h1>
               
               <p className="text-xl text-white/80 font-light leading-relaxed">
-                The ultimate gaming platform where champions are made
+                Tiny L1', Huge Kicks — Only at Kickin’.
               </p>
             </div>
 

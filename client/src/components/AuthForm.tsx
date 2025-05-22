@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { API_ENDPOINTS } from '@/config/api';
 import { Mail, Lock, Eye, EyeOff } from 'lucide-react';
+import { useAuth } from '@/contexts/AuthContext';
 
 interface AuthFormProps {
   mode: 'login' | 'register';
@@ -9,6 +10,7 @@ interface AuthFormProps {
 }
 
 export default function AuthForm({ mode, onSuccess, onError }: AuthFormProps) {
+  const { checkAuth } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
@@ -57,11 +59,19 @@ export default function AuthForm({ mode, onSuccess, onError }: AuthFormProps) {
         throw new Error(data.detail || 'Authentication failed');
       }
 
-      if (data.access_token) {
-        localStorage.setItem('access_token', data.access_token);
+      if (mode === 'register') {
+        onSuccess({
+          ...data,
+          requireVerification: true,
+          message: "Registration successful. Please check your email to verify your account."
+        });
+      } else {
+        if (data.access_token) {
+          localStorage.setItem('access_token', data.access_token);
+          await checkAuth();
+        }
+        onSuccess(data);
       }
-
-      onSuccess(data);
     } catch (error) {
       onError(error instanceof Error ? error.message : 'Authentication failed');
     } finally {
