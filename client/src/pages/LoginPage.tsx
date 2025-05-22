@@ -81,7 +81,7 @@ export default function WelcomeDirectionPage({ onDone }: LoginPageProps) {
               </h1>
               
               <p className="text-xl text-white/80 font-light leading-relaxed">
-                The ultimate gaming platform where champions are made
+                Tiny L1', Huge Kicks — Only at Kickin’.
               </p>
             </div>
 
