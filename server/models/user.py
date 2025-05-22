@@ -1,5 +1,5 @@
 from typing import Optional, List, Any, Dict, Annotated
-from pydantic import BaseModel, Field, BeforeValidator
+from pydantic import BaseModel, Field, BeforeValidator, EmailStr
 from datetime import datetime
 from bson import ObjectId
 from pydantic.json_schema import JsonSchemaValue
@@ -16,14 +16,17 @@ class UserBase(BaseModel):
     user_type: str = "guest"  # guest, user, admin
     session_id: Optional[str] = None
     remaining_matches: int = 5
-    last_reset: Optional[datetime] = None
-    email: Optional[str] = None  # Simple string, no validation
+    last_reset: Optional[str] = None
+    email: Optional[EmailStr] = None
+    password: Optional[str] = None  # Hashed password
+    auth_provider: Optional[str] = None  # google, email, guest
     wallet: Optional[str] = None
     twitter_id: Optional[str] = None
     position: str = "both"
     role: str = "user"
     is_active: bool = True
     is_verified: bool = False
+    email_verification_token: Optional[str] = None
     trend: str = "neutral"
     name: str = "Guest Player"
     avatar: Optional[str] = None
@@ -32,10 +35,10 @@ class UserBase(BaseModel):
     total_point: int = 0
     bonus_point: float = 0.0
     match_history: List[Any] = []
-    created_at: datetime = Field(default_factory=lambda: get_vietnam_time().astimezone(VIETNAM_TZ).isoformat())
-    updated_at: datetime = Field(default_factory=lambda: get_vietnam_time().astimezone(VIETNAM_TZ).isoformat())
-    last_activity: datetime = Field(default_factory=lambda: get_vietnam_time().astimezone(VIETNAM_TZ).isoformat())
-    last_login: Optional[datetime] = None
+    created_at: str = Field(default_factory=lambda: get_vietnam_time().isoformat())
+    updated_at: str = Field(default_factory=lambda: get_vietnam_time().isoformat())
+    last_activity: str = Field(default_factory=lambda: get_vietnam_time().isoformat())
+    last_login: Optional[str] = None
     # Leaderboard fields
     total_kicked: int = 0
     kicked_win: int = 0
@@ -53,9 +56,9 @@ class UserBase(BaseModel):
     week_point: int = 0  # Điểm tuần hiện tại (dùng cho mọi loại user)
     week_history: List[dict] = []  # Lịch sử điểm tuần, mỗi entry: {"week": ..., "point": ..., "total_point": ..., "reset_at": ...}
     # --- Thêm các trường mới ---
-    last_box_open: Optional[datetime] = None
+    last_box_open: Optional[str] = None
     mystery_box_history: List[dict] = []
-    last_claim_matches: Optional[datetime] = None
+    last_claim_matches: Optional[str] = None
     # --- Thêm trường daily_tasks ---
     daily_tasks: Dict[str, Dict[str, bool]] = Field(default_factory=dict)  # {"task_id": {"completed": bool, "claimed": bool}}
 
@@ -72,7 +75,9 @@ class UserUpdate(BaseModel):
     user_type: Optional[str] = None
     session_id: Optional[str] = None
     remaining_matches: Optional[int] = None
-    email: Optional[str] = None
+    email: Optional[EmailStr] = None
+    password: Optional[str] = None
+    auth_provider: Optional[str] = None
     wallet: Optional[str] = None
     twitter_id: Optional[str] = None
     position: Optional[str] = None
@@ -87,8 +92,8 @@ class UserUpdate(BaseModel):
     total_point: Optional[int] = None
     bonus_point: Optional[float] = None
     match_history: Optional[List[Any]] = None
-    updated_at: datetime = Field(default_factory=lambda: get_vietnam_time().astimezone(VIETNAM_TZ).isoformat())
-    last_login: Optional[datetime] = None
+    updated_at: str = Field(default_factory=lambda: get_vietnam_time().isoformat())
+    last_login: Optional[str] = None
     # Leaderboard fields
     total_kicked: Optional[int] = None
     kicked_win: Optional[int] = None
@@ -97,9 +102,9 @@ class UserUpdate(BaseModel):
     is_pro: Optional[bool] = None
     extra_point: Optional[int] = None
     level: Optional[int] = None
-    last_box_open: Optional[datetime] = None
+    last_box_open: Optional[str] = None
     mystery_box_history: Optional[List[dict]] = None
-    last_claim_matches: Optional[datetime] = None
+    last_claim_matches: Optional[str] = None
 
 class UserInDB(UserBase):
     id: PyObjectId = Field(default_factory=PyObjectId, alias="_id")
@@ -112,4 +117,13 @@ class UserInDB(UserBase):
         arbitrary_types_allowed = True
 
 class User(UserInDB):
-    pass 
+    pass
+
+class TokenResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+
+class GoogleAuthRequest(BaseModel):
+    email: EmailStr
+    name: str
+    picture: Optional[str] = None 

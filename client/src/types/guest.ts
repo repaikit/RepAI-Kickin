@@ -8,7 +8,6 @@ export interface GuestUser {
   user_type: 'guest' | 'user';
   session_id: string;
   remaining_matches: number;
-  privy_id?: string | null;
   email?: string | null;
   wallet?: string | null;
   name: string;

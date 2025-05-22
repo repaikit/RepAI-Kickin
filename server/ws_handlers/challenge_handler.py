@@ -128,6 +128,13 @@ class ChallengeManager:
             })
             return
 
+        # Check for mutual challenge
+        reverse_challenge_id = f"{to_id}_{from_id}"
+        if reverse_challenge_id in self.pending_challenges:
+            # If there's a mutual challenge, automatically accept it
+            await self.handle_challenge_response(websocket, from_id, to_id, True, active_connections)
+            return
+
         # Store the challenge request with Vietnam timezone
         challenge_id = f"{from_id}_{to_id}"
         vietnam_time = get_vietnam_time().astimezone(VIETNAM_TZ)
@@ -334,9 +341,7 @@ class ChallengeManager:
 
             # Wait a bit longer to ensure database updates are complete
             import time as _time
-            print("[Challenge] Sleeping before broadcasting leaderboard...")
             await asyncio.sleep(0.5)
-            print("[Challenge] Done sleeping, fetching fresh leaderboard data after match")
 
             # Now fetch fresh data for leaderboard
             from ws_handlers.waiting_room import manager
@@ -360,13 +365,11 @@ class ChallengeManager:
                 }
                 for u in leaderboard_users
             ]
-            print("[Challenge] Leaderboard data right before broadcast:", leaderboard_data)
             await manager.broadcast({
                 "type": "leaderboard_update",
                 "leaderboard": leaderboard_data
             })
 
-            # Broadcast updated user list for realtime update in waiting room
             await manager.broadcast_user_list()
 
         else:

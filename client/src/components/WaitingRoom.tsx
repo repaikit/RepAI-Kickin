@@ -232,6 +232,12 @@ export default function WaitingRoom() {
   };
 
   const handleChallenge = (userId: string) => {
+    // Clear any existing timeout
+    if (challengeTimeoutRef.current) {
+      clearTimeout(challengeTimeoutRef.current);
+      challengeTimeoutRef.current = null;
+    }
+
     setPendingChallengeUserId(userId);
     sendChallengeRequest(userId);
     const challengedUser = onlineUsers.find(u => u.id === userId);
@@ -244,8 +250,8 @@ export default function WaitingRoom() {
       </span>,
       { icon: '⚡' }
     );
+
     // Set timeout
-    if (challengeTimeoutRef.current) clearTimeout(challengeTimeoutRef.current);
     challengeTimeoutRef.current = setTimeout(() => {
       setPendingChallengeUserId(null);
       setChallengeStatus('No response. Challenge timed out.');
@@ -282,7 +288,7 @@ export default function WaitingRoom() {
       try {
         const token = localStorage.getItem('access_token');
         if (!token) {
-          alert('Access token not found!');
+          // alert('Access token not found!');
           return;
         }
         const response = await fetch(API_ENDPOINTS.bot.getSkills, {

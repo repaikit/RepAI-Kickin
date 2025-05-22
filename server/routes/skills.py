@@ -164,7 +164,7 @@ async def buy_skill(
         required_points = 10
     elif skill_type == "goalkeeper":
         current_skills = user.get("goalkeeper_skills", [])
-        required_points = 5
+        required_points = 10
     else:
         raise HTTPException(status_code=400, detail="Invalid skill_type (must be 'kicker' or 'goalkeeper')")
 

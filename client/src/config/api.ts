@@ -5,6 +5,7 @@ const isDevelopment = process.env.NODE_ENV === 'development';
 export const API_BASE_URL = isDevelopment 
   ? 'http://localhost:5000'
   : process.env.NEXT_PUBLIC_API_URL || '';
+
 console.log("bạn đang kết nối tới" + API_BASE_URL);
 // WebSocket URL
 export const WS_BASE_URL = isDevelopment
@@ -35,14 +36,18 @@ export const API_ENDPOINTS = {
   },
   // User APIs
   users: {
-    // Guest User
+    me: `${API_BASE_URL}/api/me`,
+    googleAuth: `${API_BASE_URL}/api/auth/google`,
+    googleCallback: `${API_BASE_URL}/api/auth/google/callback`,
     createGuest: `${API_BASE_URL}/api/guest`,
     getGuest: (sessionId: string) => `${API_BASE_URL}/api/guest/${sessionId}`,
-    getCurrentUser: `${API_BASE_URL}/api/me`,
 
-    // Auth
-    authWithPrivyLogin: `${API_BASE_URL}/api/auth/privy/login`,
-    authWithPrivyRegister: `${API_BASE_URL}/api/auth/privy/register`,
+    verifyEmail: `${API_BASE_URL}/api/auth/verify-email`,
+
+    login: `${API_BASE_URL}/api/auth/login`,
+    register: `${API_BASE_URL}/api/auth/register`,
+    GoogleLogin: `${API_BASE_URL}/api/auth/google`,
+    GoogleRegister: `${API_BASE_URL}/api/auth/google/register`,
 
     refreshToken: `${API_BASE_URL}/api/auth/refresh`,
     // Upgrade Guest

@@ -1,10 +1,10 @@
-fastapi==0.104.1
-uvicorn==0.24.0
+fastapi>=0.68.0
+uvicorn>=0.15.0
 
 # Data validation và settings
 pydantic>=2.3.0
 pydantic-settings>=2.1.0
-python-dotenv>=0.21.0
+python-dotenv>=0.19.0
 email-validator>=2.0.0
 
 # Database
@@ -13,13 +13,13 @@ pymongo==4.3.3
 nest-asyncio==1.5.8
 
 # Authentication
-python-jose[cryptography]>=3.3.0,<3.4.0
-python-multipart>=0.0.5,<0.1.0
+python-jose[cryptography]>=3.3.0
+python-multipart>=0.0.5
 passlib[bcrypt]>=1.7.4,<1.8.0
 bcrypt==4.0.1
 
 # HTTP và Networking
-httpx>=0.24.0,<0.25.0
+httpx>=0.23.0
 
 # Testing
 pytest==7.3.1
@@ -50,3 +50,8 @@ APScheduler==3.10.4
 
 # Timezone handling
 pytz==2024.1
+
+fastapi
+uvicorn
+python-dotenv
+httpx

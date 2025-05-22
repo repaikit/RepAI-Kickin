@@ -34,6 +34,8 @@ class WaitingRoomManager:
         self._ping_task = None
         self._cleanup_interval = 60
         self._cleanup_task = None
+        self._leaderboard_interval = 300  # 5 minutes in seconds
+        self._leaderboard_task = None
         self._broadcast_lock = asyncio.Lock()
         self._user_list_lock = asyncio.Lock()
 
@@ -81,6 +83,11 @@ class WaitingRoomManager:
                 self._cleanup_task = asyncio.create_task(self._cleanup_loop())
                 print("[WaitingRoom] Cleanup task started")
 
+            # Start leaderboard update task if not running
+            if not self._leaderboard_task:
+                self._leaderboard_task = asyncio.create_task(self._leaderboard_update_loop())
+                print("[WaitingRoom] Leaderboard update task started")
+
             # Send immediate user list to the new connection
             users = self.get_online_users()
             print(f"[WaitingRoom] Sending initial user list to {user_id}, count: {len(users)}")
@@ -90,35 +97,7 @@ class WaitingRoomManager:
             })
 
             # Send initial leaderboard data
-            db = await get_database()
-            leaderboard_users = await db.users.find().sort("total_point", -1).limit(50).to_list(length=50)
-            leaderboard_data = [
-                {
-                    "id": str(u["_id"]),
-                    "name": u.get("name", "Anonymous"),
-                    "avatar": u.get("avatar", ""),
-                    "level": u.get("level", 1),
-                    "total_kicked": u.get("total_kicked", 0),
-                    "kicked_win": u.get("kicked_win", 0),
-                    "total_keep": u.get("total_keep", 0),
-                    "keep_win": u.get("keep_win", 0),
-                    "total_point": u.get("total_point", 0),
-                    "bonus_point": u.get("bonus_point", 0.0),
-                    "is_pro": u.get("is_pro", False),
-                    "is_vip": u.get("is_vip", False),
-                    "extra_point": u.get("extra_point", 0),
-                }
-                for u in leaderboard_users if u.get("user_type") != "guest"
-            ][:10]
-            print(f"[WaitingRoom] Sending initial leaderboard data to {user_id}, count: {len(leaderboard_data)}")
-            await websocket.send_json({
-                "type": "leaderboard_update",
-                "leaderboard": leaderboard_data
-            })
-
-            # Broadcast updated user list to all clients
-            await self.broadcast_user_list()
-            print(f"[WaitingRoom] User list broadcasted after {user_id} joined")
+            await self._broadcast_leaderboard()
 
         except Exception as e:
             print(f"[WaitingRoom] Error in websocket connection for {user_id}: {str(e)}")
@@ -277,6 +256,49 @@ class WaitingRoomManager:
                 api_logger.error(f"Error in cleanup loop: {str(e)}")
                 await asyncio.sleep(5)
 
+    async def _leaderboard_update_loop(self):
+        """Periodic leaderboard update task"""
+        while True:
+            try:
+                await asyncio.sleep(self._leaderboard_interval)
+                await self._broadcast_leaderboard()
+            except Exception as e:
+                api_logger.error(f"Error in leaderboard update loop: {str(e)}")
+                await asyncio.sleep(5)  # Wait before retrying
+
+    async def _broadcast_leaderboard(self):
+        """Fetch and broadcast leaderboard data"""
+        try:
+            db = await get_database()
+            leaderboard_users = await db.users.find(
+                {"user_type": "user"}
+            ).sort("total_point", -1).limit(10).to_list(length=10)
+            leaderboard_data = [
+                {
+                    "id": str(u["_id"]),
+                    "name": u.get("name", "Anonymous"),
+                    "avatar": u.get("avatar", ""),
+                    "level": u.get("level", 1),
+                    "total_kicked": u.get("total_kicked", 0),
+                    "kicked_win": u.get("kicked_win", 0),
+                    "total_keep": u.get("total_keep", 0),
+                    "keep_win": u.get("keep_win", 0),
+                    "total_point": u.get("total_point", 0),
+                    "bonus_point": u.get("bonus_point", 0.0),
+                    "is_pro": u.get("is_pro", False),
+                    "is_vip": u.get("is_vip", False),
+                    "extra_point": u.get("extra_point", 0),
+                }
+                for u in leaderboard_users
+            ]
+
+            await self.broadcast({
+                "type": "leaderboard_update",
+                "leaderboard": leaderboard_data
+            })
+        except Exception as e:
+            api_logger.error(f"Error broadcasting leaderboard: {str(e)}")
+
     async def cleanup(self):
         """Cleanup all resources"""
         if self._ping_task:
@@ -290,6 +312,13 @@ class WaitingRoomManager:
             self._cleanup_task.cancel()
             try:
                 await self._cleanup_task
+            except asyncio.CancelledError:
+                pass
+
+        if self._leaderboard_task:
+            self._leaderboard_task.cancel()
+            try:
+                await self._leaderboard_task
             except asyncio.CancelledError:
                 pass
         
