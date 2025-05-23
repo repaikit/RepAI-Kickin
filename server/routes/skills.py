@@ -146,7 +146,7 @@ async def buy_skill(
     skill_type: str = Body(..., embed=True)
 ):
     """
-    Mua skill mới cho user, dùng tổng skill_point (kicked_win + keep_win).
+    Mua skill mới cho user, dùng available_skill_points.
     - skill_type: 'kicker' hoặc 'goalkeeper'
     - Kicker skills cost 10 skill_point
     - Goalkeeper skills cost 5 skill_point
@@ -168,15 +168,13 @@ async def buy_skill(
     else:
         raise HTTPException(status_code=400, detail="Invalid skill_type (must be 'kicker' or 'goalkeeper')")
 
-    # Tổng skill_point
-    kicked_win = user.get("kicked_win", 0)
-    keep_win = user.get("keep_win", 0)
-    skill_point = kicked_win + keep_win
+    # Kiểm tra available_skill_points
+    available_skill_points = user.get("available_skill_points", 0)
 
-    if skill_point < required_points:
+    if available_skill_points < required_points:
         raise HTTPException(
             status_code=400,
-            detail=f"Not enough skill points to buy skill (need {required_points}, have {skill_point})"
+            detail=f"Not enough skill points to buy skill (need {required_points}, have {available_skill_points})"
         )
 
     all_skills = await skills_collection.find({"type": skill_type}).to_list(length=None)
@@ -188,16 +186,11 @@ async def buy_skill(
 
     new_skill = random.choice(available_skills)
 
-    # Trừ điểm: ưu tiên trừ kicked_win trước, nếu không đủ thì trừ tiếp keep_win
-    kicked_to_deduct = min(kicked_win, required_points)
-    keep_to_deduct = required_points - kicked_to_deduct
-
     update_result = await db.users.update_one(
         {"_id": ObjectId(user_id)},
         {
             "$inc": {
-                "kicked_win": -kicked_to_deduct,
-                "keep_win": -keep_to_deduct
+                "available_skill_points": -required_points
             },
             "$push": {
                 f"{skill_type}_skills": new_skill,
@@ -215,10 +208,10 @@ async def buy_skill(
         raise HTTPException(status_code=500, detail="Failed to update user with new skill.")
 
     updated_user = await db.users.find_one({"_id": ObjectId(user_id)})
-    # Tính lại skill_point còn lại
-    remaining_skill_point = updated_user.get("kicked_win", 0) + updated_user.get("keep_win", 0)
+    # Lấy số điểm skill còn lại
+    remaining_skill_points = updated_user.get("available_skill_points", 0)
     return {
         "message": "Skill bought successfully",
         "skill": new_skill,
-        "remaining_skill_point": remaining_skill_point
+        "remaining_skill_points": remaining_skill_points
     } 

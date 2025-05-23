@@ -239,9 +239,21 @@ class ChallengeManager:
                 "$push": {"match_history": match_history}
             }
             if winner_id == kicker_id:
-                update_fields["$inc"] = {"kicked_win": 1, "total_kicked": 1, "total_point": 1, "remaining_matches": -1}
+                update_fields["$inc"] = {
+                    "kicked_win": 1, 
+                    "total_kicked": 1, 
+                    "total_point": 1, 
+                    "remaining_matches": -1,
+                    "available_skill_points": 1  # Add 1 skill point for winning
+                }
             else:
-                update_fields["$inc"] = {"keep_win": 1, "total_keep": 1, "total_point": 1, "remaining_matches": -1}
+                update_fields["$inc"] = {
+                    "keep_win": 1, 
+                    "total_keep": 1, 
+                    "total_point": 1, 
+                    "remaining_matches": -1,
+                    "available_skill_points": 1  # Add 1 skill point for winning
+                }
             await db.users.update_one({"_id": ObjectId(winner_id)}, update_fields)
 
             # Update loser's stats
@@ -297,7 +309,8 @@ class ChallengeManager:
                         "level_up": level_up,
                         "new_skills": new_skills if level_up and not new_levels["is_pro"] else [],
                         "can_level_up": new_levels.get("can_level_up", False),
-                        "total_point_for_level": new_levels.get("total_point_for_level", 0)
+                        "total_point_for_level": new_levels.get("total_point_for_level", 0),
+                        "available_skill_points": updated_winner.get("available_skill_points", 0)  # Add available skill points
                     },
                     "loser": {
                         "id": str(updated_loser["_id"]),
@@ -307,7 +320,8 @@ class ChallengeManager:
                         "remaining_matches": updated_loser.get("remaining_matches", 0),
                         "is_pro": updated_loser.get("is_pro", False),
                         "legend_level": updated_loser.get("legend_level", 0),
-                        "level": updated_loser.get("level", 1)
+                        "level": updated_loser.get("level", 1),
+                        "available_skill_points": updated_loser.get("available_skill_points", 0)  # Add available skill points
                     }
                 }
             }
@@ -360,7 +374,6 @@ class ChallengeManager:
                     "bonus_point": u.get("bonus_point", 0.0),
                     "is_pro": u.get("is_pro", False),
                     "is_vip": u.get("is_vip", False),
-                    # Always include extra_point for frontend compatibility
                     "extra_point": u.get("extra_point", 0),
                 }
                 for u in leaderboard_users

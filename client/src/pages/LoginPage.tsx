@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
 import { Zap, Users, Trophy, Shield } from 'lucide-react';
 import AuthForm from '@/components/AuthForm';
+import { API_ENDPOINTS, defaultFetchOptions } from '@/config/api';
+import { useAuth } from '@/contexts/AuthContext';
 
 interface LoginPageProps {
   onDone?: () => void;
@@ -11,6 +13,7 @@ export default function WelcomeDirectionPage({ onDone }: LoginPageProps) {
   const [authMode, setAuthMode] = useState('login');
   const [error, setError] = useState<string | null>(null);
   const [isVisible, setIsVisible] = useState(false);
+  const { checkAuth } = useAuth();
 
   useEffect(() => {
     const timer = setTimeout(() => setIsVisible(true), 100);
@@ -20,11 +23,34 @@ export default function WelcomeDirectionPage({ onDone }: LoginPageProps) {
   const handleGuestLogin = async () => {
     setIsGuestLoading(true);
     setError(null);
-    // Simulate API call
-    setTimeout(() => {
+    try {
+      const response = await fetch(API_ENDPOINTS.users.createGuest, {
+        ...defaultFetchOptions,
+        method: 'POST',
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Failed to create guest account');
+      }
+
+      const data = await response.json();
+      console.log('Guest login successful', data);
+      
+      // Store token and user data in localStorage
+      localStorage.setItem('access_token', data.access_token);
+      localStorage.setItem('token_type', data.token_type);
+      localStorage.setItem('user', JSON.stringify(data.user));
+      
+      // Update AuthContext immediately
+      await checkAuth();
+      
+      onDone?.();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to create guest account');
+    } finally {
       setIsGuestLoading(false);
-      console.log('Guest login successful');
-    }, 2000);
+    }
   };
 
   const handleAuthSuccess = (data: any) => {
@@ -81,7 +107,7 @@ export default function WelcomeDirectionPage({ onDone }: LoginPageProps) {
               </h1>
               
               <p className="text-xl text-white/80 font-light leading-relaxed">
-                Tiny L1', Huge Kicks — Only at Kickin’.
+                Tiny L1', Huge Kicks — Only at Kickin'.
               </p>
             </div>
 
