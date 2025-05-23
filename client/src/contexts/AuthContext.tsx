@@ -45,6 +45,9 @@ interface User {
   vip_payment_method?: string;
   isAuthenticated?: boolean;
   available_skill_points?: number;
+  evm_address?: string;
+  sol_address?: string;
+  sui_address?: string;
 }
 
 interface AuthContextType {

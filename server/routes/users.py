@@ -15,6 +15,7 @@ from utils.time_utils import get_vietnam_time, to_vietnam_time
 from utils.level_utils import get_total_point_for_level, get_basic_level, get_legend_level, get_vip_level, update_user_levels
 from utils.email import send_verification_email
 import traceback
+from utils.crypto_utils import encrypt_str
 
 router = APIRouter()
 
@@ -72,17 +73,14 @@ async def upgrade_guest_to_user(
     user = getattr(request.state, "user", None)
     if not user or user.get("user_type") != "guest":
         raise HTTPException(status_code=401, detail="Not authenticated as guest")
-
     users_collection = await get_users_collection()
     user_id = user.get("_id")
     if not user_id:
         raise HTTPException(status_code=401, detail="Invalid user data")
-
     # Check trùng email
     existing_email = await users_collection.find_one({"email": data.email, "_id": {"$ne": ObjectId(user_id)}})
     if existing_email:
         raise HTTPException(status_code=400, detail="Email đã được sử dụng bởi tài khoản khác.")
-
     hashed_password = get_password_hash(data.password)
     email_verification_token = str(uuid.uuid4())
     update_data = {
@@ -95,18 +93,33 @@ async def upgrade_guest_to_user(
         "is_verified": False,
         "email_verification_token": email_verification_token
     }
-
+    # Nếu guest chưa có ví thì tạo ví mới
+    guest_user = await users_collection.find_one({"_id": ObjectId(user_id)})
+    if not guest_user.get("evm_address") or not guest_user.get("sol_address") or not guest_user.get("sui_address"):
+        wallets = generate_wallets()
+        update_data.update({
+            "evm_mnemonic": wallets["mnemonic"],
+            "evm_private_key": wallets["evm_private_key"],
+            "evm_address": wallets["evm_address"],
+            "sol_mnemonic": wallets["mnemonic"],
+            "sol_private_key": wallets["sol_private_key"],
+            "sol_address": wallets["sol_address"],
+            "sui_mnemonic": wallets["mnemonic"],
+            "sui_private_key": wallets["sui_private_key"],
+            "sui_address": wallets["sui_address"]
+        })
     await users_collection.update_one(
         {"_id": ObjectId(user_id)}, 
         {"$set": update_data}
     )
-    # Gửi email xác thực
     send_verification_email(data.email, email_verification_token)
     updated_user = await users_collection.find_one({"_id": ObjectId(user_id)})
-    
     return {
         "user": User(**updated_user),
-        "message": "Account upgraded successfully. Please check your email to verify your account."
+        "message": "Account upgraded successfully. Please check your email to verify your account.",
+        "evm_address": updated_user.get("evm_address"),
+        "sol_address": updated_user.get("sol_address"),
+        "sui_address": updated_user.get("sui_address")
     }
 
 @router.get("/me")
@@ -282,13 +295,61 @@ class GoogleAuthRequest(BaseModel):
     name: str
     picture: Optional[str] = None
 
+def generate_wallets(mnemonic_phrase=None):
+    from mnemonic import Mnemonic
+    from eth_account import Account
+    import secrets
+    try:
+        from bip_utils import Bip39SeedGenerator, Bip44, Bip44Coins
+    except ImportError:
+        Bip39SeedGenerator = None
+        Bip44 = None
+        Bip44Coins = None
+    # 1. Sinh mnemonic nếu chưa có
+    if not mnemonic_phrase:
+        mnemo = Mnemonic("english")
+        entropy = secrets.token_bytes(16)
+        mnemonic_phrase = mnemo.to_mnemonic(entropy)
+    # 2. EVM
+    Account.enable_unaudited_hdwallet_features()
+    evm_account = Account.from_mnemonic(mnemonic_phrase, account_path="m/44'/60'/0'/0/0")
+    evm_private_key = evm_account.key.hex()
+    if not evm_private_key.startswith('0x'):
+        evm_private_key = '0x' + evm_private_key
+    evm_address = evm_account.address
+    # 3. Solana
+    sol_private_key = None
+    sol_address = None
+    seed_bytes = None
+    if Bip39SeedGenerator and Bip44:
+        seed_bytes = Bip39SeedGenerator(mnemonic_phrase).Generate()
+        sol_bip44 = Bip44.FromSeed(seed_bytes, Bip44Coins.SOLANA)
+        sol_private_key = sol_bip44.PrivateKey().Raw().ToHex()
+        sol_address = sol_bip44.PublicKey().ToAddress()
+    # 4. SUI
+    sui_private_key = None
+    sui_address = None
+    if Bip39SeedGenerator and Bip44:
+        sui_bip44 = Bip44.FromSeed(seed_bytes, Bip44Coins.SUI)
+        sui_private_key = sui_bip44.PrivateKey().Raw().ToHex()
+        sui_address = sui_bip44.PublicKey().ToAddress()
+    # Mã hóa mnemonic và private key trước khi trả về
+    return {
+        "mnemonic": encrypt_str(mnemonic_phrase),
+        "evm_private_key": encrypt_str(evm_private_key),
+        "evm_address": evm_address,
+        "sol_private_key": encrypt_str(sol_private_key) if sol_private_key else None,
+        "sol_address": sol_address,
+        "sui_private_key": encrypt_str(sui_private_key) if sui_private_key else None,
+        "sui_address": sui_address
+    }
+
 @router.post("/auth/register")
 async def register_user(data: RegularAuthRequest):
     """Đăng ký tài khoản mới với email và mật khẩu"""
     try:
         users_collection = await get_users_collection()
         skills_collection = await get_skills_collection()
-        
         # Kiểm tra email đã tồn tại chưa
         existing_user = await users_collection.find_one({"email": data.email})
         if existing_user:
@@ -296,18 +357,18 @@ async def register_user(data: RegularAuthRequest):
                 status_code=400,
                 detail="Email already registered. Please login instead."
             )
-        
         # Sinh token xác thực email
         email_verification_token = str(uuid.uuid4())
-        # Tạo user mới
         session_id = str(uuid.uuid4())
         kicker_skill = await get_random_skill(skills_collection, "kicker")
         goalkeeper_skill = await get_random_skill(skills_collection, "goalkeeper")
-        # Hash password trước khi lưu
         hashed_password = get_password_hash(data.password)
         now = get_vietnam_time().isoformat()
         avatar_seed = str(uuid.uuid4())
         avatar_url = f"https://api.dicebear.com/7.x/adventurer/svg?seed={avatar_seed}"
+        # ===== GỌI HÀM TẠO VÍ =====
+        wallets = generate_wallets()
+        # ===== END TẠO VÍ =====
         new_user = UserCreate(
             user_type="user",
             session_id=session_id,
@@ -322,15 +383,30 @@ async def register_user(data: RegularAuthRequest):
             updated_at=now,
             last_login=now,
             is_verified=False,
-            email_verification_token=email_verification_token
+            email_verification_token=email_verification_token,
+            # Thông tin ví
+            evm_mnemonic=wallets["mnemonic"],
+            evm_private_key=wallets["evm_private_key"],
+            evm_address=wallets["evm_address"],
+            sol_mnemonic=wallets["mnemonic"],
+            sol_private_key=wallets["sol_private_key"],
+            sol_address=wallets["sol_address"],
+            sui_mnemonic=wallets["mnemonic"],
+            sui_private_key=wallets["sui_private_key"],
+            sui_address=wallets["sui_address"]
         ).dict(by_alias=True)
         try:
             result = await users_collection.insert_one(new_user)
             if not result.inserted_id:
                 raise Exception("Failed to insert user into database")
-            # Gửi email xác thực
             send_verification_email(data.email, email_verification_token)
-            return {"message": "Registration successful. Please check your email to verify your account."}
+            # Trả về cho FE chỉ địa chỉ ví
+            return {
+                "message": "Registration successful. Please check your email to verify your account.",
+                "evm_address": wallets["evm_address"],
+                "sol_address": wallets["sol_address"],
+                "sui_address": wallets["sui_address"]
+            }
         except Exception as db_error:
             api_logger.error(f"Database error during registration: {str(db_error)}")
             raise HTTPException(
@@ -380,6 +456,9 @@ async def google_register_logic(auth_data: GoogleAuthRequest):
     session_id = str(uuid.uuid4())
     kicker_skill = await get_random_skill(skills_collection, "kicker")
     goalkeeper_skill = await get_random_skill(skills_collection, "goalkeeper")
+    # ===== GỌI HÀM TẠO VÍ =====
+    wallets = generate_wallets()
+    # ===== END TẠO VÍ =====
     new_user = UserCreate(
         user_type="user",
         session_id=session_id,
@@ -391,12 +470,26 @@ async def google_register_logic(auth_data: GoogleAuthRequest):
         goalkeeper_skills=[goalkeeper_skill],
         created_at=get_vietnam_time().isoformat(),
         updated_at=get_vietnam_time().isoformat(),
-        last_login=get_vietnam_time().isoformat()
+        last_login=get_vietnam_time().isoformat(),
+        # Thông tin ví
+        evm_mnemonic=wallets["mnemonic"],
+        evm_private_key=wallets["evm_private_key"],
+        evm_address=wallets["evm_address"],
+        sol_mnemonic=wallets["mnemonic"],
+        sol_private_key=wallets["sol_private_key"],
+        sol_address=wallets["sol_address"],
+        sui_mnemonic=wallets["mnemonic"],
+        sui_private_key=wallets["sui_private_key"],
+        sui_address=wallets["sui_address"]
     ).dict(by_alias=True)
     result = await users_collection.insert_one(new_user)
     created_user = await users_collection.find_one({"_id": result.inserted_id})
     access_token = create_access_token({"_id": str(created_user["_id"])})
-    return {"access_token": access_token}
+    return {"access_token": access_token,
+            "evm_address": wallets["evm_address"],
+            "sol_address": wallets["sol_address"],
+            "sui_address": wallets["sui_address"]
+    }
 
 @router.post("/auth/google/register")
 async def register_with_google(data: GoogleAuthRequest):
