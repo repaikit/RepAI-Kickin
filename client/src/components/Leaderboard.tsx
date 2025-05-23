@@ -31,7 +31,8 @@ export default function Leaderboard({
   currentSeason
 }: LeaderboardProps) {
   const [activeTab, setActiveTab] = useState<PlayerType>('basic');
-  const { data: players, isLoading } = useLeaderboard();
+  const [currentPage, setCurrentPage] = useState(1);
+  const { data: players, isLoading } = useLeaderboard(currentPage, 5, activeTab);
   console.log('Leaderboard render version:', players);
   const { user } = useAuth();
 
@@ -45,30 +46,22 @@ export default function Leaderboard({
   const { data: weeklyHistory, isLoading: loadingWeeklyHistory } = useWeeklyLeaderboardHistory(selectedWeek, selectedBoard);
   const { data: monthlyHistory, isLoading: loadingMonthlyHistory } = useMonthlyLeaderboardHistory(selectedYear, selectedMonth, selectedBoard);
 
-  // Filter players based on active tab
-  const filteredPlayers = players?.filter(player => {
-    switch (activeTab) {
-      case 'basic':
-        return !player.is_pro && !player.is_vip;
-      case 'pro':
-        return player.is_pro;
-      case 'vip':
-        return player.is_vip;
-      default:
-        return true;
-    }
-  }) || [];
-
   // Handle tab change
   const handleTabChange = (value: string) => {
     if (user?.user_type === 'guest' && value !== 'basic') {
       return; // Prevent changing to pro/vip tabs for guests
     }
     setActiveTab(value as PlayerType);
+    setCurrentPage(1); // Reset page when tab changes
   };
 
   // Medal colors for top 3 positions
   const medalColors = ['text-yellow-400', 'text-gray-400', 'text-amber-600'];
+
+  // Add pagination controls
+  const handlePageChange = (newPage: number) => {
+    setCurrentPage(newPage);
+  };
 
   return (
     <section className="bg-gradient-to-br from-white to-slate-50 rounded-xl shadow-lg p-6 border border-slate-100">
@@ -346,7 +339,7 @@ export default function Leaderboard({
                     </TableRow>
                   ))
                 ) : (
-                  filteredPlayers.map((player, index) => (
+                  players.map((player, index) => (
                     <TableRow 
                       key={`${player.id}-${activeTab}-${index}`}
                       className="hover:bg-slate-50 transition-colors border-t border-slate-100"
@@ -358,7 +351,7 @@ export default function Leaderboard({
                           index === 2 ? "inline-flex items-center justify-center w-8 h-8 rounded-full text-sm font-bold bg-gradient-to-br from-amber-600 to-amber-700 text-white shadow" :
                           "inline-flex items-center justify-center w-8 h-8 rounded-full text-sm font-bold bg-slate-200 text-slate-700"
                         }>
-                          {index + 1}
+                          {(currentPage - 1) * 5 + index + 1}
                         </span>
                       </TableCell>
                       <TableCell className="w-[250px] min-w-[250px]">
@@ -384,6 +377,26 @@ export default function Leaderboard({
                 )}
               </TableBody>
             </Table>
+            {/* Add pagination controls */}
+            <div className="flex justify-center items-center gap-2 py-4 border-t border-slate-200">
+              <button
+                onClick={() => handlePageChange(currentPage - 1)}
+                disabled={currentPage === 1}
+                className="px-3 py-1 rounded-lg border border-slate-200 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-50"
+              >
+                Previous
+              </button>
+              <span className="px-3 py-1 bg-slate-100 rounded-lg">
+                Page {currentPage}
+              </span>
+              <button
+                onClick={() => handlePageChange(currentPage + 1)}
+                disabled={!players || players.length < 5}
+                className="px-3 py-1 rounded-lg border border-slate-200 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-50"
+              >
+                Next
+              </button>
+            </div>
           </div>
         </TabsContent>
 
@@ -423,7 +436,7 @@ export default function Leaderboard({
                     </TableRow>
                   ))
                 ) : (
-                  filteredPlayers.map((player, index) => (
+                  players.map((player, index) => (
                     <TableRow 
                       key={`${player.id}-${activeTab}-${index}`}
                       className="hover:bg-blue-50 transition-colors border-t border-blue-100"
@@ -435,7 +448,7 @@ export default function Leaderboard({
                           index === 2 ? "inline-flex items-center justify-center w-8 h-8 rounded-full text-sm font-bold bg-gradient-to-br from-amber-600 to-amber-700 text-white shadow" :
                           "inline-flex items-center justify-center w-8 h-8 rounded-full text-sm font-bold bg-blue-200 text-blue-700"
                         }>
-                          {index + 1}
+                          {(currentPage - 1) * 5 + index + 1}
                         </span>
                       </TableCell>
                       <TableCell className="w-[250px] min-w-[250px]">
@@ -461,6 +474,26 @@ export default function Leaderboard({
                 )}
               </TableBody>
             </Table>
+            {/* Add pagination controls */}
+            <div className="flex justify-center items-center gap-2 py-4 border-t border-blue-100">
+              <button
+                onClick={() => handlePageChange(currentPage - 1)}
+                disabled={currentPage === 1}
+                className="px-3 py-1 rounded-lg border border-blue-200 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-blue-50"
+              >
+                Previous
+              </button>
+              <span className="px-3 py-1 bg-blue-100 rounded-lg">
+                Page {currentPage}
+              </span>
+              <button
+                onClick={() => handlePageChange(currentPage + 1)}
+                disabled={!players || players.length < 5}
+                className="px-3 py-1 rounded-lg border border-blue-200 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-blue-50"
+              >
+                Next
+              </button>
+            </div>
           </div>
         </TabsContent>
 
@@ -502,7 +535,7 @@ export default function Leaderboard({
                     </TableRow>
                   ))
                 ) : (
-                  filteredPlayers.map((player, index) => (
+                  players.map((player, index) => (
                     <TableRow
                       key={`${player.id}-${activeTab}-${index}`}
                       className="hover:shadow-lg transition-all duration-200 border-t border-yellow-100"
@@ -521,7 +554,7 @@ export default function Leaderboard({
                             index === 2 ? "inline-flex items-center justify-center w-8 h-8 rounded-full text-sm font-bold bg-gradient-to-br from-amber-600 to-amber-700 text-white shadow-lg" :
                             "inline-flex items-center justify-center w-8 h-8 rounded-full text-sm font-bold bg-gradient-to-br from-yellow-200 to-yellow-300 text-yellow-800 shadow"
                           }>
-                            {index + 1}
+                            {(currentPage - 1) * 5 + index + 1}
                           </span>
                           {index < 3 && (
                             <FaCrown className={`absolute -top-2 -right-2 text-lg ${
@@ -563,6 +596,26 @@ export default function Leaderboard({
                 )}
               </TableBody>
             </Table>
+            {/* Add pagination controls */}
+            <div className="flex justify-center items-center gap-2 py-4 border-t border-yellow-100">
+              <button
+                onClick={() => handlePageChange(currentPage - 1)}
+                disabled={currentPage === 1}
+                className="px-3 py-1 rounded-lg border border-yellow-200 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-yellow-50"
+              >
+                Previous
+              </button>
+              <span className="px-3 py-1 bg-yellow-100 rounded-lg">
+                Page {currentPage}
+              </span>
+              <button
+                onClick={() => handlePageChange(currentPage + 1)}
+                disabled={!players || players.length < 5}
+                className="px-3 py-1 rounded-lg border border-yellow-200 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-yellow-50"
+              >
+                Next
+              </button>
+            </div>
           </div>
         </TabsContent>
       </Tabs>

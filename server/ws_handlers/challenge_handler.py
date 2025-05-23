@@ -359,7 +359,7 @@ class ChallengeManager:
 
             # Now fetch fresh data for leaderboard
             from ws_handlers.waiting_room import manager
-            leaderboard_users = await db.users.find().sort("total_point", -1).limit(10).to_list(length=10)
+            leaderboard_users = await db.users.find().sort("total_point", -1).limit(5).to_list(length=5)
             leaderboard_data = [
                 {
                     "id": str(u["_id"]),

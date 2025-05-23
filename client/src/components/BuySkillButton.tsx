@@ -72,7 +72,7 @@ export default function BuySkillButton({ skillType, userPoints, skillCost, onSuc
         {isLoading ? (
           'Buying...'
         ) : (
-          `Buy New Skill (${skillCost} skill_point)`
+          `Buy New Skill`
         )}
       </Button>
       <p className="text-xs text-gray-500">

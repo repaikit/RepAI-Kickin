@@ -44,7 +44,7 @@ interface User {
   vip_year?: number;
   vip_payment_method?: string;
   isAuthenticated?: boolean;
-  
+  available_skill_points?: number;
 }
 
 interface AuthContextType {
@@ -76,11 +76,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const checkAuth = async () => {
     try {
       const token = localStorage.getItem('access_token');
+      const currentPath = router.pathname;
+      
       if (!token) {
         setUser(null);
         setLoading(false);
-        if (!publicRoutes.includes(router.pathname)) {
-          router.push('/login');
+        if (!publicRoutes.includes(currentPath)) {
+          router.replace('/login');
         }
         return;
       }
@@ -98,8 +100,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (response.status === 401) {
           localStorage.removeItem('access_token');
           setUser(null);
-          if (!router.pathname.startsWith('/login')) {
-            router.push('/login');
+          if (!publicRoutes.includes(currentPath)) {
+            router.replace('/login');
           }
         }
         throw new Error('Failed to fetch user data');
@@ -107,8 +109,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       const userData = await response.json();
       setUser(userData);
+      
+      // If user is authenticated and tries to access public routes, redirect to home
+      if (publicRoutes.includes(currentPath)) {
+        router.replace('/');
+      }
     } catch (error) {
       console.error('Auth check error:', error);
+      setUser(null);
+      if (!publicRoutes.includes(router.pathname)) {
+        router.replace('/login');
+      }
     } finally {
       setLoading(false);
     }

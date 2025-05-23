@@ -187,7 +187,7 @@ async def update_current_user(request: Request, user_update: UserUpdate):
 
         # Broadcast leaderboard_update sau khi user đổi tên
         db = await get_database()
-        leaderboard_users = await db.users.find().sort("total_point", -1).limit(10).to_list(length=10)
+        leaderboard_users = await db.users.find().sort("total_point", -1).limit(5).to_list(length=5)
         leaderboard_data = [
             {
                 "id": str(u["_id"]),
@@ -221,70 +221,40 @@ class PlayRequest(BaseModel):
 
 # API lấy leaderboard
 @router.get("/leaderboard", response_model=List[User])
-async def get_leaderboard(page: int = 1, limit: int = 10):
+async def get_leaderboard(page: int = 1, limit: int = 5, type: str = "basic"):
     try:
-        api_logger.info(f"Fetching leaderboard with page={page}, limit={limit}")
-        
-        try:
-            users_collection = await get_users_collection()
-            api_logger.info("Successfully got users collection")
-        except Exception as e:
-            api_logger.error(f"Failed to get users collection: {str(e)}", exc_info=True)
-            raise HTTPException(status_code=500, detail=f"Database connection error: {str(e)}")
-        
-        # Giới hạn tối đa 100 trang
+        users_collection = await get_users_collection()
         page = max(1, min(page, 100))
         limit = max(1, min(limit, 100))
         skip = (page - 1) * limit
-        
-        # Log query parameters
-        api_logger.info(f"Query parameters: skip={skip}, limit={limit}")
-        
-        # Get users with error handling
-        try:
-            api_logger.info("Attempting to query users collection")
-            users = await users_collection.find(
-                {"user_type": "user"}
-            ).sort("total_point", -1).skip(skip).limit(limit).to_list(length=None)
-            api_logger.info(f"Successfully queried users collection, found {len(users) if users else 0} users")
-            
-            if not users:
-                api_logger.info("No users found in leaderboard")
-                return []
-                
-            # Convert datetime fields to ISO format strings
-            for user in users:
-                if isinstance(user.get("created_at"), datetime):
-                    user["created_at"] = user["created_at"].isoformat()
-                if isinstance(user.get("updated_at"), datetime):
-                    user["updated_at"] = user["updated_at"].isoformat()
-                if isinstance(user.get("last_activity"), datetime):
-                    user["last_activity"] = user["last_activity"].isoformat()
-                if isinstance(user.get("last_login"), datetime):
-                    user["last_login"] = user["last_login"].isoformat()
-                if isinstance(user.get("last_box_open"), datetime):
-                    user["last_box_open"] = user["last_box_open"].isoformat()
-                if isinstance(user.get("last_claim_matches"), datetime):
-                    user["last_claim_matches"] = user["last_claim_matches"].isoformat()
-                
-            # Convert to User model with error handling
-            try:
-                api_logger.info("Converting users to User model")
-                return [User(**u) for u in users]
-            except Exception as e:
-                api_logger.error(f"Error converting users to model: {str(e)}", exc_info=True)
-                raise HTTPException(
-                    status_code=500,
-                    detail=f"Error processing user data: {str(e)}"
-                )
-                
-        except Exception as e:
-            api_logger.error(f"Error querying database: {str(e)}", exc_info=True)
-            raise HTTPException(
-                status_code=500,
-                detail=f"Database query error: {str(e)}"
-            )
-            
+
+        # Lọc theo loại user
+        query = {"user_type": "user"}
+        if type == "basic":
+            query["is_pro"] = False
+            query["is_vip"] = False
+        elif type == "pro":
+            query["is_pro"] = True
+        elif type == "vip":
+            query["is_vip"] = True
+
+        users = await users_collection.find(query).sort("total_point", -1).skip(skip).limit(limit).to_list(length=None)
+        if not users:
+            return []
+        for user in users:
+            if isinstance(user.get("created_at"), datetime):
+                user["created_at"] = user["created_at"].isoformat()
+            if isinstance(user.get("updated_at"), datetime):
+                user["updated_at"] = user["updated_at"].isoformat()
+            if isinstance(user.get("last_activity"), datetime):
+                user["last_activity"] = user["last_activity"].isoformat()
+            if isinstance(user.get("last_login"), datetime):
+                user["last_login"] = user["last_login"].isoformat()
+            if isinstance(user.get("last_box_open"), datetime):
+                user["last_box_open"] = user["last_box_open"].isoformat()
+            if isinstance(user.get("last_claim_matches"), datetime):
+                user["last_claim_matches"] = user["last_claim_matches"].isoformat()
+        return [User(**u) for u in users]
     except Exception as e:
         api_logger.error(f"Error in leaderboard route: {str(e)}", exc_info=True)
         raise HTTPException(

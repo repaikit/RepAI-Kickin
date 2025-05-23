@@ -188,10 +188,8 @@ export default function Dashboard() {
                 userSkills={user?.kicker_skills || []}
                 title="Kicker Skills"
                 isLoading={isSkillsLoading}
-                userPoints={user?.kicked_win || 0}
+                availablePoints={user?.available_skill_points || 0}
                 onSkillBought={refreshSkills}
-                kickedWin={user?.kicked_win || 0}
-                keepWin={user?.keep_win || 0}
               />
 
               <SkillsSidebar
@@ -199,10 +197,7 @@ export default function Dashboard() {
                 userSkills={user?.goalkeeper_skills || []}
                 title="Goalkeeper Skills"
                 isLoading={isSkillsLoading}
-                userPoints={user?.keep_win || 0}
-                onSkillBought={refreshSkills}
-                kickedWin={user?.kicked_win || 0}
-                keepWin={user?.keep_win || 0}
+                availablePoints={user?.available_skill_points || 0}
               />
 
             </>
