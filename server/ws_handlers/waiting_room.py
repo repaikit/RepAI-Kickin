@@ -272,7 +272,7 @@ class WaitingRoomManager:
             db = await get_database()
             leaderboard_users = await db.users.find(
                 {"user_type": "user"}
-            ).sort("total_point", -1).limit(10).to_list(length=10)
+            ).sort("total_point", -1).limit(5).to_list(length=5)
             leaderboard_data = [
                 {
                     "id": str(u["_id"]),

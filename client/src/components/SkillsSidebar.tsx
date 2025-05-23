@@ -16,9 +16,7 @@ interface SkillsSidebarProps {
   userSkills: string[];
   title: string;
   isLoading: boolean;
-  userPoints: number;
-  kickedWin?: number;
-  keepWin?: number;
+  availablePoints: number;
   onSkillBought?: () => void;
 }
 
@@ -27,9 +25,7 @@ export default function SkillsSidebar({
   userSkills = [],
   title = "Player Skills",
   isLoading,
-  userPoints,
-  kickedWin = 0,
-  keepWin = 0,
+  availablePoints,
   onSkillBought
 }: SkillsSidebarProps) {
   // Check if user has learned a skill by comparing skill names
@@ -49,9 +45,6 @@ export default function SkillsSidebar({
   // Determine skill type from title
   const skillType = title.toLowerCase().includes('kicker') ? 'kicker' : 'goalkeeper';
 
-  // Tổng skill_point
-  const skillPoint = kickedWin + keepWin;
-
   // Giá skill cố định cho cả hai loại
   const skillCost = 10;
 
@@ -67,7 +60,7 @@ export default function SkillsSidebar({
             {skills.filter(s => hasLearnedSkill(s.name)).length} / {skills.length}
           </div>
           <div className="text-xs text-blue-600 font-semibold flex items-center gap-2">
-            Skill Points: {skillPoint}
+            Skill Points: {availablePoints}
             <span className="text-xs text-slate-400">|</span>
             <span className="text-xs text-purple-600">Cost: {skillCost}</span>
           </div>
@@ -112,7 +105,7 @@ export default function SkillsSidebar({
       <div className="mt-4 pt-4 border-t border-slate-100">
         <BuySkillButton 
           skillType={skillType}
-          userPoints={skillPoint}
+          userPoints={availablePoints}
           skillCost={skillCost}
           onSuccess={onSkillBought}
         />

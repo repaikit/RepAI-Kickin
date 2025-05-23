@@ -35,23 +35,19 @@ export const WebSocketProvider = ({ children }: { children: React.ReactNode }) =
 
   useEffect(() => {
     const handleError = (errorMessage: string) => {
-      console.error('WebSocketContext: Error occurred:', errorMessage);
       setError(errorMessage);
     };
 
     const handleConnect = () => {
-      console.log('WebSocketContext: Connected');
       setIsConnected(true);
       setError(null);
     };
 
     const handleDisconnect = () => {
-      console.log('WebSocketContext: Disconnected');
       setIsConnected(false);
     };
 
     const handleLeaderboardUpdate = (message: { leaderboard: LeaderboardEntry[] }) => {
-      console.log('WebSocketContext: Leaderboard update received', message);
       if (!message.leaderboard || !Array.isArray(message.leaderboard)) {
         console.error('WebSocketContext: Invalid leaderboard data', message);
         return;
@@ -60,15 +56,11 @@ export const WebSocketProvider = ({ children }: { children: React.ReactNode }) =
         count: message.leaderboard.length,
         data: message.leaderboard
       });
-      console.log('WebSocketContext: Current leaderboard state:', leaderboard);
       const newLeaderboard = Array.isArray(message.leaderboard) ? [...message.leaderboard] : [];
-      console.log('WebSocketContext: New leaderboard data to set:', newLeaderboard);
       setLeaderboard(newLeaderboard);
-      console.log('WebSocketContext: Leaderboard state updated');
     };
 
     const handleUserList = (message: { users: any[] }) => {
-      console.log('WebSocketContext: User list received', message);
       if (!message.users || !Array.isArray(message.users)) {
         console.error('WebSocketContext: Invalid user list data', message);
         return;
@@ -81,12 +73,10 @@ export const WebSocketProvider = ({ children }: { children: React.ReactNode }) =
     };
 
     const handleUserJoined = (message: { user: any }) => {
-      console.log('WebSocketContext: User joined', message);
       setUsers(prev => [...prev, message.user]);
     };
 
     const handleUserLeft = (message: { user_id: string }) => {
-      console.log('WebSocketContext: User left', message);
       setUsers(prev => prev.filter(user => user.id !== message.user_id));
     };
 

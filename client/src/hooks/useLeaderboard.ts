@@ -20,21 +20,17 @@ export interface LeaderboardPlayer {
   extra_point?: number;
 }
 
-export function useLeaderboard() {
+export function useLeaderboard(page: number = 1, limit: number = 5, type: string = 'basic') {
   const { user } = useAuth();
   const [data, setData] = useState<LeaderboardPlayer[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Optional: paging, or just use default
-  const page = 1;
-  const limit = 10;
-
   // Fetch initial leaderboard from API
   const fetchInitialData = async () => {
     try {
-      const url = API_ENDPOINTS.users.leaderboard + `?page=${page}&limit=${limit}`;
-      const cacheKey = `leaderboard-${page}-${limit}`;
+      const url = API_ENDPOINTS.users.leaderboard + `?page=${page}&limit=${limit}&type=${type}`;
+      const cacheKey = `leaderboard-${page}-${limit}-${type}`;
       const initialData = await fetchWithApiCache(cacheKey, url, defaultFetchOptions);
       setData(initialData.map((user: any) => ({
         id: user._id,
@@ -59,11 +55,10 @@ export function useLeaderboard() {
     }
   };
 
-  // Fetch once on mount
+  // Fetch when page, limit, or type changes
   useEffect(() => {
     fetchInitialData();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [page, limit, type]);
 
   // Listen for websocket leaderboard updates
   useWebSocket({
