@@ -88,29 +88,25 @@ export default function WelcomeDirectionPage({ onDone }: LoginPageProps) {
       {/* Grid pattern overlay */}
       <div className="absolute inset-0 bg-[linear-gradient(rgba(59,130,246,0.05)_1px,transparent_1px),linear-gradient(90deg,rgba(59,130,246,0.05)_1px,transparent_1px)] bg-[size:50px_50px] animate-pulse" />
 
-      {/* Main container - Horizontal layout */}
-      <div className={`relative z-10 min-h-screen flex transition-all duration-1000 ${
+      {/* Main container - Responsive layout */}
+      <div className={`relative z-10 min-h-screen flex flex-col lg:flex-row transition-all duration-1000 ${
         isVisible ? 'opacity-100' : 'opacity-0'
       }`}>
-        
-        {/* Left section - Branding & Features */}
-        <div className="flex-1 flex flex-col justify-center items-center p-8 lg:p-12 bg-gradient-to-br from-black/20 to-transparent backdrop-blur-sm">
+        {/* Left section - Branding & Features (hide on mobile) */}
+        <div className="flex-1 flex flex-col justify-center items-center p-4 lg:p-12 bg-gradient-to-br from-black/20 to-transparent backdrop-blur-sm hidden sm:flex">
           <div className="max-w-md text-center space-y-8">
             {/* Logo & Brand */}
             <div className="space-y-4">
               <div className="inline-flex items-center justify-center w-20 h-20 bg-gradient-to-br from-blue-500 to-purple-600 rounded-3xl shadow-2xl mb-6 transform hover:scale-110 transition-transform duration-300">
                 <Zap className="w-10 h-10 text-white" />
               </div>
-              
               <h1 className="text-5xl lg:text-6xl font-black bg-gradient-to-r from-blue-400 via-purple-400 to-pink-400 bg-clip-text text-transparent leading-tight">
                 Kick'in
               </h1>
-              
               <p className="text-xl text-white/80 font-light leading-relaxed">
                 Tiny L1', Huge Kicks — Only at Kickin'.
               </p>
             </div>
-
             {/* Stats */}
             <div className="grid grid-cols-3 gap-6 py-8">
               <div className="text-center space-y-2">
@@ -126,7 +122,6 @@ export default function WelcomeDirectionPage({ onDone }: LoginPageProps) {
                 <div className="text-sm text-white/60 font-medium">Support</div>
               </div>
             </div>
-
             {/* Features */}
             <div className="space-y-4">
               <div className="flex items-center gap-3 text-white/80">
@@ -150,9 +145,8 @@ export default function WelcomeDirectionPage({ onDone }: LoginPageProps) {
             </div>
           </div>
         </div>
-
-        {/* Right section - Login form */}
-        <div className="flex-1 flex items-center justify-center p-8">
+        {/* Right section - Login form (always visible, mobile-friendly) */}
+        <div className="flex-1 flex items-center justify-center p-4">
           <div className="w-full max-w-md">
             <div className="bg-white/10 backdrop-blur-xl border border-white/20 rounded-3xl p-4 shadow-2xl">
               {/* Form container */}
@@ -160,7 +154,6 @@ export default function WelcomeDirectionPage({ onDone }: LoginPageProps) {
                 <h2 className="text-3xl font-bold text-white mb-2">Welcome Back!</h2>
                 <p className="text-white/70">Join thousands of players worldwide</p>
               </div>
-
               {/* Error notification */}
               {error && (
                 <div className="mb-6 p-4 bg-red-500/20 border border-red-500/30 rounded-xl backdrop-blur-sm">
@@ -172,7 +165,6 @@ export default function WelcomeDirectionPage({ onDone }: LoginPageProps) {
                   </div>
                 </div>
               )}
-
               {/* Mode selector */}
               <div className="flex bg-white/10 rounded-2xl p-1 mb-8 backdrop-blur-sm">
                 <button
@@ -196,14 +188,12 @@ export default function WelcomeDirectionPage({ onDone }: LoginPageProps) {
                   Sign Up
                 </button>
               </div>
-
               {/* Auth Form */}
               <AuthForm 
                 mode={authMode as 'login' | 'register'} 
                 onSuccess={handleAuthSuccess}
                 onError={handleAuthError}
               />
-
               {/* Divider */}
               <div className="relative my-8">
                 <div className="absolute inset-0 flex items-center">
@@ -215,7 +205,6 @@ export default function WelcomeDirectionPage({ onDone }: LoginPageProps) {
                   </span>
                 </div>
               </div>
-
               {/* Guest login */}
               <button
                 onClick={handleGuestLogin}
@@ -240,7 +229,6 @@ export default function WelcomeDirectionPage({ onDone }: LoginPageProps) {
                   )}
                 </div>
               </button>
-
               {/* Terms */}
               <p className="text-center text-xs text-white/50 mt-6 leading-relaxed">
                 By continuing, you agree to our{' '}
@@ -252,7 +240,6 @@ export default function WelcomeDirectionPage({ onDone }: LoginPageProps) {
           </div>
         </div>
       </div>
-
       {/* Floating particles effect */}
       <div className="absolute inset-0 pointer-events-none">
         {[...Array(20)].map((_, i) => (

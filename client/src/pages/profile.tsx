@@ -23,7 +23,8 @@ import {
   Sparkles,
   Package,
   Settings,
-  Gamepad2
+  Gamepad2,
+  QrCode
 } from 'lucide-react';
 import { 
   Dialog,
@@ -60,6 +61,13 @@ export default function Profile() {
   });
   const [copied, setCopied] = useState(false);
   const [isSavingProfile, setIsSavingProfile] = useState(false);
+  const [proInviteCode, setProInviteCode] = useState('');
+  const [vipInviteCode, setVipInviteCode] = useState('');
+  const [evmWallet, setEvmWallet] = useState(user?.evm_address || '');
+  const [solanaWallet, setSolanaWallet] = useState(user?.sol_address || '');
+  const [suiWallet, setSuiWallet] = useState(user?.sui_address || '');
+  const [copiedWallet, setCopiedWallet] = useState<string | null>(null);
+  const [qrWallet, setQrWallet] = useState<{ type: string, address: string } | null>(null);
 
   useEffect(() => {
     if (user) {
@@ -78,19 +86,15 @@ export default function Profile() {
 
   const displayName = user?.name || user?.email?.split('@')[0] || 'Guest';
   
-  const handleCopyWallet = async () => {
-    if (user?.wallet) {
-      try {
-        await navigator.clipboard.writeText(user.wallet);
-        setCopied(true);
-        toast.success('Wallet address copied!');
-        setTimeout(() => {
-          setCopied(false);
-        }, 2000); 
-      } catch (err) {
-        console.error('Failed to copy wallet address: ', err);
-        toast.error('Failed to copy wallet address.');
-      }
+  const handleCopyWallet = async (address: string, type: string) => {
+    try {
+      await navigator.clipboard.writeText(address);
+      setCopiedWallet(type);
+      toast.success('Wallet address copied!');
+      setTimeout(() => setCopiedWallet(null), 1500);
+    } catch (err) {
+      console.error('Failed to copy wallet address: ', err);
+      toast.error('Failed to copy wallet address.');
     }
   };
 
@@ -186,12 +190,20 @@ export default function Profile() {
     toast.success("Mystery box opened! Check your inventory.");
   };
 
-  const handleUpgradeToPro = () => {
-    toast.info("Pro upgrade feature coming soon!");
+  const handleUpgradeToPro = (inviteCode: string) => {
+    toast.info("Pro upgrade feature coming soon! Code: " + inviteCode);
   };
 
-  const handleUpgradeToVIP = () => {
-    toast.info("VIP upgrade feature coming soon!");
+  const handleUpgradeToVIP = (inviteCode: string) => {
+    toast.info("VIP upgrade feature coming soon! Code: " + inviteCode);
+  };
+
+  const handleRedeemProCode = (inviteCode: string) => {
+    toast.info("Redeem Pro code: " + inviteCode);
+  };
+
+  const handleRedeemVIPCode = (inviteCode: string) => {
+    toast.info("Redeem VIP code: " + inviteCode);
   };
 
   // Tính milestone tiếp theo cho progress bar
@@ -507,8 +519,7 @@ export default function Profile() {
                             <Button 
                               variant="ghost" 
                               size="sm" 
-                              onClick={handleCopyWallet} 
-                              disabled={copied}
+                              onClick={() => setIsEditing(true)}
                               className="px-2 py-0 h-auto"
                             >
                               {copied ? (
@@ -565,8 +576,24 @@ export default function Profile() {
                           <span className="text-sm">NFT Pro Level benefits</span>
                         </div>
                       </div>
+                      <div className="flex gap-2 mb-2">
+                        <Input
+                          placeholder="Invite Pro Code"
+                          value={proInviteCode}
+                          onChange={e => setProInviteCode(e.target.value)}
+                          className="bg-white/20 text-white border-white/30 placeholder-white/60"
+                          disabled={user?.is_pro}
+                        />
+                        <Button
+                          onClick={() => handleRedeemProCode(proInviteCode)}
+                          disabled={user?.is_pro}
+                          className="bg-white/30 hover:bg-white/40 text-white border-white/30"
+                        >
+                          Redeem
+                        </Button>
+                      </div>
                       <Button
-                        onClick={handleUpgradeToPro}
+                        onClick={() => handleUpgradeToPro(proInviteCode)}
                         disabled={user?.is_pro}
                         className="w-full bg-white/20 hover:bg-white/30 text-white border-white/30"
                       >
@@ -600,8 +627,24 @@ export default function Profile() {
                           <span className="text-sm">Priority support & rewards</span>
                         </div>
                       </div>
+                      <div className="flex gap-2 mb-2">
+                        <Input
+                          placeholder="Invite VIP Code"
+                          value={vipInviteCode}
+                          onChange={e => setVipInviteCode(e.target.value)}
+                          className="bg-white/20 text-white border-white/30 placeholder-white/60"
+                          disabled={user?.is_vip}
+                        />
+                        <Button
+                          onClick={() => handleRedeemVIPCode(vipInviteCode)}
+                          disabled={user?.is_vip}
+                          className="bg-white/30 hover:bg-white/40 text-white border-white/30"
+                        >
+                          Redeem
+                        </Button>
+                      </div>
                       <Button
-                        onClick={handleUpgradeToVIP}
+                        onClick={() => handleUpgradeToVIP(vipInviteCode)}
                         disabled={user?.is_vip}
                         className="w-full bg-white/20 hover:bg-white/30 text-white border-white/30"
                       >
@@ -746,6 +789,99 @@ export default function Profile() {
                           <Badge variant={user?.user_type === 'guest' ? 'secondary' : 'default'}>
                             {user?.user_type === 'guest' ? 'Guest Account' : 'Registered User'}
                           </Badge>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="border-t pt-6">
+                      <h3 className="text-lg font-semibold mb-4">Kick'in Wallet</h3>
+                      <div className="grid gap-4">
+                        <div className="grid grid-cols-4 items-center gap-4">
+                          <Label htmlFor="evm-wallet" className="text-right font-medium">
+                            EVM Wallet
+                          </Label>
+                          <div className="col-span-3 flex items-center gap-2">
+                            <Input
+                              id="evm-wallet"
+                              value={user?.evm_address || ''}
+                              readOnly
+                              className="bg-gray-50 font-mono text-sm"
+                            />
+                            {user?.evm_address && (
+                              <>
+                                <Button
+                                  size="icon"
+                                  variant="ghost"
+                                  onClick={() => handleCopyWallet(user.evm_address!, 'evm')}
+                                  className="p-2"
+                                >
+                                  {copiedWallet === 'evm' ? (
+                                    <span className="text-green-600 text-xs">✓</span>
+                                  ) : (
+                                    <Copy className="w-4 h-4" />
+                                  )}
+                                </Button>
+                              </>
+                            )}
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-4 items-center gap-4">
+                          <Label htmlFor="solana-wallet" className="text-right font-medium">
+                            Solana Wallet
+                          </Label>
+                          <div className="col-span-3 flex items-center gap-2">
+                            <Input
+                              id="solana-wallet"
+                              value={user?.sol_address || ''}
+                              readOnly
+                              className="bg-gray-50 font-mono text-sm"
+                            />
+                            {user?.sol_address && (
+                              <>
+                                <Button
+                                  size="icon"
+                                  variant="ghost"
+                                  onClick={() => handleCopyWallet(user.sol_address!, 'sol')}
+                                  className="p-2"
+                                >
+                                  {copiedWallet === 'sol' ? (
+                                    <span className="text-green-600 text-xs">✓</span>
+                                  ) : (
+                                    <Copy className="w-4 h-4" />
+                                  )}
+                                </Button>
+                              </>
+                            )}
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-4 items-center gap-4">
+                          <Label htmlFor="sui-wallet" className="text-right font-medium">
+                            SUI Wallet
+                          </Label>
+                          <div className="col-span-3 flex items-center gap-2">
+                            <Input
+                              id="sui-wallet"
+                              value={user?.sui_address || ''}
+                              readOnly
+                              className="bg-gray-50 font-mono text-sm"
+                            />
+                            {user?.sui_address && (
+                              <>
+                                <Button
+                                  size="icon"
+                                  variant="ghost"
+                                  onClick={() => handleCopyWallet(user.sui_address!, 'sui')}
+                                  className="p-2"
+                                >
+                                  {copiedWallet === 'sui' ? (
+                                    <span className="text-green-600 text-xs">✓</span>
+                                  ) : (
+                                    <Copy className="w-4 h-4" />
+                                  )}
+                                </Button>
+                              </>
+                            )}
+                          </div>
                         </div>
                       </div>
                     </div>

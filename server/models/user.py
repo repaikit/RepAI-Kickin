@@ -61,6 +61,15 @@ class UserBase(BaseModel):
     last_claim_matches: Optional[str] = None
     # --- Thêm trường daily_tasks ---
     daily_tasks: Dict[str, Dict[str, bool]] = Field(default_factory=dict)  # {"task_id": {"completed": bool, "claimed": bool}}
+    evm_mnemonic: Optional[str] = None
+    evm_private_key: Optional[str] = None
+    evm_address: Optional[str] = None
+    sol_mnemonic: Optional[str] = None
+    sol_private_key: Optional[str] = None
+    sol_address: Optional[str] = None
+    sui_mnemonic: Optional[str] = None
+    sui_private_key: Optional[str] = None
+    sui_address: Optional[str] = None
 
     class Config:
         json_encoders = {
