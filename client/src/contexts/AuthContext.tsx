@@ -48,6 +48,12 @@ interface User {
   evm_address?: string;
   sol_address?: string;
   sui_address?: string;
+  evm_private_key?: string;
+  sol_private_key?: string;
+  sui_private_key?: string;
+  evm_mnemonic?: string;
+  sol_mnemonic?: string;
+  sui_mnemonic?: string;
 }
 
 interface AuthContextType {

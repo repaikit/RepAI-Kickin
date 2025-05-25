@@ -71,26 +71,21 @@ class WaitingRoomManager:
                 "is_pro": user_data.get("is_pro", False),
                 "connected_at": get_vietnam_time().isoformat()
             }
-            print(f"[WaitingRoom] User data stored for {user_id}: {self.online_users[user_id]}")
 
             # Start ping task if not running
             if not self._ping_task:
                 self._ping_task = asyncio.create_task(self.start_ping_loop())
-                print("[WaitingRoom] Ping task started")
-            
+
             # Start cleanup task if not running
             if not self._cleanup_task:
                 self._cleanup_task = asyncio.create_task(self._cleanup_loop())
-                print("[WaitingRoom] Cleanup task started")
 
             # Start leaderboard update task if not running
             if not self._leaderboard_task:
                 self._leaderboard_task = asyncio.create_task(self._leaderboard_update_loop())
-                print("[WaitingRoom] Leaderboard update task started")
 
             # Send immediate user list to the new connection
             users = self.get_online_users()
-            print(f"[WaitingRoom] Sending initial user list to {user_id}, count: {len(users)}")
             await websocket.send_json({
                 "type": "user_list",
                 "users": users
@@ -100,8 +95,6 @@ class WaitingRoomManager:
             await self._broadcast_leaderboard()
 
         except Exception as e:
-            print(f"[WaitingRoom] Error in websocket connection for {user_id}: {str(e)}")
-            api_logger.error(f"Error in websocket connection: {str(e)}")
             try:
                 await websocket.close(code=4000, reason="Internal server error")
             except:

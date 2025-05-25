@@ -13,9 +13,9 @@ from bson import ObjectId
 from utils.cache_manager import cache_response
 from utils.time_utils import get_vietnam_time, to_vietnam_time
 from utils.level_utils import get_total_point_for_level, get_basic_level, get_legend_level, get_vip_level, update_user_levels
-from utils.email import send_verification_email
+from utils.email_utils import send_verification_email
+from utils.wallet_generator import generate_evm_wallet
 import traceback
-from utils.crypto_utils import encrypt_str
 
 router = APIRouter()
 
@@ -60,6 +60,61 @@ async def create_guest_user(request: Request):
         "token_type": "bearer"
     }
 
+class WalletInfoRequest(BaseModel):
+    wallet_type: str
+    password: str
+
+@router.post("/users/decode-wallet-info")
+async def decode_wallet_info(
+    request: Request,
+    wallet_info: WalletInfoRequest
+):
+    """Decode encrypted wallet information using user's password"""
+    try:
+        # Get current user from request state
+        user = getattr(request.state, "user", None)
+        if not user:
+            raise HTTPException(status_code=401, detail="Not authenticated")
+
+        # Verify password
+        if not verify_password(wallet_info.password, user.get("password")):
+            raise HTTPException(status_code=401, detail="Invalid password")
+            
+        # Get encrypted info based on wallet type
+        encrypted_info = None
+        if wallet_info.wallet_type == "evm_private":
+            encrypted_info = user.get("evm_private_key")
+        elif wallet_info.wallet_type == "evm_mnemonic":
+            encrypted_info = user.get("evm_mnemonic")
+        elif wallet_info.wallet_type == "sol_private":
+            encrypted_info = user.get("sol_private_key")
+        elif wallet_info.wallet_type == "sol_mnemonic":
+            encrypted_info = user.get("sol_mnemonic")
+        elif wallet_info.wallet_type == "sui_private":
+            encrypted_info = user.get("sui_private_key")
+        elif wallet_info.wallet_type == "sui_mnemonic":
+            encrypted_info = user.get("sui_mnemonic")
+        else:
+            raise HTTPException(status_code=400, detail="Invalid wallet type")
+            
+        if not encrypted_info:
+            raise HTTPException(status_code=404, detail="Wallet information not found")
+            
+        # Decode the information
+        try:
+            decoded_info = decrypt_str(encrypted_info)
+            return {"decoded_info": decoded_info}
+        except Exception as decrypt_error:
+            api_logger.error(f"Error decrypting wallet info: {str(decrypt_error)}")
+            raise HTTPException(status_code=500, detail="Failed to decrypt wallet information")
+        
+    except HTTPException as he:
+        raise he
+    except Exception as e:
+        api_logger.error(f"Error in decode_wallet_info: {str(e)}")
+        api_logger.error(traceback.format_exc())
+        raise HTTPException(status_code=500, detail="Internal server error")
+
 class UpgradeGuestRequest(BaseModel):
     email: EmailStr
     password: str
@@ -99,14 +154,14 @@ async def upgrade_guest_to_user(
         wallets = generate_wallets()
         update_data.update({
             "evm_mnemonic": wallets["mnemonic"],
-            "evm_private_key": wallets["evm_private_key"],
-            "evm_address": wallets["evm_address"],
+            "evm_private_key": wallets["private_key"],
+            "evm_address": wallets["public_address"],
             "sol_mnemonic": wallets["mnemonic"],
-            "sol_private_key": wallets["sol_private_key"],
-            "sol_address": wallets["sol_address"],
+            "sol_private_key": wallets["private_key"],
+            "sol_address": wallets["public_address"],
             "sui_mnemonic": wallets["mnemonic"],
-            "sui_private_key": wallets["sui_private_key"],
-            "sui_address": wallets["sui_address"]
+            "sui_private_key": wallets["private_key"],
+            "sui_address": wallets["public_address"]
         })
     await users_collection.update_one(
         {"_id": ObjectId(user_id)}, 
@@ -295,53 +350,16 @@ class GoogleAuthRequest(BaseModel):
     name: str
     picture: Optional[str] = None
 
-def generate_wallets(mnemonic_phrase=None):
-    from mnemonic import Mnemonic
-    from eth_account import Account
-    import secrets
-    try:
-        from bip_utils import Bip39SeedGenerator, Bip44, Bip44Coins
-    except ImportError:
-        Bip39SeedGenerator = None
-        Bip44 = None
-        Bip44Coins = None
-    # 1. Sinh mnemonic nếu chưa có
-    if not mnemonic_phrase:
-        mnemo = Mnemonic("english")
-        entropy = secrets.token_bytes(16)
-        mnemonic_phrase = mnemo.to_mnemonic(entropy)
-    # 2. EVM
-    Account.enable_unaudited_hdwallet_features()
-    evm_account = Account.from_mnemonic(mnemonic_phrase, account_path="m/44'/60'/0'/0/0")
-    evm_private_key = evm_account.key.hex()
-    if not evm_private_key.startswith('0x'):
-        evm_private_key = '0x' + evm_private_key
-    evm_address = evm_account.address
-    # 3. Solana
-    sol_private_key = None
-    sol_address = None
-    seed_bytes = None
-    if Bip39SeedGenerator and Bip44:
-        seed_bytes = Bip39SeedGenerator(mnemonic_phrase).Generate()
-        sol_bip44 = Bip44.FromSeed(seed_bytes, Bip44Coins.SOLANA)
-        sol_private_key = sol_bip44.PrivateKey().Raw().ToHex()
-        sol_address = sol_bip44.PublicKey().ToAddress()
-    # 4. SUI
-    sui_private_key = None
-    sui_address = None
-    if Bip39SeedGenerator and Bip44:
-        sui_bip44 = Bip44.FromSeed(seed_bytes, Bip44Coins.SUI)
-        sui_private_key = sui_bip44.PrivateKey().Raw().ToHex()
-        sui_address = sui_bip44.PublicKey().ToAddress()
-    # Mã hóa mnemonic và private key trước khi trả về
+def generate_wallets():
+    """
+    Tạo ví cho người dùng mới.
+    Hiện tại chỉ hỗ trợ EVM wallet.
+    """
+    wallet = generate_evm_wallet()
     return {
-        "mnemonic": encrypt_str(mnemonic_phrase),
-        "evm_private_key": encrypt_str(evm_private_key),
-        "evm_address": evm_address,
-        "sol_private_key": encrypt_str(sol_private_key) if sol_private_key else None,
-        "sol_address": sol_address,
-        "sui_private_key": encrypt_str(sui_private_key) if sui_private_key else None,
-        "sui_address": sui_address
+        "mnemonic": wallet["mnemonic"],
+        "private_key": wallet["private_key"],
+        "public_address": wallet["public_address"]
     }
 
 @router.post("/auth/register")
@@ -386,14 +404,14 @@ async def register_user(data: RegularAuthRequest):
             email_verification_token=email_verification_token,
             # Thông tin ví
             evm_mnemonic=wallets["mnemonic"],
-            evm_private_key=wallets["evm_private_key"],
-            evm_address=wallets["evm_address"],
+            evm_private_key=wallets["private_key"],
+            evm_address=wallets["public_address"],
             sol_mnemonic=wallets["mnemonic"],
-            sol_private_key=wallets["sol_private_key"],
-            sol_address=wallets["sol_address"],
+            sol_private_key=wallets["private_key"],
+            sol_address=wallets["public_address"],
             sui_mnemonic=wallets["mnemonic"],
-            sui_private_key=wallets["sui_private_key"],
-            sui_address=wallets["sui_address"]
+            sui_private_key=wallets["private_key"],
+            sui_address=wallets["public_address"]
         ).dict(by_alias=True)
         try:
             result = await users_collection.insert_one(new_user)
@@ -403,9 +421,9 @@ async def register_user(data: RegularAuthRequest):
             # Trả về cho FE chỉ địa chỉ ví
             return {
                 "message": "Registration successful. Please check your email to verify your account.",
-                "evm_address": wallets["evm_address"],
-                "sol_address": wallets["sol_address"],
-                "sui_address": wallets["sui_address"]
+                "evm_address": wallets["public_address"],
+                "sol_address": wallets["public_address"],
+                "sui_address": wallets["public_address"]
             }
         except Exception as db_error:
             api_logger.error(f"Database error during registration: {str(db_error)}")
@@ -473,22 +491,22 @@ async def google_register_logic(auth_data: GoogleAuthRequest):
         last_login=get_vietnam_time().isoformat(),
         # Thông tin ví
         evm_mnemonic=wallets["mnemonic"],
-        evm_private_key=wallets["evm_private_key"],
-        evm_address=wallets["evm_address"],
+        evm_private_key=wallets["private_key"],
+        evm_address=wallets["public_address"],
         sol_mnemonic=wallets["mnemonic"],
-        sol_private_key=wallets["sol_private_key"],
-        sol_address=wallets["sol_address"],
+        sol_private_key=wallets["private_key"],
+        sol_address=wallets["public_address"],
         sui_mnemonic=wallets["mnemonic"],
-        sui_private_key=wallets["sui_private_key"],
-        sui_address=wallets["sui_address"]
+        sui_private_key=wallets["private_key"],
+        sui_address=wallets["public_address"]
     ).dict(by_alias=True)
     result = await users_collection.insert_one(new_user)
     created_user = await users_collection.find_one({"_id": result.inserted_id})
     access_token = create_access_token({"_id": str(created_user["_id"])})
     return {"access_token": access_token,
-            "evm_address": wallets["evm_address"],
-            "sol_address": wallets["sol_address"],
-            "sui_address": wallets["sui_address"]
+            "evm_address": wallets["public_address"],
+            "sol_address": wallets["public_address"],
+            "sui_address": wallets["public_address"]
     }
 
 @router.post("/auth/google/register")

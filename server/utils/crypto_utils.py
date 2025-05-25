@@ -1,16 +1,18 @@
 import os
 from cryptography.fernet import Fernet
+from dotenv import load_dotenv
 
-FERNET_KEY = os.environ.get("FERNET_KEY")
+load_dotenv()  # Đọc biến môi trường từ file .env
+
+FERNET_KEY = os.getenv("FERNET_KEY")
+
 if not FERNET_KEY:
-    # Tạo key mới nếu chưa có (chỉ dùng cho dev, production phải tự set)
-    FERNET_KEY = Fernet.generate_key().decode()
-    print("Generated FERNET_KEY:", FERNET_KEY)
+    raise ValueError("FERNET_KEY not found in environment variables")
 
-fernet = Fernet(FERNET_KEY.encode())
+cipher = Fernet(FERNET_KEY.encode())
 
-def encrypt_str(plain: str) -> str:
-    return fernet.encrypt(plain.encode()).decode()
+def encrypt_str(text: str) -> str:
+    return cipher.encrypt(text.encode()).decode()
 
-def decrypt_str(cipher: str) -> str:
-    return fernet.decrypt(cipher.encode()).decode() 
+def decrypt_str(encrypted_text: str) -> str:
+    return cipher.decrypt(encrypted_text.encode()).decode()
