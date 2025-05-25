@@ -735,4 +735,5 @@ async def verify_email(token: str):
     )
     return {"message": "Email verified successfully"}
 
-
+class InviteCodeRequest(BaseModel):
+    invite_code: str
