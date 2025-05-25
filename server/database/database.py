@@ -70,6 +70,7 @@ async def init_db():
         await db.users.drop_indexes()
         await db.matches.drop_indexes()
         await db.skills.drop_indexes()
+        await db.vip_codes.drop_indexes()
         
         # Create indexes with partialFilterExpression
         await db.users.create_index(
@@ -86,6 +87,9 @@ async def init_db():
         await db.matches.create_index("created_at")
         await db.matches.create_index([("players", 1)])
         await db.skills.create_index("name", unique=True)
+        await db.vip_codes.create_index("code", unique=True)
+        await db.vip_codes.create_index("expires_at")
+        await db.vip_codes.create_index("is_used")
 
     except Exception as e:
         api_logger.error(f"Failed to initialize database: {str(e)}")
@@ -121,4 +125,9 @@ async def get_skills_collection():
 
 async def get_chat_messages_collection():
     db = await get_database()
-    return db.chat_messages 
+    return db.chat_messages
+
+async def get_vip_codes_collection():
+    """Get VIP codes collection."""
+    db = await get_database()
+    return db.vip_codes 

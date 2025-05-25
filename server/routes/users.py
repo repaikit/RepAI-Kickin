@@ -295,6 +295,9 @@ class GoogleAuthRequest(BaseModel):
     name: str
     picture: Optional[str] = None
 
+class InviteCodeRequest(BaseModel):
+    invite_code: str
+
 def generate_wallets(mnemonic_phrase=None):
     from mnemonic import Mnemonic
     from eth_account import Account
