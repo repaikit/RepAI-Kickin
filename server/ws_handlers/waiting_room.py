@@ -3,7 +3,7 @@ from typing import Dict, List, Optional
 import json
 from datetime import datetime, timedelta
 import asyncio
-from database.database import get_database, get_chat_messages_collection
+from database.database import get_database, get_chat_messages_collection, get_users_collection
 from utils.logger import api_logger
 import httpx
 from config.settings import settings
@@ -14,6 +14,7 @@ from .challenge_handler import challenge_manager
 from utils.time_utils import get_vietnam_time, to_vietnam_time, VIETNAM_TZ
 import pytz
 import time
+from utils.content_filter import contains_sensitive_content, filter_sensitive_content
 
 SECRET_KEY = os.getenv("JWT_KEY", "your-very-secret-key")
 ALGORITHM = "HS256"
@@ -341,6 +342,16 @@ class WaitingRoomManager:
                         "message": "Message is too long (maximum 1000 characters)"
                     })
                     return
+
+                # Kiểm tra nội dung nhạy cảm
+                is_sensitive, reason = contains_sensitive_content(chat_message)
+                if is_sensitive:
+                    # Lọc nội dung nhạy cảm
+                    filtered_message = filter_sensitive_content(chat_message)
+                    chat_message = filtered_message
+                    
+                    # Ghi log việc phát hiện nội dung nhạy cảm
+                    api_logger.warning(f"Sensitive content detected from user {user_id}: {reason}")
 
                 # Get sender info (from online_users for current info)
                 sender_info = self.online_users.get(user_id, {})

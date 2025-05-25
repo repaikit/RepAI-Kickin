@@ -49,6 +49,7 @@ import Overview from "@/components/profile/Overview";
 import Statistics from "@/components/profile/Statistics";
 import Upgrades from "@/components/profile/Upgrades";
 import Settings from "@/components/profile/Settings";
+import WeeklyLoginStats from '@/components/WeeklyLoginStats';
 
 // Milestones giống backend
 const LEVEL_MILESTONES_BASIC = [
@@ -341,12 +342,11 @@ export default function Profile() {
 
   return (
     <>
-      {/* Enhanced Level Up Animation */}
       {showLevelUpAnimation && (
         <div className="fixed inset-0 z-50 flex items-center justify-center pointer-events-none bg-black/20 backdrop-blur-sm">
           <div className="text-center animate-bounce">
             <div className="text-6xl mb-4 animate-pulse">🎉</div>
-            <div className="text-4xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-yellow-400 via-pink-500 to-purple-600 drop-shadow-lg animate-pulse mb-2">
+            <div className="text-4xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-pink-400 via-rose-500 to-pink-600 drop-shadow-lg animate-pulse mb-2">
               LEVEL UP!
             </div>
             <div className="text-2xl text-white font-bold animate-fade-in">
@@ -354,19 +354,18 @@ export default function Profile() {
             </div>
             <div className="mt-4 flex justify-center space-x-2">
               {[...Array(5)].map((_, i) => (
-                <Sparkles key={i} className="w-6 h-6 text-yellow-400 animate-spin" style={{ animationDelay: `${i * 0.2}s` }} />
+                <Sparkles key={i} className="w-6 h-6 text-pink-400 animate-spin" style={{ animationDelay: `${i * 0.2}s` }} />
               ))}
             </div>
           </div>
         </div>
       )}
 
-      {/* Mystery Box Animation */}
       {showMysteryBox && (
         <div className="fixed inset-0 z-50 flex items-center justify-center pointer-events-none bg-black/20 backdrop-blur-sm">
           <div className="text-center">
             <div className="text-6xl mb-4 animate-bounce">📦</div>
-            <div className="text-3xl font-bold text-yellow-400 animate-pulse">
+            <div className="text-3xl font-bold text-pink-400 animate-pulse">
               Mystery Box Opened!
             </div>
             <div className="text-lg text-white mt-2">
@@ -377,22 +376,23 @@ export default function Profile() {
       )}
 
       {isLoading ? (
-        <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-blue-50 via-purple-50 to-pink-50">
-          <div className="animate-spin rounded-full h-16 w-16 border-b-4 border-purple-600 mb-4"></div>
-          <p className="text-lg text-gray-600">Loading your profile...</p>
+        <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-slate-900 via-pink-900 to-black">
+          <div className="animate-spin rounded-full h-16 w-16 border-b-4 border-pink-600 mb-4"></div>
+          <p className="text-lg text-pink-100">Loading your profile...</p>
         </div>
       ) : !isAuthenticated || !user ? (
-        <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-blue-50 via-purple-50 to-pink-50">
+        <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-slate-900 via-pink-900 to-black">
           <div className="text-6xl mb-4">🔒</div>
-          <p className="text-xl text-gray-600">Please log in to view your profile.</p>
+          <p className="text-xl text-pink-100">Please log in to view your profile.</p>
         </div>
       ) : (
-        <div className="min-h-screen flex flex-col bg-gradient-to-br from-blue-50 via-purple-50 to-pink-50">
+        <div className="min-h-screen flex flex-col bg-gradient-to-br from-slate-900 via-pink-900 to-black">
           <Header />
-          <main className="flex-1 container mx-auto px-4 py-8 max-w-4xl">
-            {/* Profile Header Card */}
-            <Card className="bg-gradient-to-r from-purple-600 via-blue-600 to-indigo-700 text-white mb-6 overflow-hidden relative">
-              <div className="absolute inset-0 bg-black/20"></div>
+
+          <main className="flex-1 container mx-auto px-4 py-8 max-w-7xl">
+            {/* Profile Header - Full width */}
+            <Card className="bg-gradient-to-r from-pink-600 via-rose-600 to-pink-700 text-white mb-6 overflow-hidden relative border-pink-500/20">
+              <div className="absolute inset-0 bg-black/30"></div>
               <div className="absolute top-0 right-0 w-64 h-64 bg-white/10 rounded-full -translate-y-32 translate-x-32"></div>
               <div className="absolute bottom-0 left-0 w-48 h-48 bg-white/5 rounded-full translate-y-24 -translate-x-24"></div>
               
@@ -403,7 +403,7 @@ export default function Profile() {
                       {getAvatarUrl() ? (
                         <img src={getAvatarUrl()} alt="Avatar" className="w-full h-full object-cover" />
                       ) : (
-                        <div className="w-full h-full bg-gradient-to-br from-purple-400 to-pink-400 flex items-center justify-center text-white text-3xl font-bold">
+                        <div className="w-full h-full bg-gradient-to-br from-pink-400 to-rose-400 flex items-center justify-center text-white text-3xl font-bold">
                           {displayName[0]?.toUpperCase()}
                         </div>
                       )}
@@ -414,7 +414,8 @@ export default function Profile() {
                         <Pencil className="h-6 w-6 text-white" />
                       </div>
                     </div>
-                    <div className="absolute -bottom-2 -right-2 bg-yellow-400 rounded-full p-1">
+                    
+                    <div className="absolute -bottom-2 -right-2 bg-pink-400 rounded-full p-1">
                       <span className="text-xs font-bold text-black px-1">{currentLevel}</span>
                     </div>
                   </div>
@@ -464,205 +465,108 @@ export default function Profile() {
               </CardContent>
             </Card>
 
-            {/* Tabs Navigation */}
-            <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-              <TabsList className="grid w-full grid-cols-4 mb-6 bg-white/80 backdrop-blur-sm">
-                <TabsTrigger value="overview" className="flex items-center space-x-2">
-                  <Target className="w-4 h-4" />
-                  <span>Overview</span>
-                </TabsTrigger>
-                <TabsTrigger value="stats" className="flex items-center space-x-2">
-                  <TrendingUp className="w-4 h-4" />
-                  <span>Statistics</span>
-                </TabsTrigger>
-                <TabsTrigger value="upgrades" className="flex items-center space-x-2">
-                  <Crown className="w-4 h-4" />
-                  <span>Upgrades</span>
-                </TabsTrigger>
-                <TabsTrigger value="settings" className="flex items-center space-x-2">
-                  <SettingsIcon className="w-4 h-4" />
-                  <span>Settings</span>
-                </TabsTrigger>
-              </TabsList>
-
-              {/* Overview Tab */}
-              <TabsContent value="overview">
-                <Overview 
-                  user={user}
-                  currentPoint={currentPoint}
-                  nextMilestone={nextMilestone}
-                  isLevelingUp={isLevelingUp}
-                  handleLevelUp={handleLevelUp}
-                  handleMysteryBox={handleMysteryBox}
-                />
-              </TabsContent>
-
-              {/* Statistics Tab */}
-              <TabsContent value="stats">
-                <Statistics 
-                  user={user}
-                  isLoadingNFTs={isLoadingNFTs}
-                  nftCount={nftCount}
-                  copiedWallet={copiedWallet}
-                  handleCopyWallet={handleCopyWallet}
-                  fetchNFTs={fetchNFTs}
-                />
-              </TabsContent>
-
-              {/* Upgrades Tab */}
-              <TabsContent value="upgrades">
-                <Upgrades 
-                  user={user}
-                  proInviteCode={proInviteCode}
-                  vipInviteCode={vipInviteCode}
-                  setProInviteCode={setProInviteCode}
-                  setVipInviteCode={setVipInviteCode}
-                  handleUpgradeToPro={handleUpgradeToPro}
-                  handleUpgradeToVIP={handleUpgradeToVIP}
-                  handleRedeemProCode={handleRedeemProCode}
-                  handleRedeemVIPCode={handleRedeemVIPCode}
-                />
-              </TabsContent>
-
-              {/* Settings Tab */}
-              <TabsContent value="settings">
-                <Settings 
-                  user={user}
-                  isEditing={isEditing}
-                  setIsEditing={setIsEditing}
-                  formData={formData}
-                  handleInputChange={handleInputChange}
-                  handleUpdateProfile={handleUpdateProfile}
-                  isSavingProfile={isSavingProfile}
-                  copiedWallet={copiedWallet}
-                  handleCopyWallet={handleCopyWallet}
-                  showDecodedInfo={showDecodedInfo}
-                  decodedInfo={decodedInfo}
-                  setShowDecodedInfo={setShowDecodedInfo}
-                  setDecodedInfo={setDecodedInfo}
-                  handleDecodeWalletInfo={handleDecodeWalletInfo}
-                  showPasswordDialog={showPasswordDialog}
-                  setShowPasswordDialog={setShowPasswordDialog}
-                  password={password}
-                  setPassword={setPassword}
-                  handlePasswordSubmit={handlePasswordSubmit}
-                  isDecoding={isDecoding}
-                  logout={logout}
-                />
-              </TabsContent>
-            </Tabs>
-
-            {/* Edit Profile Dialog */}
-            <Dialog open={isEditing} onOpenChange={setIsEditing}>
-              <DialogContent className="sm:max-w-[500px]">
-                <DialogHeader>
-                  <DialogTitle className="flex items-center space-x-2">
-                    <Pencil className="w-5 h-5" />
-                    <span>Edit Profile</span>
-                  </DialogTitle>
-                  <DialogDescription>
-                    Update your profile information. Changes will be saved to your account.
-                  </DialogDescription>
-                </DialogHeader>
-                <div className="grid gap-6 py-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="name" className="text-sm font-medium">
-                      Display Name
-                    </Label>
-                    <Input
-                      id="name"
-                      name="name"
-                      value={formData.name}
-                      onChange={handleInputChange}
-                      placeholder="Enter your display name"
-                      className="w-full"
-                    />
-                  </div>
-                  
-                  <div className="space-y-2">
-                    <Label htmlFor="wallet" className="text-sm font-medium">
-                      Wallet Address
-                    </Label>
-                    <Input
-                      id="wallet"
-                      name="wallet"
-                      value={formData.wallet}
-                      onChange={handleInputChange}
-                      placeholder="Enter your wallet address"
-                      className="w-full font-mono text-sm"
-                    />
-                    <p className="text-xs text-gray-500">
-                      Your wallet address for receiving rewards and NFTs
-                    </p>
-                  </div>
+            {/* Main Content Grid */}
+            <div className="grid lg:grid-cols-4 gap-6">
+              {/* Left Sidebar - Weekly Stats (Hidden on mobile, shown on large screens) */}
+              <div className="hidden lg:block lg:col-span-1">
+                <div className="sticky top-6">
+                  <WeeklyLoginStats />
                 </div>
-                <DialogFooter className="flex justify-between">
-                  <Button variant="outline" onClick={() => setIsEditing(false)}>
-                    Cancel
-                  </Button>
-                  <Button 
-                    onClick={handleUpdateProfile} 
-                    disabled={isSavingProfile}
-                    className="bg-gradient-to-r from-purple-500 to-blue-500 hover:from-purple-600 hover:to-blue-600"
-                  >
-                    {isSavingProfile ? (
-                      <div className="flex items-center">
-                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                        Saving...
-                      </div>
-                    ) : (
-                      'Save Changes'
-                    )}
-                  </Button>
-                </DialogFooter>
-              </DialogContent>
-            </Dialog>
+              </div>
+              
+              {/* Mobile Weekly Stats (Shown only on mobile) */}
+              <div className="lg:hidden mb-6">
+                <WeeklyLoginStats />
+              </div>
+              
+              {/* Main Content Area */}
+              <div className="lg:col-span-3 lg:col-start-2">
+                {/* Tabs Navigation */}
+                <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+                  <TabsList className="grid w-full grid-cols-4 mb-6 bg-black/20 backdrop-blur-sm border-pink-500/20">
+                    <TabsTrigger value="overview" className="flex items-center space-x-2 data-[state=active]:bg-gradient-to-r data-[state=active]:from-pink-500 data-[state=active]:to-rose-500 data-[state=active]:text-white text-pink-100">
+                      <Target className="w-4 h-4" />
+                      <span className="hidden sm:inline">Overview</span>
+                    </TabsTrigger>
+                    <TabsTrigger value="stats" className="flex items-center space-x-2 data-[state=active]:bg-gradient-to-r data-[state=active]:from-pink-500 data-[state=active]:to-rose-500 data-[state=active]:text-white text-pink-100">
+                      <TrendingUp className="w-4 h-4" />
+                      <span className="hidden sm:inline">Statistics</span>
+                    </TabsTrigger>
+                    <TabsTrigger value="upgrades" className="flex items-center space-x-2 data-[state=active]:bg-gradient-to-r data-[state=active]:from-pink-500 data-[state=active]:to-rose-500 data-[state=active]:text-white text-pink-100">
+                      <Crown className="w-4 h-4" />
+                      <span className="hidden sm:inline">Upgrades</span>
+                    </TabsTrigger>
+                    <TabsTrigger value="settings" className="flex items-center space-x-2 data-[state=active]:bg-gradient-to-r data-[state=active]:from-pink-500 data-[state=active]:to-rose-500 data-[state=active]:text-white text-pink-100">
+                      <SettingsIcon className="w-4 h-4" />
+                      <span className="hidden sm:inline">Settings</span>
+                    </TabsTrigger>
+                  </TabsList>
 
-            {/* Password Dialog */}
-            <Dialog open={showPasswordDialog} onOpenChange={setShowPasswordDialog}>
-              <DialogContent className="sm:max-w-[425px]">
-                <DialogHeader>
-                  <DialogTitle className="flex items-center space-x-2">
-                    <Lock className="w-5 h-5" />
-                    <span>Enter Password</span>
-                  </DialogTitle>
-                  <DialogDescription>
-                    Please enter your password to view the wallet information.
-                  </DialogDescription>
-                </DialogHeader>
-                <div className="grid gap-4 py-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="password">Password</Label>
-                    <Input
-                      id="password"
-                      type="password"
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      placeholder="Enter your password"
+                  {/* Tab Contents */}
+                  <TabsContent value="overview">
+                    <Overview 
+                      user={user}
+                      currentPoint={currentPoint}
+                      nextMilestone={nextMilestone}
+                      isLevelingUp={isLevelingUp}
+                      handleLevelUp={handleLevelUp}
+                      handleMysteryBox={handleMysteryBox}
                     />
-                  </div>
-                </div>
-                <DialogFooter>
-                  <Button variant="outline" onClick={() => setShowPasswordDialog(false)}>
-                    Cancel
-                  </Button>
-                  <Button
-                    onClick={handlePasswordSubmit}
-                    disabled={isDecoding || !password}
-                    className="bg-gradient-to-r from-purple-500 to-blue-500 hover:from-purple-600 hover:to-blue-600"
-                  >
-                    {isDecoding ? (
-                      <div className="flex items-center">
-                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                        Decoding...
-                      </div>
-                    ) : (
-                      'Decode'
-                    )}
-                  </Button>
-                </DialogFooter>
-              </DialogContent>
-            </Dialog>
+                  </TabsContent>
+
+                  <TabsContent value="stats">
+                    <Statistics 
+                      user={user}
+                      isLoadingNFTs={isLoadingNFTs}
+                      nftCount={nftCount}
+                      copiedWallet={copiedWallet}
+                      handleCopyWallet={handleCopyWallet}
+                      fetchNFTs={fetchNFTs}
+                    />
+                  </TabsContent>
+
+                  <TabsContent value="upgrades">
+                    <Upgrades 
+                      user={user}
+                      proInviteCode={proInviteCode}
+                      vipInviteCode={vipInviteCode}
+                      setProInviteCode={setProInviteCode}
+                      setVipInviteCode={setVipInviteCode}
+                      handleUpgradeToPro={handleUpgradeToPro}
+                      handleUpgradeToVIP={handleUpgradeToVIP}
+                      handleRedeemProCode={handleRedeemProCode}
+                      handleRedeemVIPCode={handleRedeemVIPCode}
+                    />
+                  </TabsContent>
+
+                  <TabsContent value="settings">
+                    <Settings 
+                      user={user}
+                      isEditing={isEditing}
+                      setIsEditing={setIsEditing}
+                      formData={formData}
+                      handleInputChange={handleInputChange}
+                      handleUpdateProfile={handleUpdateProfile}
+                      isSavingProfile={isSavingProfile}
+                      copiedWallet={copiedWallet}
+                      handleCopyWallet={handleCopyWallet}
+                      showDecodedInfo={showDecodedInfo}
+                      decodedInfo={decodedInfo}
+                      setShowDecodedInfo={setShowDecodedInfo}
+                      setDecodedInfo={setDecodedInfo}
+                      handleDecodeWalletInfo={handleDecodeWalletInfo}
+                      showPasswordDialog={showPasswordDialog}
+                      setShowPasswordDialog={setShowPasswordDialog}
+                      password={password}
+                      setPassword={setPassword}
+                      handlePasswordSubmit={handlePasswordSubmit}
+                      isDecoding={isDecoding}
+                      logout={logout}
+                    />
+                  </TabsContent>
+                </Tabs>
+              </div>
+            </div>
           </main>
           <Footer />
         </div>

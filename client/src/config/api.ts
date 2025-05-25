@@ -70,6 +70,8 @@ export const API_ENDPOINTS = {
     getByEmail: (email: string) => `${API_BASE_URL}/api/users/email/${email}`,
     getByWallet: (wallet: string) => `${API_BASE_URL}/api/users/wallet/${wallet}`,
     deleteById: (userId: string) => `${API_BASE_URL}/api/users/${userId}`,
+
+    weeklyStats: `${API_BASE_URL}/api/me/weekly-stats`,
   },
 
   // Skills APIs

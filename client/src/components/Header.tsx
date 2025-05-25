@@ -115,20 +115,21 @@ export default function Header() {
 
   return (
     <>
-      <header className="bg-white/95 backdrop-blur-md shadow-lg border-b border-gray-100 sticky top-0 z-40">
-        <div className="container mx-auto px-4 lg:px-6">
+      <header className="bg-gradient-to-r from-slate-900/95 via-pink-900/95 to-slate-900/95 backdrop-blur-md shadow-2xl border-b border-pink-500/20 sticky top-0 z-40">
+        <div className="absolute inset-0 bg-black/20"></div>
+        <div className="container mx-auto px-4 lg:px-6 relative z-10">
           <div className="flex justify-between items-center py-4">
             {/* Logo */}
             <Link href="/" className="flex items-center space-x-3 hover:opacity-80 transition-all duration-300 group">
               <div className="relative">
-                <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-purple-600 rounded-xl flex items-center justify-center transform group-hover:scale-110 transition-transform duration-300">
+                <div className="w-8 h-8 bg-gradient-to-br from-pink-500 to-rose-600 rounded-xl flex items-center justify-center transform group-hover:scale-110 transition-transform duration-300 shadow-lg">
                   <svg className="w-5 h-5 text-white" viewBox="0 0 24 24" fill="currentColor">
                     <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm-2-9.4l1.93 1.93c.39.39 1.02.39 1.41 0L17 8.75l-1.38-1.38-3.07 3.07L9.8 7.68 8.42 9.06l1.58 1.54z" />
                   </svg>
                 </div>
-                <div className="absolute -top-1 -right-1 w-3 h-3 bg-green-400 rounded-full animate-pulse"></div>
+                <div className="absolute -top-1 -right-1 w-3 h-3 bg-pink-400 rounded-full animate-pulse shadow-lg"></div>
               </div>
-              <h1 className="text-2xl font-bold bg-gradient-to-r from-gray-800 to-gray-600 bg-clip-text text-transparent">
+              <h1 className="text-2xl font-bold bg-gradient-to-r from-white to-pink-100 bg-clip-text text-transparent">
                 Kick'in
               </h1>
             </Link>
@@ -144,13 +145,13 @@ export default function Header() {
                 <Link 
                   key={item.href}
                   href={item.href} 
-                  className="group flex items-center space-x-2 px-3 py-2 rounded-lg text-gray-600 hover:text-blue-600 hover:bg-blue-50 transition-all duration-300 relative"
+                  className="group flex items-center space-x-2 px-3 py-2 rounded-lg text-pink-100 hover:text-white hover:bg-pink-500/20 transition-all duration-300 relative backdrop-blur-sm"
                 >
                   <svg className="w-4 h-4 transition-transform group-hover:scale-110" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={item.icon} />
                   </svg>
                   <span className="font-medium">{item.label}</span>
-                  <div className="absolute bottom-0 left-0 w-0 h-0.5 bg-gradient-to-r from-blue-500 to-purple-600 group-hover:w-full transition-all duration-300"></div>
+                  <div className="absolute bottom-0 left-0 w-0 h-0.5 bg-gradient-to-r from-pink-400 to-rose-500 group-hover:w-full transition-all duration-300"></div>
                 </Link>
               ))}
             </nav>
@@ -163,11 +164,11 @@ export default function Header() {
               </div>
 
               {/* Notifications */}
-              <button className="relative p-2 text-gray-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all duration-300 group">
+              <button className="relative p-2 text-pink-100 hover:text-white hover:bg-pink-500/20 rounded-lg transition-all duration-300 group backdrop-blur-sm">
                 <svg className="w-5 h-5 transition-transform group-hover:scale-110" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
                 </svg>
-                <div className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full animate-bounce"></div>
+                <div className="absolute -top-1 -right-1 w-3 h-3 bg-pink-500 rounded-full animate-bounce shadow-lg"></div>
               </button>
 
               {/* Profile Menu */}
@@ -182,7 +183,7 @@ export default function Header() {
                       disabled={isLoading}
                     >
                       <div className="relative">
-                        <div className="w-10 h-10 rounded-full border-2 border-transparent bg-gradient-to-r from-blue-500 to-purple-600 p-0.5 transition-all duration-300 group-hover:scale-105">
+                        <div className="w-10 h-10 rounded-full border-2 border-transparent bg-gradient-to-r from-pink-500 to-rose-600 p-0.5 transition-all duration-300 group-hover:scale-105 shadow-lg">
                           <div className="w-full h-full rounded-full overflow-hidden bg-white">
                             {getAvatarUrl() ? (
                               <img
@@ -191,42 +192,42 @@ export default function Header() {
                                 className="w-full h-full object-cover"
                               />
                             ) : (
-                              <div className="w-full h-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white font-bold text-sm">
+                              <div className="w-full h-full bg-gradient-to-br from-pink-500 to-rose-600 flex items-center justify-center text-white font-bold text-sm">
                                 {avatarInitial}
                               </div>
                             )}
                           </div>
                         </div>
-                        <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-green-500 rounded-full border-2 border-white shadow-sm">
-                          <div className="w-full h-full bg-green-400 rounded-full animate-pulse"></div>
+                        <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-pink-400 rounded-full border-2 border-white shadow-lg">
+                          <div className="w-full h-full bg-pink-300 rounded-full animate-pulse"></div>
                         </div>
                       </div>
                     </button>
 
                     {/* Dropdown Menu */}
                     {isMenuOpen && (
-                      <div className="absolute right-0 mt-3 w-80 bg-white rounded-2xl shadow-2xl py-2 z-50 border border-gray-100 animate-in slide-in-from-top-2 duration-200">
+                      <div className="absolute right-0 mt-3 w-80 bg-slate-800/95 backdrop-blur-md rounded-2xl shadow-2xl py-2 z-50 border border-pink-500/20 animate-in slide-in-from-top-2 duration-200">
                         {isAuthenticated && !isGuestUser ? (
                           <>
-                            <div className="px-4 py-3 border-b border-gray-100">
+                            <div className="px-4 py-3 border-b border-pink-500/20">
                               <div className="flex items-center space-x-3">
-                                <div className="w-12 h-12 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white font-bold">
+                                <div className="w-12 h-12 rounded-full bg-gradient-to-br from-pink-500 to-rose-600 flex items-center justify-center text-white font-bold shadow-lg">
                                   {avatarInitial}
                                 </div>
                                 <div>
-                                  <p className="font-semibold text-gray-800">{displayName}</p>
-                                  <p className="text-sm text-gray-500">{user?.email}</p>
+                                  <p className="font-semibold text-white">{displayName}</p>
+                                  <p className="text-sm text-pink-200">{user?.email}</p>
                                 </div>
                               </div>
                             </div>
                             <div className="py-2">
                               <Link 
                                 href="/profile" 
-                                className="flex items-center px-4 py-3 text-gray-700 hover:bg-gray-50 transition-colors group"
+                                className="flex items-center px-4 py-3 text-pink-100 hover:bg-pink-500/20 hover:text-white transition-colors group"
                                 onClick={() => setIsMenuOpen(false)}
                               >
-                                <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center mr-3 group-hover:bg-blue-200 transition-colors">
-                                  <svg className="w-4 h-4 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <div className="w-8 h-8 rounded-lg bg-pink-500/20 flex items-center justify-center mr-3 group-hover:bg-pink-500/30 transition-colors">
+                                  <svg className="w-4 h-4 text-pink-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
                                   </svg>
                                 </div>
@@ -235,10 +236,10 @@ export default function Header() {
                               <button
                                 onClick={logout}
                                 disabled={isLoading}
-                                className="flex items-center w-full px-4 py-3 text-gray-700 hover:bg-red-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed group"
+                                className="flex items-center w-full px-4 py-3 text-pink-100 hover:bg-red-500/20 hover:text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed group"
                               >
-                                <div className="w-8 h-8 rounded-lg bg-red-100 flex items-center justify-center mr-3 group-hover:bg-red-200 transition-colors">
-                                  <svg className="w-4 h-4 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <div className="w-8 h-8 rounded-lg bg-red-500/20 flex items-center justify-center mr-3 group-hover:bg-red-500/30 transition-colors">
+                                  <svg className="w-4 h-4 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
                                   </svg>
                                 </div>
@@ -248,16 +249,16 @@ export default function Header() {
                           </>
                         ) : (
                           <div className="py-2">
-                            <div className="px-4 py-4 border-b border-gray-100 bg-gradient-to-r from-blue-50 to-purple-50">
+                            <div className="px-4 py-4 border-b border-pink-500/20 bg-gradient-to-r from-pink-500/20 to-rose-500/20 backdrop-blur-sm">
                               <div className="flex items-center space-x-3">
-                                <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center">
+                                <div className="w-10 h-10 rounded-full bg-gradient-to-br from-pink-500 to-rose-600 flex items-center justify-center shadow-lg">
                                   <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
                                   </svg>
                                 </div>
                                 <div>
-                                  <p className="font-semibold text-gray-800">Welcome, Guest!</p>
-                                  <p className="text-sm text-gray-600">
+                                  <p className="font-semibold text-white">Welcome, Guest!</p>
+                                  <p className="text-sm text-pink-200">
                                     {isGuestUser 
                                       ? 'Upgrade to unlock all features'
                                       : 'Sign in to access full features'
@@ -270,16 +271,16 @@ export default function Header() {
                               <div className="p-4 space-y-4">
                                 <button
                                   onClick={handleRefreshGuest}
-                                  className="w-full flex items-center justify-center px-4 py-2.5 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-xl hover:from-blue-600 hover:to-blue-700 transition-all duration-300 font-medium shadow-lg hover:shadow-xl transform hover:scale-105"
+                                  className="w-full flex items-center justify-center px-4 py-2.5 bg-gradient-to-r from-pink-500 to-pink-600 text-white rounded-xl hover:from-pink-600 hover:to-pink-700 transition-all duration-300 font-medium shadow-lg hover:shadow-xl transform hover:scale-105"
                                 >
                                   <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
                                     <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582M20 20v-5h-.581M5.635 19A9 9 0 1 1 19 5.635" />
                                   </svg>
                                   Refresh Turn
                                 </button>
-                                <div className="bg-gray-50 rounded-xl p-4">
-                                  <h4 className="font-semibold text-gray-800 mb-3 flex items-center">
-                                    <svg className="w-4 h-4 mr-2 text-purple-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <div className="bg-slate-700/50 backdrop-blur-sm rounded-xl p-4 border border-pink-500/20">
+                                  <h4 className="font-semibold text-white mb-3 flex items-center">
+                                    <svg className="w-4 h-4 mr-2 text-pink-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
                                     </svg>
                                     Upgrade Account
@@ -289,7 +290,7 @@ export default function Header() {
                                       <input
                                         type="email"
                                         placeholder="Email address"
-                                        className="w-full px-4 py-2.5 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-300"
+                                        className="w-full px-4 py-2.5 bg-slate-600/50 border border-pink-500/20 rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-transparent transition-all duration-300 text-white placeholder-pink-300"
                                         value={upgradeForm.email}
                                         onChange={e => setUpgradeForm(f => ({ ...f, email: e.target.value }))}
                                         required
@@ -297,7 +298,7 @@ export default function Header() {
                                       <input
                                         type="password"
                                         placeholder="Password"
-                                        className="w-full px-4 py-2.5 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-300"
+                                        className="w-full px-4 py-2.5 bg-slate-600/50 border border-pink-500/20 rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-transparent transition-all duration-300 text-white placeholder-pink-300"
                                         value={upgradeForm.password}
                                         onChange={e => setUpgradeForm(f => ({ ...f, password: e.target.value }))}
                                         required
@@ -305,7 +306,7 @@ export default function Header() {
                                       <input
                                         type="text"
                                         placeholder="Full name"
-                                        className="w-full px-4 py-2.5 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-300"
+                                        className="w-full px-4 py-2.5 bg-slate-600/50 border border-pink-500/20 rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-transparent transition-all duration-300 text-white placeholder-pink-300"
                                         value={upgradeForm.name}
                                         onChange={e => setUpgradeForm(f => ({ ...f, name: e.target.value }))}
                                         required
@@ -313,7 +314,7 @@ export default function Header() {
                                     </div>
                                     <button
                                       type="submit"
-                                      className="w-full bg-gradient-to-r from-purple-500 to-purple-600 text-white py-2.5 rounded-lg hover:from-purple-600 hover:to-purple-700 transition-all duration-300 font-medium shadow-lg hover:shadow-xl transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
+                                      className="w-full bg-gradient-to-r from-rose-500 to-pink-600 text-white py-2.5 rounded-lg hover:from-rose-600 hover:to-pink-700 transition-all duration-300 font-medium shadow-lg hover:shadow-xl transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
                                       disabled={upgradeLoading}
                                     >
                                       {upgradeLoading ? (
@@ -329,7 +330,7 @@ export default function Header() {
                                       )}
                                     </button>
                                     {upgradeError && (
-                                      <div className="flex items-center text-red-600 text-sm font-medium bg-red-50 p-3 rounded-lg">
+                                      <div className="flex items-center text-red-400 text-sm font-medium bg-red-500/20 p-3 rounded-lg backdrop-blur-sm">
                                         <svg className="w-4 h-4 mr-2 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                                         </svg>
@@ -350,7 +351,7 @@ export default function Header() {
 
               {/* Mobile Menu Button */}
               <button 
-                className="lg:hidden p-2 text-gray-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all duration-300"
+                className="lg:hidden p-2 text-pink-100 hover:text-white hover:bg-pink-500/20 rounded-lg transition-all duration-300"
                 onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
               >
                 <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -362,7 +363,7 @@ export default function Header() {
 
           {/* Mobile Navigation */}
           {isMobileMenuOpen && (
-            <div className="lg:hidden py-4 border-t border-gray-100 animate-in slide-in-from-top-2 duration-200">
+            <div className="lg:hidden py-4 border-t border-pink-500/20 animate-in slide-in-from-top-2 duration-200">
               <nav className="space-y-2">
                 {[
                   { href: "/", label: "Dashboard", icon: "M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2H5a2 2 0 00-2 2z" },
@@ -373,7 +374,7 @@ export default function Header() {
                   <Link 
                     key={item.href}
                     href={item.href} 
-                    className="flex items-center space-x-3 px-4 py-3 text-gray-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all duration-300"
+                    className="flex items-center space-x-3 px-4 py-3 text-pink-100 hover:text-white hover:bg-pink-500/20 rounded-lg transition-all duration-300 backdrop-blur-sm"
                     onClick={() => setIsMobileMenuOpen(false)}
                   >
                     <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -391,17 +392,17 @@ export default function Header() {
       {/* Enhanced Modal */}
       {showUpgradeModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="bg-white rounded-2xl shadow-2xl p-8 max-w-md w-full mx-4 transform animate-in zoom-in-95 duration-200">
+          <div className="bg-slate-800 border border-pink-500/20 rounded-2xl shadow-2xl p-8 max-w-md w-full mx-4 transform animate-in zoom-in-95 duration-200">
             <div className="text-center">
-              <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                <svg className="w-8 h-8 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <div className="w-16 h-16 bg-pink-500/20 rounded-full flex items-center justify-center mx-auto mb-4">
+                <svg className="w-8 h-8 text-pink-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                 </svg>
               </div>
-              <h2 className="text-2xl font-bold text-gray-800 mb-2">Email Sent Successfully!</h2>
-              <p className="text-gray-600 mb-6 leading-relaxed">{upgradeSuccess}</p>
+              <h2 className="text-2xl font-bold text-white mb-2">Email Sent Successfully!</h2>
+              <p className="text-pink-200 mb-6 leading-relaxed">{upgradeSuccess}</p>
               <button
-                className="w-full px-6 py-3 bg-gradient-to-r from-green-500 to-green-600 text-white rounded-xl hover:from-green-600 hover:to-green-700 transition-all duration-300 font-medium shadow-lg hover:shadow-xl transform hover:scale-105"
+                className="w-full px-6 py-3 bg-gradient-to-r from-pink-500 to-rose-600 text-white rounded-xl hover:from-pink-600 hover:to-rose-700 transition-all duration-300 font-medium shadow-lg hover:shadow-xl transform hover:scale-105"
                 onClick={() => setShowUpgradeModal(false)}
               >
                 Got it, thanks!
