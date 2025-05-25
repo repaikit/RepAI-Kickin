@@ -22,9 +22,13 @@ import {
   Clock,
   Sparkles,
   Package,
-  Settings,
+  Settings as SettingsIcon,
   Gamepad2,
-  QrCode
+  Shield,
+  Eye,
+  EyeOff,
+  Lock,
+  RefreshCw
 } from 'lucide-react';
 import { 
   Dialog,
@@ -41,6 +45,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import Overview from "@/components/profile/Overview";
+import Statistics from "@/components/profile/Statistics";
+import Upgrades from "@/components/profile/Upgrades";
+import Settings from "@/components/profile/Settings";
 
 // Milestones giống backend
 const LEVEL_MILESTONES_BASIC = [
@@ -68,6 +76,14 @@ export default function Profile() {
   const [suiWallet, setSuiWallet] = useState(user?.sui_address || '');
   const [copiedWallet, setCopiedWallet] = useState<string | null>(null);
   const [qrWallet, setQrWallet] = useState<{ type: string, address: string } | null>(null);
+  const [showDecodedInfo, setShowDecodedInfo] = useState<{[key: string]: boolean}>({});
+  const [decodedInfo, setDecodedInfo] = useState<{[key: string]: string}>({});
+  const [isDecoding, setIsDecoding] = useState(false);
+  const [showPasswordDialog, setShowPasswordDialog] = useState(false);
+  const [password, setPassword] = useState('');
+  const [selectedWalletType, setSelectedWalletType] = useState<string | null>(null);
+  const [nftCount, setNftCount] = useState<number | null>(null);
+  const [isLoadingNFTs, setIsLoadingNFTs] = useState(false);
 
   useEffect(() => {
     if (user) {
@@ -86,7 +102,11 @@ export default function Profile() {
 
   const displayName = user?.name || user?.email?.split('@')[0] || 'Guest';
   
-  const handleCopyWallet = async (address: string, type: string) => {
+  const handleCopyWallet = async (address: string | undefined, type: string) => {
+    if (!address) {
+      toast.error('No wallet address available');
+      return;
+    }
     try {
       await navigator.clipboard.writeText(address);
       setCopiedWallet(type);
@@ -132,7 +152,6 @@ export default function Profile() {
       await fetchInitialData();
       
       toast.success('Profile updated successfully!');
-      console.log('Profile updated:', updatedUserData);
       setIsEditing(false);
 
     } catch (error) {
@@ -222,6 +241,103 @@ export default function Profile() {
     // if (user?.legend_level > 0) badges.push({ label: `Legend ${user.legend_level}`, color: "bg-gradient-to-r from-red-500 to-pink-600", icon: <Trophy className="w-3 h-3" /> });
     return badges;
   };
+
+  const handleDecodeWalletInfo = async (type: string) => {
+    setSelectedWalletType(type);
+    setShowPasswordDialog(true);
+  };
+
+  const handlePasswordSubmit = async () => {
+    if (!selectedWalletType || !password) return;
+    
+    setIsDecoding(true);
+    try {
+      const token = localStorage.getItem('access_token');
+      if (!token) {
+        toast.error('No access token found');
+        return;
+      }
+
+      const response = await fetch(API_ENDPOINTS.users.decodeWalletInfo, {
+        method: 'POST',
+        headers: {
+          ...defaultFetchOptions.headers,
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          wallet_type: selectedWalletType,
+          password: password
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.detail || 'Failed to decode wallet information');
+      }
+
+      const data = await response.json();
+      setDecodedInfo(prev => ({
+        ...prev,
+        [selectedWalletType]: data.decoded_info
+      }));
+      setShowDecodedInfo(prev => ({
+        ...prev,
+        [selectedWalletType]: true
+      }));
+      setShowPasswordDialog(false);
+      setPassword('');
+      toast.success('Wallet information decoded successfully');
+    } catch (error) {
+      console.error('Error decoding wallet info:', error);
+      toast.error(error instanceof Error ? error.message : 'Failed to decode wallet information');
+    } finally {
+      setIsDecoding(false);
+    }
+  };
+
+  const fetchNFTs = async (walletAddress: string | undefined) => {
+    if (!walletAddress) return;
+    
+    setIsLoadingNFTs(true);
+    try {
+      const token = localStorage.getItem('access_token');
+      if (!token) {
+        toast.error('No access token found');
+        return;
+      }
+
+      const response = await fetch(API_ENDPOINTS.nft.getNFTs(walletAddress), {
+        ...defaultFetchOptions,
+        headers: {
+          ...defaultFetchOptions.headers,
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.detail || 'Failed to fetch NFTs');
+      }
+
+      const data = await response.json();
+
+      setNftCount(data.total_nfts);
+
+    } catch (error) {
+      console.error('Error fetching NFTs:', error);
+      toast.error(error instanceof Error ? error.message : 'Failed to fetch NFT information');
+    } finally {
+      setIsLoadingNFTs(false);
+    }
+  };
+
+  useEffect(() => {
+    if (user?.evm_address) {
+      fetchNFTs(user.evm_address);
+    } else {
+      console.log("No EVM address found for user:", user);
+    }
+  }, [user?.evm_address]);
 
   return (
     <>
@@ -364,581 +480,75 @@ export default function Profile() {
                   <span>Upgrades</span>
                 </TabsTrigger>
                 <TabsTrigger value="settings" className="flex items-center space-x-2">
-                  <Settings className="w-4 h-4" />
+                  <SettingsIcon className="w-4 h-4" />
                   <span>Settings</span>
                 </TabsTrigger>
               </TabsList>
 
               {/* Overview Tab */}
-              <TabsContent value="overview" className="space-y-6">
-                <div className="grid md:grid-cols-2 gap-6">
-                  {/* Level Up Card */}
-                  <Card className="bg-gradient-to-br from-blue-500 to-purple-600 text-white border-0 shadow-xl">
-                    <CardHeader>
-                      <CardTitle className="flex items-center space-x-2">
-                        <ArrowUp className="w-5 h-5" />
-                        <span>Level Progress</span>
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="text-center mb-4">
-                        <p className={`text-sm mb-2 ${user?.can_level_up ? 'text-yellow-300' : 'text-white/70'}`}>
-                          {user?.can_level_up
-                            ? "🎉 Ready to level up!"
-                            : "Keep earning points to level up!"}
-                        </p>
-                        <div className="text-2xl font-bold mb-4">
-                          {currentPoint} / {nextMilestone} EXP
-                        </div>
-                      </div>
-                      <Button
-                        onClick={handleLevelUp}
-                        disabled={!user?.can_level_up || isLevelingUp}
-                        className={`w-full bg-white/20 hover:bg-white/30 text-white border-white/30 ${!user?.can_level_up ? 'opacity-50 cursor-not-allowed' : 'animate-pulse'}`}
-                      >
-                        {isLevelingUp ? (
-                          <div className="flex items-center justify-center">
-                            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                            Leveling Up...
-                          </div>
-                        ) : (
-                          <div className="flex items-center justify-center">
-                            <Zap className="mr-2 h-4 w-4" />
-                            Level Up Now!
-                          </div>
-                        )}
-                      </Button>
-                    </CardContent>
-                  </Card>
-
-                  {/* Mystery Box Card */}
-                  <Card className="bg-gradient-to-br from-purple-500 to-pink-600 text-white border-0 shadow-xl">
-                    <CardHeader>
-                      <CardTitle className="flex items-center space-x-2">
-                        <Package className="w-5 h-5" />
-                        <span>Mystery Box</span>
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="text-center mb-4">
-                        <div className="text-4xl mb-2">📦</div>
-                        <p className="text-sm text-white/80 mb-4">
-                          Open mystery boxes to earn bonus rewards!
-                        </p>
-                      </div>
-                      <Button
-                        onClick={handleMysteryBox}
-                        className="w-full bg-white/20 hover:bg-white/30 text-white border-white/30"
-                      >
-                        <Gift className="mr-2 h-4 w-4" />
-                        Open Mystery Box
-                      </Button>
-                    </CardContent>
-                  </Card>
-                </div>
-
-                {/* Quick Info Cards */}
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                  <Card className="bg-white/80 backdrop-blur-sm border-0 shadow-lg">
-                    <CardContent className="p-4 text-center">
-                      <Trophy className="w-8 h-8 mx-auto mb-2 text-yellow-500" />
-                      <div className="font-bold text-lg">{user?.legend_level ?? 0}</div>
-                      <div className="text-sm text-gray-600">Legend Level</div>
-                    </CardContent>
-                  </Card>
-                  
-                  <Card className="bg-white/80 backdrop-blur-sm border-0 shadow-lg">
-                    <CardContent className="p-4 text-center">
-                      <Star className="w-8 h-8 mx-auto mb-2 text-purple-500" />
-                      <div className="font-bold text-lg">{user?.vip_level ?? 'NONE'}</div>
-                      <div className="text-sm text-gray-600">VIP Level</div>
-                    </CardContent>
-                  </Card>
-                  
-                  <Card className="bg-white/80 backdrop-blur-sm border-0 shadow-lg">
-                    <CardContent className="p-4 text-center">
-                      <Gamepad2 className="w-8 h-8 mx-auto mb-2 text-blue-500" />
-                      <div className="font-bold text-lg">{user?.remaining_matches ?? 0}</div>
-                      <div className="text-sm text-gray-600">Matches Left</div>
-                    </CardContent>
-                  </Card>
-                  
-                  <Card className="bg-white/80 backdrop-blur-sm border-0 shadow-lg">
-                    <CardContent className="p-4 text-center">
-                      <Award className="w-8 h-8 mx-auto mb-2 text-green-500" />
-                      <div className="font-bold text-lg">{user?.total_point ?? 0}</div>
-                      <div className="text-sm text-gray-600">Total Points</div>
-                    </CardContent>
-                  </Card>
-                </div>
+              <TabsContent value="overview">
+                <Overview 
+                  user={user}
+                  currentPoint={currentPoint}
+                  nextMilestone={nextMilestone}
+                  isLevelingUp={isLevelingUp}
+                  handleLevelUp={handleLevelUp}
+                  handleMysteryBox={handleMysteryBox}
+                />
               </TabsContent>
 
               {/* Statistics Tab */}
-              <TabsContent value="stats" className="space-y-6">
-                <div className="grid md:grid-cols-2 gap-6">
-                  <Card className="bg-white/80 backdrop-blur-sm border-0 shadow-lg">
-                    <CardHeader>
-                      <CardTitle>Game Statistics</CardTitle>
-                    </CardHeader>
-                    <CardContent className="space-y-4">
-                      <div className="flex justify-between">
-                        <span className="text-gray-600">Total Kicked:</span>
-                        <span className="font-semibold">{user?.total_kicked ?? 0}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-gray-600">Kicked Wins:</span>
-                        <span className="font-semibold text-green-600">{user?.kicked_win ?? 0}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-gray-600">Total Keep:</span>
-                        <span className="font-semibold">{user?.total_keep ?? 0}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-gray-600">Keep Wins:</span>
-                        <span className="font-semibold text-green-600">{user?.keep_win ?? 0}</span>
-                      </div>
-                      <div className="flex justify-between border-t pt-2">
-                        <span className="text-gray-600">Overall Win Rate:</span>
-                        <span className="font-bold text-blue-600">
-                          {Math.round(((user?.kicked_win ?? 0) + (user?.keep_win ?? 0)) / Math.max((user?.total_kicked ?? 0) + (user?.total_keep ?? 0), 1) * 100)}%
-                        </span>
-                      </div>
-                    </CardContent>
-                  </Card>
-
-                  <Card className="bg-white/80 backdrop-blur-sm border-0 shadow-lg">
-                    <CardHeader>
-                      <CardTitle>Account Information</CardTitle>
-                    </CardHeader>
-                    <CardContent className="space-y-4">
-                      <div className="flex justify-between items-center">
-                        <span className="text-gray-600">Wallet:</span>
-                        <div className="flex items-center space-x-2">
-                          <span className="font-mono text-sm">{user?.wallet ? `${user.wallet.slice(0, 6)}...${user.wallet.slice(-4)}` : 'N/A'}</span>
-                          {user?.wallet && user.wallet !== 'N/A' && (
-                            <Button 
-                              variant="ghost" 
-                              size="sm" 
-                              onClick={() => setIsEditing(true)}
-                              className="px-2 py-0 h-auto"
-                            >
-                              {copied ? (
-                                <span className="text-green-600 text-xs">Copied!</span>
-                              ) : (
-                                <Copy className="h-4 w-4" />
-                              )}
-                            </Button>
-                          )}
-                        </div>
-                      </div>
-                      {user?.created_at && (
-                        <div className="flex justify-between">
-                          <span className="text-gray-600">Member Since:</span>
-                          <span className="font-semibold">{format(new Date(user.created_at), 'MMM dd, yyyy')}</span>
-                        </div>
-                      )}
-                      {user?.last_activity && (
-                        <div className="flex justify-between">
-                          <span className="text-gray-600">Last Active:</span>
-                          <span className="font-semibold">{format(new Date(user.last_activity), 'MMM dd, yyyy')}</span>
-                        </div>
-                      )}
-                    </CardContent>
-                  </Card>
-                </div>
+              <TabsContent value="stats">
+                <Statistics 
+                  user={user}
+                  isLoadingNFTs={isLoadingNFTs}
+                  nftCount={nftCount}
+                  copiedWallet={copiedWallet}
+                  handleCopyWallet={handleCopyWallet}
+                  fetchNFTs={fetchNFTs}
+                />
               </TabsContent>
 
               {/* Upgrades Tab */}
-              <TabsContent value="upgrades" className="space-y-6">
-                <div className="grid md:grid-cols-2 gap-6">
-                  <Card className="bg-gradient-to-br from-purple-500 to-pink-600 text-white border-0 shadow-xl">
-                    <CardHeader>
-                      <CardTitle className="flex items-center space-x-2">
-                        <Crown className="w-5 h-5" />
-                        <span>Upgrade to PRO</span>
-                      </CardTitle>
-                      <CardDescription className="text-white/80">
-                        Unlock premium features and benefits
-                      </CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="space-y-3 mb-4">
-                        <div className="flex items-center space-x-2">
-                          <div className="w-2 h-2 bg-white rounded-full"></div>
-                          <span className="text-sm">Unlimited matches per day</span>
-                        </div>
-                        <div className="flex items-center space-x-2">
-                          <div className="w-2 h-2 bg-white rounded-full"></div>
-                          <span className="text-sm">5000 bonus points</span>
-                        </div>
-                        <div className="flex items-center space-x-2">
-                          <div className="w-2 h-2 bg-white rounded-full"></div>
-                          <span className="text-sm">NFT Pro Level benefits</span>
-                        </div>
-                      </div>
-                      <div className="flex gap-2 mb-2">
-                        <Input
-                          placeholder="Invite Pro Code"
-                          value={proInviteCode}
-                          onChange={e => setProInviteCode(e.target.value)}
-                          className="bg-white/20 text-white border-white/30 placeholder-white/60"
-                          disabled={user?.is_pro}
-                        />
-                        <Button
-                          onClick={() => handleRedeemProCode(proInviteCode)}
-                          disabled={user?.is_pro}
-                          className="bg-white/30 hover:bg-white/40 text-white border-white/30"
-                        >
-                          Redeem
-                        </Button>
-                      </div>
-                      <Button
-                        onClick={() => handleUpgradeToPro(proInviteCode)}
-                        disabled={user?.is_pro}
-                        className="w-full bg-white/20 hover:bg-white/30 text-white border-white/30"
-                      >
-                        {user?.is_pro ? 'Already PRO' : 'Upgrade to PRO'}
-                      </Button>
-                    </CardContent>
-                  </Card>
-
-                  <Card className="bg-gradient-to-br from-yellow-500 to-orange-600 text-white border-0 shadow-xl">
-                    <CardHeader>
-                      <CardTitle className="flex items-center space-x-2">
-                        <Star className="w-5 h-5" />
-                        <span>Upgrade to VIP</span>
-                      </CardTitle>
-                      <CardDescription className="text-white/80">
-                        Experience the ultimate gaming luxury
-                      </CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="space-y-3 mb-4">
-                        <div className="flex items-center space-x-2">
-                          <div className="w-2 h-2 bg-white rounded-full"></div>
-                          <span className="text-sm">Exclusive VIP features</span>
-                        </div>
-                        <div className="flex items-center space-x-2">
-                          <div className="w-2 h-2 bg-white rounded-full"></div>
-                          <span className="text-sm">NFT VIP Pass benefits</span>
-                        </div>
-                        <div className="flex items-center space-x-2">
-                          <div className="w-2 h-2 bg-white rounded-full"></div>
-                          <span className="text-sm">Priority support & rewards</span>
-                        </div>
-                      </div>
-                      <div className="flex gap-2 mb-2">
-                        <Input
-                          placeholder="Invite VIP Code"
-                          value={vipInviteCode}
-                          onChange={e => setVipInviteCode(e.target.value)}
-                          className="bg-white/20 text-white border-white/30 placeholder-white/60"
-                          disabled={user?.is_vip}
-                        />
-                        <Button
-                          onClick={() => handleRedeemVIPCode(vipInviteCode)}
-                          disabled={user?.is_vip}
-                          className="bg-white/30 hover:bg-white/40 text-white border-white/30"
-                        >
-                          Redeem
-                        </Button>
-                      </div>
-                      <Button
-                        onClick={() => handleUpgradeToVIP(vipInviteCode)}
-                        disabled={user?.is_vip}
-                        className="w-full bg-white/20 hover:bg-white/30 text-white border-white/30"
-                      >
-                        {user?.is_vip ? 'Already VIP' : 'Upgrade to VIP'}
-                      </Button>
-                    </CardContent>
-                  </Card>
-                </div>
-
-                {/* Additional Upgrade Options */}
-                <Card className="bg-white/80 backdrop-blur-sm border-0 shadow-lg">
-                  <CardHeader>
-                    <CardTitle>Special Features</CardTitle>
-                    <CardDescription>Additional upgrades and features available</CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div className="p-4 bg-gradient-to-r from-blue-50 to-purple-50 rounded-lg border border-blue-100">
-                        <div className="flex items-center space-x-3 mb-2">
-                          <Package className="w-5 h-5 text-blue-600" />
-                          <span className="font-semibold">Mystery Box Level Up</span>
-                        </div>
-                        <p className="text-sm text-gray-600 mb-3">
-                          Unlock special mystery boxes with exclusive rewards
-                        </p>
-                        <Button size="sm" variant="outline" className="w-full">
-                          Coming Soon
-                        </Button>
-                      </div>
-
-                      <div className="p-4 bg-gradient-to-r from-green-50 to-blue-50 rounded-lg border border-green-100">
-                        <div className="flex items-center space-x-3 mb-2">
-                          <Clock className="w-5 h-5 text-green-600" />
-                          <span className="font-semibold">Mystery Box 5 Hours</span>
-                        </div>
-                        <p className="text-sm text-gray-600 mb-3">
-                          Get mystery boxes every 5 hours automatically
-                        </p>
-                        <Button size="sm" variant="outline" className="w-full">
-                          Coming Soon
-                        </Button>
-                      </div>
-
-                      <div className="p-4 bg-gradient-to-r from-purple-50 to-pink-50 rounded-lg border border-purple-100">
-                        <div className="flex items-center space-x-3 mb-2">
-                          <Gamepad2 className="w-5 h-5 text-purple-600" />
-                          <span className="font-semibold">AutoPlay Feature</span>
-                        </div>
-                        <p className="text-sm text-gray-600 mb-3">
-                          Enable autoplay for Basic, Pro, and VIP tiers
-                        </p>
-                        <Button size="sm" variant="outline" className="w-full">
-                          Configure
-                        </Button>
-                      </div>
-
-                      <div className="p-4 bg-gradient-to-r from-yellow-50 to-orange-50 rounded-lg border border-yellow-100">
-                        <div className="flex items-center space-x-3 mb-2">
-                          <Sparkles className="w-5 h-5 text-yellow-600" />
-                          <span className="font-semibold">NFT Mint Pass</span>
-                        </div>
-                        <p className="text-sm text-gray-600 mb-3">
-                          Mint exclusive NFTs with your achievements
-                        </p>
-                        <Button size="sm" variant="outline" className="w-full">
-                          Coming Soon
-                        </Button>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
+              <TabsContent value="upgrades">
+                <Upgrades 
+                  user={user}
+                  proInviteCode={proInviteCode}
+                  vipInviteCode={vipInviteCode}
+                  setProInviteCode={setProInviteCode}
+                  setVipInviteCode={setVipInviteCode}
+                  handleUpgradeToPro={handleUpgradeToPro}
+                  handleUpgradeToVIP={handleUpgradeToVIP}
+                  handleRedeemProCode={handleRedeemProCode}
+                  handleRedeemVIPCode={handleRedeemVIPCode}
+                />
               </TabsContent>
 
               {/* Settings Tab */}
-              <TabsContent value="settings" className="space-y-6">
-                <Card className="bg-white/80 backdrop-blur-sm border-0 shadow-lg">
-                  <CardHeader>
-                    <CardTitle>Account Settings</CardTitle>
-                    <CardDescription>Manage your account preferences and information</CardDescription>
-                  </CardHeader>
-                  <CardContent className="space-y-6">
-                    <div className="grid gap-4">
-                      <div className="grid grid-cols-4 items-center gap-4">
-                        <Label htmlFor="display-name" className="text-right font-medium">
-                          Display Name
-                        </Label>
-                        <div className="col-span-3 flex items-center space-x-2">
-                          <Input
-                            id="display-name"
-                            value={user?.name || ''}
-                            readOnly
-                            className="bg-gray-50"
-                          />
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => setIsEditing(true)}
-                          >
-                            <Pencil className="w-4 h-4" />
-                          </Button>
-                        </div>
-                      </div>
-
-                      <div className="grid grid-cols-4 items-center gap-4">
-                        <Label htmlFor="email" className="text-right font-medium">
-                          Email
-                        </Label>
-                        <Input
-                          id="email"
-                          value={user?.email || ''}
-                          readOnly
-                          className="col-span-3 bg-gray-50"
-                        />
-                      </div>
-
-                      <div className="grid grid-cols-4 items-center gap-4">
-                        <Label htmlFor="wallet-address" className="text-right font-medium">
-                          Wallet Address
-                        </Label>
-                        <div className="col-span-3 flex items-center space-x-2">
-                          <Input
-                            id="wallet-address"
-                            value={user?.wallet || ''}
-                            readOnly
-                            className="bg-gray-50 font-mono text-sm"
-                          />
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => setIsEditing(true)}
-                          >
-                            <Pencil className="w-4 h-4" />
-                          </Button>
-                        </div>
-                      </div>
-
-                      <div className="grid grid-cols-4 items-center gap-4">
-                        <Label className="text-right font-medium">
-                          Account Type
-                        </Label>
-                        <div className="col-span-3">
-                          <Badge variant={user?.user_type === 'guest' ? 'secondary' : 'default'}>
-                            {user?.user_type === 'guest' ? 'Guest Account' : 'Registered User'}
-                          </Badge>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="border-t pt-6">
-                      <h3 className="text-lg font-semibold mb-4">Kick'in Wallet</h3>
-                      <div className="grid gap-4">
-                        <div className="grid grid-cols-4 items-center gap-4">
-                          <Label htmlFor="evm-wallet" className="text-right font-medium">
-                            EVM Wallet
-                          </Label>
-                          <div className="col-span-3 flex items-center gap-2">
-                            <Input
-                              id="evm-wallet"
-                              value={user?.evm_address || ''}
-                              readOnly
-                              className="bg-gray-50 font-mono text-sm"
-                            />
-                            {user?.evm_address && (
-                              <>
-                                <Button
-                                  size="icon"
-                                  variant="ghost"
-                                  onClick={() => handleCopyWallet(user.evm_address!, 'evm')}
-                                  className="p-2"
-                                >
-                                  {copiedWallet === 'evm' ? (
-                                    <span className="text-green-600 text-xs">✓</span>
-                                  ) : (
-                                    <Copy className="w-4 h-4" />
-                                  )}
-                                </Button>
-                              </>
-                            )}
-                          </div>
-                        </div>
-                        <div className="grid grid-cols-4 items-center gap-4">
-                          <Label htmlFor="solana-wallet" className="text-right font-medium">
-                            Solana Wallet
-                          </Label>
-                          <div className="col-span-3 flex items-center gap-2">
-                            <Input
-                              id="solana-wallet"
-                              value={user?.sol_address || ''}
-                              readOnly
-                              className="bg-gray-50 font-mono text-sm"
-                            />
-                            {user?.sol_address && (
-                              <>
-                                <Button
-                                  size="icon"
-                                  variant="ghost"
-                                  onClick={() => handleCopyWallet(user.sol_address!, 'sol')}
-                                  className="p-2"
-                                >
-                                  {copiedWallet === 'sol' ? (
-                                    <span className="text-green-600 text-xs">✓</span>
-                                  ) : (
-                                    <Copy className="w-4 h-4" />
-                                  )}
-                                </Button>
-                              </>
-                            )}
-                          </div>
-                        </div>
-                        <div className="grid grid-cols-4 items-center gap-4">
-                          <Label htmlFor="sui-wallet" className="text-right font-medium">
-                            SUI Wallet
-                          </Label>
-                          <div className="col-span-3 flex items-center gap-2">
-                            <Input
-                              id="sui-wallet"
-                              value={user?.sui_address || ''}
-                              readOnly
-                              className="bg-gray-50 font-mono text-sm"
-                            />
-                            {user?.sui_address && (
-                              <>
-                                <Button
-                                  size="icon"
-                                  variant="ghost"
-                                  onClick={() => handleCopyWallet(user.sui_address!, 'sui')}
-                                  className="p-2"
-                                >
-                                  {copiedWallet === 'sui' ? (
-                                    <span className="text-green-600 text-xs">✓</span>
-                                  ) : (
-                                    <Copy className="w-4 h-4" />
-                                  )}
-                                </Button>
-                              </>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="border-t pt-6">
-                      <h3 className="text-lg font-semibold mb-4">Game Preferences</h3>
-                      <div className="space-y-4">
-                        <div className="flex items-center justify-between">
-                          <div>
-                            <Label className="font-medium">Auto-play Notifications</Label>
-                            <p className="text-sm text-gray-600">Get notified when auto-play completes</p>
-                          </div>
-                          <Button variant="outline" size="sm">
-                            Configure
-                          </Button>
-                        </div>
-                        
-                        <div className="flex items-center justify-between">
-                          <div>
-                            <Label className="font-medium">Mystery Box Alerts</Label>
-                            <p className="text-sm text-gray-600">Receive alerts for available mystery boxes</p>
-                          </div>
-                          <Button variant="outline" size="sm">
-                            Enable
-                          </Button>
-                        </div>
-                        
-                        <div className="flex items-center justify-between">
-                          <div>
-                            <Label className="font-medium">Level Up Celebrations</Label>
-                            <p className="text-sm text-gray-600">Show animations when leveling up</p>
-                          </div>
-                          <Button variant="outline" size="sm">
-                            On
-                          </Button>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="border-t pt-6">
-                      <div className="flex justify-between items-center">
-                        <div>
-                          <h3 className="text-lg font-semibold">Account Actions</h3>
-                          <p className="text-sm text-gray-600">Manage your account</p>
-                        </div>
-                        <div className="space-x-2">
-                          <Button variant="outline" onClick={() => setIsEditing(true)}>
-                            Edit Profile
-                          </Button>
-                          <Button variant="destructive" onClick={logout}>
-                            Sign Out
-                          </Button>
-                        </div>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
+              <TabsContent value="settings">
+                <Settings 
+                  user={user}
+                  isEditing={isEditing}
+                  setIsEditing={setIsEditing}
+                  formData={formData}
+                  handleInputChange={handleInputChange}
+                  handleUpdateProfile={handleUpdateProfile}
+                  isSavingProfile={isSavingProfile}
+                  copiedWallet={copiedWallet}
+                  handleCopyWallet={handleCopyWallet}
+                  showDecodedInfo={showDecodedInfo}
+                  decodedInfo={decodedInfo}
+                  setShowDecodedInfo={setShowDecodedInfo}
+                  setDecodedInfo={setDecodedInfo}
+                  handleDecodeWalletInfo={handleDecodeWalletInfo}
+                  showPasswordDialog={showPasswordDialog}
+                  setShowPasswordDialog={setShowPasswordDialog}
+                  password={password}
+                  setPassword={setPassword}
+                  handlePasswordSubmit={handlePasswordSubmit}
+                  isDecoding={isDecoding}
+                  logout={logout}
+                />
               </TabsContent>
             </Tabs>
 
@@ -1002,6 +612,52 @@ export default function Profile() {
                       </div>
                     ) : (
                       'Save Changes'
+                    )}
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+
+            {/* Password Dialog */}
+            <Dialog open={showPasswordDialog} onOpenChange={setShowPasswordDialog}>
+              <DialogContent className="sm:max-w-[425px]">
+                <DialogHeader>
+                  <DialogTitle className="flex items-center space-x-2">
+                    <Lock className="w-5 h-5" />
+                    <span>Enter Password</span>
+                  </DialogTitle>
+                  <DialogDescription>
+                    Please enter your password to view the wallet information.
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="grid gap-4 py-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="password">Password</Label>
+                    <Input
+                      id="password"
+                      type="password"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      placeholder="Enter your password"
+                    />
+                  </div>
+                </div>
+                <DialogFooter>
+                  <Button variant="outline" onClick={() => setShowPasswordDialog(false)}>
+                    Cancel
+                  </Button>
+                  <Button
+                    onClick={handlePasswordSubmit}
+                    disabled={isDecoding || !password}
+                    className="bg-gradient-to-r from-purple-500 to-blue-500 hover:from-purple-600 hover:to-blue-600"
+                  >
+                    {isDecoding ? (
+                      <div className="flex items-center">
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                        Decoding...
+                      </div>
+                    ) : (
+                      'Decode'
                     )}
                   </Button>
                 </DialogFooter>

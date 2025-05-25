@@ -49,6 +49,8 @@ export const API_ENDPOINTS = {
     GoogleLogin: `${API_BASE_URL}/api/auth/google`,
     GoogleRegister: `${API_BASE_URL}/api/auth/google/register`,
 
+    decodeWalletInfo: `${API_BASE_URL}/api/users/decode-wallet-info`,
+
     refreshToken: `${API_BASE_URL}/api/auth/refresh`,
     // Upgrade Guest
     upgradeGuest: `${API_BASE_URL}/api/upgrade`,
@@ -101,6 +103,10 @@ export const API_ENDPOINTS = {
   // Chat APIs
   chat: {
     getHistory: `${API_BASE_URL}/api/chat/history`,
+  },
+
+  nft: {
+    getNFTs: (walletAddress: string) => `${API_BASE_URL}/api/nfts/${walletAddress}`,
   },
 };
 

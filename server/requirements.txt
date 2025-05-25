@@ -43,8 +43,6 @@ pillow>=10.0.0
 boto3>=1.18.0,<1.19.0
 aioredis==2.0.1
 
-#web3
-web3==7.11.0
 
 # Added from the code block
 APScheduler==3.10.4
@@ -53,6 +51,7 @@ APScheduler==3.10.4
 pytz==2024.1
 
 # Added from the code block
+web3==7.12.0
 mnemonic>=0.21
 eth-account>=0.13.7
 bip-utils>=2.9.3
@@ -61,3 +60,5 @@ fastapi
 uvicorn
 python-dotenv
 httpx
+
+requests>=2.32.3
