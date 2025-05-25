@@ -1,16 +1,16 @@
 // API configuration
-const isDevelopment = process.env.NODE_ENV === 'development';
+const isDevelopment = process.env.NODE_ENV === "development";
 
 // Base URL for API calls
-export const API_BASE_URL = isDevelopment 
-  ? 'http://localhost:5000'
-  : process.env.NEXT_PUBLIC_API_URL || '';
+export const API_BASE_URL = isDevelopment
+  ? "http://localhost:5000"
+  : process.env.NEXT_PUBLIC_API_URL || "";
 
 console.log("bạn đang kết nối tới" + API_BASE_URL);
 // WebSocket URL
 export const WS_BASE_URL = isDevelopment
-  ? 'ws://localhost:5000'
-  : process.env.NEXT_PUBLIC_WS_URL || '';
+  ? "ws://localhost:5000"
+  : process.env.NEXT_PUBLIC_WS_URL || "";
 
 // API endpoints
 export const API_ENDPOINTS = {
@@ -122,10 +122,10 @@ export const API_ENDPOINTS = {
 
 // Default fetch options
 export const defaultFetchOptions = {
-  credentials: 'include' as RequestCredentials,
+  credentials: "include" as RequestCredentials,
   headers: {
-    'Content-Type': 'application/json',
-    'Accept': 'application/json',
+    "Content-Type": "application/json",
+    Accept: "application/json",
   },
-  mode: 'cors' as RequestMode,
-}; 
+  mode: "cors" as RequestMode,
+};
