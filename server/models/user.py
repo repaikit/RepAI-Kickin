@@ -70,7 +70,6 @@ class UserBase(BaseModel):
     sui_mnemonic: Optional[str] = None
     sui_private_key: Optional[str] = None
     sui_address: Optional[str] = None
-    used_invite_codes: List[str] = []
 
     class Config:
         json_encoders = {
