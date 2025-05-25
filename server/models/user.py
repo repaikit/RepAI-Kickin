@@ -32,7 +32,7 @@ class UserBase(BaseModel):
     avatar: Optional[str] = None
     kicker_skills: List[str] = []
     goalkeeper_skills: List[str] = []
-    total_point: int = 0
+    total_point: int = 0  # Điểm tuần hiện tại
     bonus_point: float = 0.0
     match_history: List[Any] = []
     created_at: str = Field(default_factory=lambda: get_vietnam_time().isoformat())
@@ -53,7 +53,6 @@ class UserBase(BaseModel):
     vip_year: Optional[int] = None
     vip_payment_method: str = "NONE"  # VISA, NFT, NONE
     # --- Thay thế các trường điểm tuần và lịch sử điểm tuần riêng biệt bằng trường chung ---
-    week_point: int = 0  # Điểm tuần hiện tại (dùng cho mọi loại user)
     week_history: List[dict] = []  # Lịch sử điểm tuần, mỗi entry: {"week": ..., "point": ..., "total_point": ..., "reset_at": ...}
     # --- Thêm các trường mới ---
     last_box_open: Optional[str] = None
@@ -70,6 +69,8 @@ class UserBase(BaseModel):
     sui_mnemonic: Optional[str] = None
     sui_private_key: Optional[str] = None
     sui_address: Optional[str] = None
+    # Thêm trường mới để lưu thông tin đăng nhập theo tuần
+    weekly_logins: Dict[str, Dict[str, int]] = Field(default_factory=dict)  # Format: {"YYYY-WW": {"YYYY-MM-DD": points}}
 
     class Config:
         json_encoders = {
@@ -114,6 +115,7 @@ class UserUpdate(BaseModel):
     last_box_open: Optional[str] = None
     mystery_box_history: Optional[List[dict]] = None
     last_claim_matches: Optional[str] = None
+    weekly_logins: Optional[Dict[str, Dict[str, int]]] = None
 
 class UserInDB(UserBase):
     id: PyObjectId = Field(default_factory=PyObjectId, alias="_id")

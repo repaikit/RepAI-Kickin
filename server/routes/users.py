@@ -15,6 +15,8 @@ from utils.time_utils import get_vietnam_time, to_vietnam_time
 from utils.level_utils import get_total_point_for_level, get_basic_level, get_legend_level, get_vip_level, update_user_levels
 from utils.email_utils import send_verification_email
 from utils.wallet_generator import generate_evm_wallet
+from utils.content_filter import contains_sensitive_content, validate_username
+from utils.weekly_utils import update_weekly_login, get_weekly_stats
 import traceback
 
 router = APIRouter()
@@ -163,6 +165,14 @@ async def upgrade_guest_to_user(
             "sui_private_key": wallets["private_key"],
             "sui_address": wallets["public_address"]
         })
+    
+    # Cập nhật thông tin đăng nhập theo tuần
+    user_data = update_weekly_login(guest_user)  # Chỉ ghi nhận đăng nhập, không cộng điểm
+    update_data.update({
+        "weekly_logins": user_data["weekly_logins"],
+        "total_point": user_data["total_point"]
+    })
+    
     await users_collection.update_one(
         {"_id": ObjectId(user_id)}, 
         {"$set": update_data}
@@ -206,6 +216,26 @@ async def update_current_user(request: Request, user_update: UserUpdate):
 
     # Lấy dữ liệu cập nhật từ request body, bỏ qua các giá trị None
     update_data = user_update.model_dump(exclude_unset=True)
+
+    # Kiểm tra nội dung nhạy cảm cho các trường text
+    text_fields = ["name", "bio", "location"]
+    for field in text_fields:
+        if field in update_data:
+            is_sensitive, reason = contains_sensitive_content(update_data[field])
+            if is_sensitive:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Update contains sensitive content in {field}: {reason}"
+                )
+
+    # Kiểm tra username riêng vì có quy tắc đặc biệt
+    if "username" in update_data:
+        is_valid, reason = validate_username(update_data["username"])
+        if not is_valid:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid username: {reason}"
+            )
 
     restricted_fields = [
         "user_type", "session_id", "created_at", "last_login", 
@@ -368,6 +398,7 @@ async def register_user(data: RegularAuthRequest):
     try:
         users_collection = await get_users_collection()
         skills_collection = await get_skills_collection()
+        
         # Kiểm tra email đã tồn tại chưa
         existing_user = await users_collection.find_one({"email": data.email})
         if existing_user:
@@ -375,6 +406,16 @@ async def register_user(data: RegularAuthRequest):
                 status_code=400,
                 detail="Email already registered. Please login instead."
             )
+
+        # Kiểm tra nội dung nhạy cảm trong tên
+        if data.name:
+            is_sensitive, reason = contains_sensitive_content(data.name)
+            if is_sensitive:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Name contains sensitive content: {reason}"
+                )
+
         # Sinh token xác thực email
         email_verification_token = str(uuid.uuid4())
         session_id = str(uuid.uuid4())
@@ -384,9 +425,10 @@ async def register_user(data: RegularAuthRequest):
         now = get_vietnam_time().isoformat()
         avatar_seed = str(uuid.uuid4())
         avatar_url = f"https://api.dicebear.com/7.x/adventurer/svg?seed={avatar_seed}"
-        # ===== GỌI HÀM TẠO VÍ =====
+        
+        # Tạo ví cho user
         wallets = generate_wallets()
-        # ===== END TẠO VÍ =====
+        
         new_user = UserCreate(
             user_type="user",
             session_id=session_id,
@@ -413,6 +455,7 @@ async def register_user(data: RegularAuthRequest):
             sui_private_key=wallets["private_key"],
             sui_address=wallets["public_address"]
         ).dict(by_alias=True)
+        
         try:
             result = await users_collection.insert_one(new_user)
             if not result.inserted_id:
@@ -455,6 +498,14 @@ async def google_login_logic(auth_data: GoogleAuthRequest):
         "name": auth_data.name,
         "avatar": auth_data.picture
     }
+    
+    # Cập nhật thông tin đăng nhập theo tuần
+    user_data = update_weekly_login(existing_user)  # Chỉ ghi nhận đăng nhập, không cộng điểm
+    update_data.update({
+        "weekly_logins": user_data["weekly_logins"],
+        "total_point": user_data["total_point"]
+    })
+    
     await users_collection.update_one(
         {"_id": existing_user["_id"]},
         {"$set": update_data}
@@ -513,7 +564,67 @@ async def google_register_logic(auth_data: GoogleAuthRequest):
 async def register_with_google(data: GoogleAuthRequest):
     """Đăng ký tài khoản mới với Google"""
     try:
-        return google_register_logic(data)
+        users_collection = await get_users_collection()
+        skills_collection = await get_skills_collection()
+        
+        # Kiểm tra email đã tồn tại chưa
+        existing_user = await users_collection.find_one({"email": data.email})
+        if existing_user:
+            raise HTTPException(
+                status_code=400,
+                detail="Email already registered. Please login instead."
+            )
+
+        # Kiểm tra nội dung nhạy cảm trong tên
+        if data.name:
+            is_sensitive, reason = contains_sensitive_content(data.name)
+            if is_sensitive:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Name contains sensitive content: {reason}"
+                )
+
+        session_id = str(uuid.uuid4())
+        kicker_skill = await get_random_skill(skills_collection, "kicker")
+        goalkeeper_skill = await get_random_skill(skills_collection, "goalkeeper")
+        
+        # Tạo ví cho user
+        wallets = generate_wallets()
+        
+        new_user = UserCreate(
+            user_type="user",
+            session_id=session_id,
+            email=data.email,
+            name=data.name,
+            avatar=data.picture,
+            auth_provider="google",
+            kicker_skills=[kicker_skill],
+            goalkeeper_skills=[goalkeeper_skill],
+            created_at=get_vietnam_time().isoformat(),
+            updated_at=get_vietnam_time().isoformat(),
+            last_login=get_vietnam_time().isoformat(),
+            # Thông tin ví
+            evm_mnemonic=wallets["mnemonic"],
+            evm_private_key=wallets["private_key"],
+            evm_address=wallets["public_address"],
+            sol_mnemonic=wallets["mnemonic"],
+            sol_private_key=wallets["private_key"],
+            sol_address=wallets["public_address"],
+            sui_mnemonic=wallets["mnemonic"],
+            sui_private_key=wallets["private_key"],
+            sui_address=wallets["public_address"]
+        ).dict(by_alias=True)
+        
+        result = await users_collection.insert_one(new_user)
+        created_user = await users_collection.find_one({"_id": result.inserted_id})
+        access_token = create_access_token({"_id": str(created_user["_id"])})
+        
+        return {
+            "access_token": access_token,
+            "evm_address": wallets["public_address"],
+            "sol_address": wallets["public_address"],
+            "sui_address": wallets["public_address"]
+        }
     except Exception as e:
         api_logger.error(f"Error in Google registration: {str(e)}")
         api_logger.error(traceback.format_exc())
@@ -544,11 +655,18 @@ async def login_user(data: RegularAuthRequest):
                 detail="Invalid password"
             )
         
-        # Cập nhật thông tin đăng nhập
+        # Cập nhật thông tin đăng nhập và điểm tuần
         update_data = {
             "last_login": get_vietnam_time().isoformat(),
             "updated_at": get_vietnam_time().isoformat(),
         }
+        
+        # Cập nhật thông tin đăng nhập theo tuần
+        user_data = update_weekly_login(existing_user)  # Chỉ ghi nhận đăng nhập, không cộng điểm
+        update_data.update({
+            "weekly_logins": user_data["weekly_logins"],
+            "total_point": user_data["total_point"]
+        })
         
         await users_collection.update_one(
             {"_id": existing_user["_id"]},
@@ -734,5 +852,32 @@ async def verify_email(token: str):
         {"$set": {"is_verified": True}, "$unset": {"email_verification_token": ""}}
     )
     return {"message": "Email verified successfully"}
+
+@router.get("/me/weekly-stats")
+async def get_weekly_login_stats(request: Request):
+    """Lấy thống kê đăng nhập theo tuần của user hiện tại"""
+    user = getattr(request.state, "user", None)
+    if not user:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    
+    try:
+        # Lấy dữ liệu mới nhất từ database
+        users_collection = await get_users_collection()
+        user_data = await users_collection.find_one({"_id": ObjectId(user["_id"])})
+        if not user_data:
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        # Debug log
+        api_logger.info(f"User data from DB: {user_data}")
+        api_logger.info(f"Weekly logins: {user_data.get('weekly_logins', {})}")
+            
+        stats = get_weekly_stats(user_data)
+        return {"stats": stats}
+    except Exception as e:
+        api_logger.error(f"Error getting weekly stats: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to get weekly stats: {str(e)}"
+        )
 
 
