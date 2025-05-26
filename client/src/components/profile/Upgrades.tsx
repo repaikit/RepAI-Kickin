@@ -10,6 +10,8 @@ import {
   Gamepad2, 
   Sparkles 
 } from 'lucide-react';
+import { API_ENDPOINTS, defaultFetchOptions } from '@/config/api';
+import { toast } from "sonner";
 
 interface UpgradesProps {
   user: any;
@@ -34,6 +36,38 @@ export default function Upgrades({
   handleRedeemProCode,
   handleRedeemVIPCode
 }: UpgradesProps) {
+
+  // Handler for Upgrade to PRO
+  const canUpgradeToPro =
+    !user?.is_pro &&
+    ((user?.level >= 100 || user?.total_point >= 5000) && user?.has_nft_pro_level === true);
+
+  const handleUpgradeToProApi = async () => {
+    if (!canUpgradeToPro) return;
+    try {
+      const token = localStorage.getItem('access_token');
+      if (!token) {
+        toast.error('Please login to upgrade.');
+        return;
+      }
+      const response = await fetch(API_ENDPOINTS.upgradeToPro, {
+        method: 'POST',
+        headers: {
+          ...defaultFetchOptions.headers,
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+      const data = await response.json();
+      if (response.ok && data.success) {
+        toast.success('Successfully upgraded to PRO!');
+      } else {
+        toast.error(data.detail || data.message || 'Upgrade failed.');
+      }
+    } catch (error) {
+      toast.error('Upgrade failed.');
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="grid md:grid-cols-2 gap-6">
@@ -79,11 +113,17 @@ export default function Upgrades({
               </Button>
             </div>
             <Button
-              onClick={() => handleUpgradeToPro(proInviteCode)}
-              disabled={user?.is_pro}
+              onClick={handleUpgradeToProApi}
+              disabled={!canUpgradeToPro}
               className="w-full bg-white/20 hover:bg-white/30 text-white border-white/30"
             >
-              {user?.is_pro ? 'Already PRO' : 'Upgrade to PRO'}
+              {user?.is_pro
+                ? 'Already PRO'
+                : !user?.has_nft_pro_level
+                  ? 'Need NFT Pro Level'
+                  : (user?.level >= 100 || user?.total_point >= 5000)
+                    ? 'Upgrade to PRO'
+                    : 'Need Level 100 or 5000 Points'}
             </Button>
           </CardContent>
         </Card>
@@ -148,32 +188,6 @@ export default function Upgrades({
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="p-4 bg-gradient-to-r from-blue-50 to-purple-50 rounded-lg border border-blue-100">
-              <div className="flex items-center space-x-3 mb-2">
-                <Package className="w-5 h-5 text-blue-600" />
-                <span className="font-semibold">Mystery Box Level Up</span>
-              </div>
-              <p className="text-sm text-gray-600 mb-3">
-                Unlock special mystery boxes with exclusive rewards
-              </p>
-              <Button size="sm" variant="outline" className="w-full">
-                Coming Soon
-              </Button>
-            </div>
-
-            <div className="p-4 bg-gradient-to-r from-green-50 to-blue-50 rounded-lg border border-green-100">
-              <div className="flex items-center space-x-3 mb-2">
-                <Clock className="w-5 h-5 text-green-600" />
-                <span className="font-semibold">Mystery Box 5 Hours</span>
-              </div>
-              <p className="text-sm text-gray-600 mb-3">
-                Get mystery boxes every 5 hours automatically
-              </p>
-              <Button size="sm" variant="outline" className="w-full">
-                Coming Soon
-              </Button>
-            </div>
-
             <div className="p-4 bg-gradient-to-r from-purple-50 to-pink-50 rounded-lg border border-purple-100">
               <div className="flex items-center space-x-3 mb-2">
                 <Gamepad2 className="w-5 h-5 text-purple-600" />
@@ -182,8 +196,13 @@ export default function Upgrades({
               <p className="text-sm text-gray-600 mb-3">
                 Enable autoplay for Basic, Pro, and VIP tiers
               </p>
-              <Button size="sm" variant="outline" className="w-full">
-                Configure
+              <Button 
+                size="sm" 
+                variant="outline" 
+                className="w-full"
+                disabled={!user?.is_pro && !user?.is_vip}
+              >
+                {!user?.is_pro && !user?.is_vip ? 'PRO/VIP Only' : 'Configure'}
               </Button>
             </div>
 

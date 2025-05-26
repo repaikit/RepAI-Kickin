@@ -1,11 +1,35 @@
 from datetime import datetime, timedelta
 from typing import Dict, List, Tuple
-from utils.time_utils import get_vietnam_time
+from utils.time_utils import get_vietnam_time, to_vietnam_time, format_vietnam_time
 
 def get_week_number(date: datetime) -> str:
     """Lấy số tuần trong năm theo định dạng YYYY-WW"""
-    # Sử dụng isocalendar() để lấy tuần chính xác
-    year, week, _ = date.isocalendar()
+    # Chuyển đổi về giờ Việt Nam
+    date = to_vietnam_time(date)
+    
+    # Tính tuần dựa trên ngày đầu tiên của năm
+    year = date.year
+    first_day = datetime(year, 1, 1)
+    first_day = to_vietnam_time(first_day)
+    
+    # Điều chỉnh để ngày đầu tiên là thứ 2
+    while first_day.weekday() != 0:
+        first_day += timedelta(days=1)
+    
+    # Tính số tuần
+    delta = date - first_day
+    week = (delta.days // 7) + 1
+    
+    # Nếu tuần > 52, có thể là tuần đầu tiên của năm sau
+    if week > 52:
+        next_year = year + 1
+        next_first_day = datetime(next_year, 1, 1)
+        next_first_day = to_vietnam_time(next_first_day)
+        while next_first_day.weekday() != 0:
+            next_first_day += timedelta(days=1)
+        if date >= next_first_day:
+            return f"{next_year}-01"
+    
     return f"{year}-{week:02d}"
 
 def get_current_week() -> str:
@@ -15,13 +39,18 @@ def get_current_week() -> str:
 def get_week_dates(week_number: str) -> List[str]:
     """Lấy danh sách các ngày trong tuần theo định dạng YYYY-MM-DD"""
     year, week = map(int, week_number.split("-"))
-    # Tìm ngày đầu tiên của tuần
+    
+    # Tìm ngày đầu tiên của năm
     first_day = datetime(year, 1, 1)
+    first_day = to_vietnam_time(first_day)
+    
     # Điều chỉnh để ngày đầu tiên là thứ 2
     while first_day.weekday() != 0:
         first_day += timedelta(days=1)
+    
     # Tính ngày đầu tiên của tuần cần tìm
     start_date = first_day + timedelta(weeks=week-1)
+    
     # Tạo danh sách 7 ngày trong tuần
     return [(start_date + timedelta(days=i)).strftime("%Y-%m-%d") for i in range(7)]
 
@@ -52,12 +81,17 @@ def update_weekly_login(user_data: Dict, points: int = 0) -> Dict:
     if "weekly_logins" not in user_data:
         user_data["weekly_logins"] = {}
     
+    # Xóa dữ liệu cũ của ngày hiện tại trong tất cả các tuần
+    for week in list(user_data["weekly_logins"].keys()):
+        if current_date_str in user_data["weekly_logins"][week]:
+            del user_data["weekly_logins"][week][current_date_str]
+    
     # Khởi tạo dữ liệu cho tuần hiện tại nếu chưa có
     if current_week not in user_data["weekly_logins"]:
         user_data["weekly_logins"][current_week] = {}
     
-    # Chỉ ghi nhận đăng nhập, không cần điểm
-    user_data["weekly_logins"][current_week][current_date_str] = True
+    # Ghi nhận đăng nhập cho ngày hiện tại, lưu cả điểm
+    user_data["weekly_logins"][current_week][current_date_str] = {"login": True, "points": points}
     
     return user_data
 
@@ -65,34 +99,25 @@ def get_weekly_stats(user_data: Dict) -> List[Dict]:
     """Lấy thống kê đăng nhập của 5 tuần gần nhất"""
     weeks = get_last_5_weeks()
     stats = []
-    
-    # Debug log
-    print("Weekly logins from user_data:", user_data.get("weekly_logins", {}))
-    
-    for week in weeks:
+    week_history_map = {w['week']: w['point'] for w in user_data.get('week_history', [])}
+    total_point = user_data.get("total_point", 0)
+    for idx, week in enumerate(weeks):
         week_dates = get_week_dates(week)
+        # Lấy điểm tuần từ week_history nếu có, tuần hiện tại thì lấy total_point
+        if idx == len(weeks) - 1:
+            week_point = total_point
+        else:
+            week_point = week_history_map.get(week, 0)
         week_data = {
             "week": week,
             "dates": [],
-            "total_points": 0
+            "total_points": week_point
         }
-        
-        # Debug log
-        print(f"Processing week {week}")
-        print(f"Week dates: {week_dates}")
-        print(f"Week logins: {user_data.get('weekly_logins', {}).get(week, {})}")
-        
         for date in week_dates:
-            has_login = user_data.get("weekly_logins", {}).get(week, {}).get(date, False)
-            # Debug log
-            print(f"Date {date} has_login: {has_login}")
-            
+            has_login = bool(user_data.get("weekly_logins", {}).get(week, {}).get(date, False))
             week_data["dates"].append({
                 "date": date,
-                "points": 0,
                 "has_login": has_login
             })
-        
         stats.append(week_data)
-    
     return stats 

@@ -232,7 +232,34 @@ async def reset_week(ignore_time_check=False, force_week=None):
             
         api_logger.info(f"[WeeklyReset] Starting reset for week {current_week}")
         
-        # Reset tất cả trong 1 lần update
+        # 1. Lưu leaderboard tuần cho từng bảng TRƯỚC KHI RESET
+        for board, query in {
+            "BASIC": {"is_pro": False, "is_vip": False},
+            "PRO": {"is_pro": True, "is_vip": False},
+            "VIP": {"is_vip": True}
+        }.items():
+            users = await db.users.find(query).to_list(length=None)
+            user_points = []
+            for user in users:
+                week_history = user.get("week_history", [])
+                last_entry = week_history[-1] if week_history else None
+                week_point = last_entry["point"] if last_entry and last_entry["week"] == current_week else user.get("total_point", 0)
+                # BASIC: week_point là điểm tuần vừa reset, PRO/VIP: lấy total_point hiện tại
+                if board == "BASIC":
+                    point = user.get("total_point", 0)
+                else:
+                    point = user.get("total_point", 0)
+                user_points.append({
+                    "user_id": user["_id"],
+                    "total_point": point,
+                    "kicked_win": user.get("kicked_win", 0),
+                    "keep_win": user.get("keep_win", 0)
+                })
+            user_points.sort(key=lambda x: -x["total_point"])
+            top_10 = user_points[:10]
+            await save_weekly_leaderboard(db, current_week, board, top_10)
+
+        # 2. Reset tất cả trong 1 lần update (reset sau khi đã lưu leaderboard)
         users = await db.users.find({}).to_list(length=None)
         for user in users:
             # Lưu lịch sử tuần với điểm thực tế
@@ -263,33 +290,6 @@ async def reset_week(ignore_time_check=False, force_week=None):
                 {"_id": user["_id"]},
                 {"$set": {"total_point": 0, "total_kicked": 0, "kicked_win": 0, "total_keep": 0, "keep_win": 0}}
             )
-
-        # Lưu leaderboard tuần cho từng bảng
-        for board, query in {
-            "BASIC": {"is_pro": False, "is_vip": False},
-            "PRO": {"is_pro": True, "is_vip": False},
-            "VIP": {"is_vip": True}
-        }.items():
-            users = await db.users.find(query).to_list(length=None)
-            user_points = []
-            for user in users:
-                week_history = user.get("week_history", [])
-                last_entry = week_history[-1] if week_history else None
-                week_point = last_entry["point"] if last_entry and last_entry["week"] == current_week else 0
-                # BASIC: week_point là điểm tuần vừa reset, PRO/VIP: lấy total_point hiện tại
-                if board == "BASIC":
-                    point = week_point
-                else:
-                    point = user.get("total_point", 0)
-                user_points.append({
-                    "user_id": user["_id"],
-                    "total_point": point,
-                    "kicked_win": user.get("kicked_win", 0),
-                    "keep_win": user.get("keep_win", 0)
-                })
-            user_points.sort(key=lambda x: -x["total_point"])
-            top_10 = user_points[:10]
-            await save_weekly_leaderboard(db, current_week, board, top_10)
 
         # Cập nhật tuần reset cuối
         await db.settings.update_one(
