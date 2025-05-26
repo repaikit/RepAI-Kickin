@@ -72,6 +72,8 @@ export const API_ENDPOINTS = {
     deleteById: (userId: string) => `${API_BASE_URL}/api/users/${userId}`,
 
     weeklyStats: `${API_BASE_URL}/api/me/weekly-stats`,
+
+    upgradeToPro: `${API_BASE_URL}/api/upgrade-to-pro`,
   },
 
   // Skills APIs
@@ -110,6 +112,8 @@ export const API_ENDPOINTS = {
   nft: {
     getNFTs: (walletAddress: string) => `${API_BASE_URL}/api/nfts/${walletAddress}`,
   },
+
+  upgradeToPro: `${API_BASE_URL}/api/upgrade-to-pro`,
 };
 
 // Default fetch options

@@ -428,23 +428,23 @@ export default function WaitingRoom() {
   };
 
   return (
-    <div className="container mx-auto p-4">
-      <h2 className="text-2xl font-bold mb-6">Waiting Room</h2>
+    <div className="container mx-auto p-2 md:p-4">
+      <h2 className="text-xl md:text-2xl font-bold mb-4 md:mb-6">Waiting Room</h2>
       
       <Tabs defaultValue="basic" value={activeTab} onValueChange={handleTabChange}>
-        <TabsList className={`grid ${user?.user_type === 'guest' ? 'w-full grid-cols-1' : 'w-full grid-cols-3'} mb-6`}>
-          <TabsTrigger value="basic">Basic Players</TabsTrigger>
+        <TabsList className={`grid ${user?.user_type === 'guest' ? 'w-full grid-cols-1' : 'w-full grid-cols-3'} mb-4 md:mb-6 gap-2`}>
+          <TabsTrigger value="basic" className="text-sm md:text-base">Basic Players</TabsTrigger>
           {user?.user_type !== 'guest' && (
             <>
-              <TabsTrigger value="pro">Pro Players</TabsTrigger>
-              <TabsTrigger value="vip">VIP Players</TabsTrigger>
+              <TabsTrigger value="pro" className="text-sm md:text-base">Pro Players</TabsTrigger>
+              <TabsTrigger value="vip" className="text-sm md:text-base">VIP Players</TabsTrigger>
             </>
           )}
         </TabsList>
 
         <TabsContent value="basic">
-          <div className="bg-white/80 rounded-xl p-6 min-h-[200px] shadow-inner">
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+          <div className="bg-white/80 rounded-xl p-3 md:p-6 min-h-[200px] shadow-inner">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 md:gap-4">
               {/* Add Bot Card at the beginning */}
               <BotCard 
                 onPlayWithBot={handlePlayWithBot}
@@ -452,24 +452,24 @@ export default function WaitingRoom() {
               
               {isLoading ? (
                 Array(8).fill(0).map((_, index) => (
-                  <Card key={index} className="p-4">
-                    <div className="flex items-center space-x-3">
-                      <Skeleton className="h-12 w-12 rounded-full" />
+                  <Card key={index} className="p-3 md:p-4">
+                    <div className="flex items-center space-x-2 md:space-x-3">
+                      <Skeleton className="h-10 w-10 md:h-12 md:w-12 rounded-full" />
                       <div className="space-y-2">
-                        <Skeleton className="h-4 w-24" />
-                        <Skeleton className="h-3 w-16" />
+                        <Skeleton className="h-4 w-20 md:w-24" />
+                        <Skeleton className="h-3 w-14 md:w-16" />
                       </div>
                     </div>
                     <div className="mt-3 grid grid-cols-2 gap-2">
-                      <Skeleton className="h-4 w-16" />
-                      <Skeleton className="h-4 w-16" />
-                      <Skeleton className="h-4 w-16" />
-                      <Skeleton className="h-4 w-16" />
+                      <Skeleton className="h-4 w-14 md:w-16" />
+                      <Skeleton className="h-4 w-14 md:w-16" />
+                      <Skeleton className="h-4 w-14 md:w-16" />
+                      <Skeleton className="h-4 w-14 md:w-16" />
                     </div>
                   </Card>
                 ))
               ) : filteredUsers.length === 0 ? (
-                <div className="col-span-full text-center text-gray-400 py-8 text-lg font-medium">No data available</div>
+                <div className="col-span-full text-center text-gray-400 py-6 md:py-8 text-base md:text-lg font-medium">No data available</div>
               ) : (
                 filteredUsers.map(renderUserCard)
               )}
@@ -478,28 +478,28 @@ export default function WaitingRoom() {
         </TabsContent>
 
         <TabsContent value="pro">
-          <div className="bg-white/80 rounded-xl p-6 min-h-[200px] shadow-inner">
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+          <div className="bg-white/80 rounded-xl p-3 md:p-6 min-h-[200px] shadow-inner">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 md:gap-4">
               {isLoading ? (
                 Array(8).fill(0).map((_, index) => (
-                  <Card key={index} className="p-4">
-                    <div className="flex items-center space-x-3">
-                      <Skeleton className="h-12 w-12 rounded-full" />
+                  <Card key={index} className="p-3 md:p-4">
+                    <div className="flex items-center space-x-2 md:space-x-3">
+                      <Skeleton className="h-10 w-10 md:h-12 md:w-12 rounded-full" />
                       <div className="space-y-2">
-                        <Skeleton className="h-4 w-24" />
-                        <Skeleton className="h-3 w-16" />
+                        <Skeleton className="h-4 w-20 md:w-24" />
+                        <Skeleton className="h-3 w-14 md:w-16" />
                       </div>
                     </div>
                     <div className="mt-3 grid grid-cols-2 gap-2">
-                      <Skeleton className="h-4 w-16" />
-                      <Skeleton className="h-4 w-16" />
-                      <Skeleton className="h-4 w-16" />
-                      <Skeleton className="h-4 w-16" />
+                      <Skeleton className="h-4 w-14 md:w-16" />
+                      <Skeleton className="h-4 w-14 md:w-16" />
+                      <Skeleton className="h-4 w-14 md:w-16" />
+                      <Skeleton className="h-4 w-14 md:w-16" />
                     </div>
                   </Card>
                 ))
               ) : filteredUsers.length === 0 ? (
-                <div className="col-span-full text-center text-gray-400 py-8 text-lg font-medium">No data available</div>
+                <div className="col-span-full text-center text-gray-400 py-6 md:py-8 text-base md:text-lg font-medium">No data available</div>
               ) : (
                 filteredUsers.map(renderUserCard)
               )}
@@ -508,28 +508,28 @@ export default function WaitingRoom() {
         </TabsContent>
 
         <TabsContent value="vip">
-          <div className="bg-white/80 rounded-xl p-6 min-h-[200px] shadow-inner">
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+          <div className="bg-white/80 rounded-xl p-3 md:p-6 min-h-[200px] shadow-inner">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 md:gap-4">
               {isLoading ? (
                 Array(8).fill(0).map((_, index) => (
-                  <Card key={index} className="p-4">
-                    <div className="flex items-center space-x-3">
-                      <Skeleton className="h-12 w-12 rounded-full" />
+                  <Card key={index} className="p-3 md:p-4">
+                    <div className="flex items-center space-x-2 md:space-x-3">
+                      <Skeleton className="h-10 w-10 md:h-12 md:w-12 rounded-full" />
                       <div className="space-y-2">
-                        <Skeleton className="h-4 w-24" />
-                        <Skeleton className="h-3 w-16" />
+                        <Skeleton className="h-4 w-20 md:w-24" />
+                        <Skeleton className="h-3 w-14 md:w-16" />
                       </div>
                     </div>
                     <div className="mt-3 grid grid-cols-2 gap-2">
-                      <Skeleton className="h-4 w-16" />
-                      <Skeleton className="h-4 w-16" />
-                      <Skeleton className="h-4 w-16" />
-                      <Skeleton className="h-4 w-16" />
+                      <Skeleton className="h-4 w-14 md:w-16" />
+                      <Skeleton className="h-4 w-14 md:w-16" />
+                      <Skeleton className="h-4 w-14 md:w-16" />
+                      <Skeleton className="h-4 w-14 md:w-16" />
                     </div>
                   </Card>
                 ))
               ) : filteredUsers.length === 0 ? (
-                <div className="col-span-full text-center text-gray-400 py-8 text-lg font-medium">No data available</div>
+                <div className="col-span-full text-center text-gray-400 py-6 md:py-8 text-base md:text-lg font-medium">No data available</div>
               ) : (
                 filteredUsers.map(renderUserCard)
               )}
@@ -540,21 +540,21 @@ export default function WaitingRoom() {
 
       {/* Challenge Invite Modal */}
       {challengeInvite && (
-        <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-40 z-50 transition-all">
-          <div className="bg-white p-8 rounded-xl shadow-2xl max-w-xs w-full text-center animate-fade-in border border-gray-200">
-            <h3 className="text-lg font-bold mb-2 text-black">
+        <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-40 z-50 transition-all p-4">
+          <div className="bg-white p-6 md:p-8 rounded-xl shadow-2xl w-full max-w-xs text-center animate-fade-in border border-gray-200">
+            <h3 className="text-base md:text-lg font-bold mb-2 text-black">
               {challengeInvite?.from_name} has challenged you!
             </h3>
-            <p className="mb-6 text-gray-700">Do you accept this challenge?</p>
-            <div className="flex justify-center gap-4">
+            <p className="mb-6 text-gray-700 text-sm md:text-base">Do you accept this challenge?</p>
+            <div className="flex justify-center gap-3 md:gap-4">
               <button
-                className="px-5 py-2 bg-green-500 hover:bg-green-600 text-white rounded font-semibold transition shadow"
+                className="px-4 md:px-5 py-2 bg-green-500 hover:bg-green-600 text-white rounded font-semibold transition shadow text-sm md:text-base"
                 onClick={handleAcceptChallenge}
               >
                 Accept
               </button>
               <button
-                className="px-5 py-2 bg-red-500 hover:bg-red-600 text-white rounded font-semibold transition shadow"
+                className="px-4 md:px-5 py-2 bg-red-500 hover:bg-red-600 text-white rounded font-semibold transition shadow text-sm md:text-base"
                 onClick={handleDeclineChallenge}
               >
                 Decline
@@ -567,35 +567,34 @@ export default function WaitingRoom() {
       {/* Challenge Status Toast */}
       {challengeStatus && (
         <div className="
-          fixed bottom-6 right-6 z-50
-          flex items-center gap-3
-          px-6 py-4
-          rounded-2xl
+          fixed bottom-4 md:bottom-6 right-4 md:right-6 z-50
+          flex items-center gap-2 md:gap-3
+          px-4 md:px-6 py-3 md:py-4
+          rounded-xl md:rounded-2xl
           shadow-2xl
           border border-blue-300
           bg-gradient-to-br from-blue-500/90 to-blue-700/90
           backdrop-blur-md
           animate-fade-in
           text-white
-          min-w-[260px]
-          max-w-xs
+          min-w-[240px] md:min-w-[260px]
+          max-w-[calc(100vw-2rem)] md:max-w-xs
           transition-all
         ">
-          <span className="flex items-center justify-center bg-white/20 rounded-full p-2 shadow">
-            {/* Modern SVG icon */}
-            <svg width="28" height="28" fill="none" viewBox="0 0 24 24">
+          <span className="flex items-center justify-center bg-white/20 rounded-full p-1.5 md:p-2 shadow">
+            <svg width="24" height="24" fill="none" viewBox="0 0 24 24" className="md:w-7 md:h-7">
               <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" fill="#fff" className="drop-shadow" />
             </svg>
           </span>
-          <span className="flex-1 font-semibold text-base leading-tight drop-shadow">
+          <span className="flex-1 font-semibold text-sm md:text-base leading-tight drop-shadow">
             {challengeStatus}
           </span>
           <button
-            className="ml-2 text-white/70 hover:text-white transition"
+            className="ml-1 md:ml-2 text-white/70 hover:text-white transition"
             onClick={() => setChallengeStatus(null)}
             aria-label="Close"
           >
-            <svg width="20" height="20" fill="none" viewBox="0 0 20 20">
+            <svg width="18" height="18" fill="none" viewBox="0 0 20 20" className="md:w-5 md:h-5">
               <path d="M6 6l8 8M6 14L14 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
             </svg>
           </button>
@@ -608,16 +607,15 @@ export default function WaitingRoom() {
           const myStats = isWinner ? matchResult.match_stats.winner : matchResult.match_stats.loser;
           const opponentStats = isWinner ? matchResult.match_stats.loser : matchResult.match_stats.winner;
           return (
-            <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-40 z-50 transition-all">
-              <div className="bg-white p-0 rounded-2xl shadow-2xl max-w-lg w-full text-center animate-fade-in border border-gray-200 overflow-hidden">
-                {/* Accent bar */}
-                <div className={isWinner ? "h-2 bg-gradient-to-r from-green-400 to-blue-500" : "h-2 bg-gradient-to-r from-red-400 to-gray-400"} />
-                <div className="p-10">
-                  <h2 className={`text-3xl font-bold mb-6 ${isWinner ? 'text-green-600' : 'text-red-600'}`}>
+            <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-40 z-50 transition-all p-4">
+              <div className="bg-white p-0 rounded-xl md:rounded-2xl shadow-2xl w-full max-w-lg text-center animate-fade-in border border-gray-200 overflow-hidden">
+                <div className={isWinner ? "h-1.5 md:h-2 bg-gradient-to-r from-green-400 to-blue-500" : "h-1.5 md:h-2 bg-gradient-to-r from-red-400 to-gray-400"} />
+                <div className="p-6 md:p-10">
+                  <h2 className={`text-2xl md:text-3xl font-bold mb-4 md:mb-6 ${isWinner ? 'text-green-600' : 'text-red-600'}`}>
                     {isWinner ? "Victory" : "Defeat"}
                   </h2>
-                  <div className="mb-8">
-                    <div className="grid grid-cols-2 gap-6 text-lg text-left">
+                  <div className="mb-6 md:mb-8">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 md:gap-6 text-base md:text-lg text-left">
                       <div>
                         <span className="text-gray-500">Your Role:</span>
                         <span className="font-semibold text-black ml-1">{myStats.role.charAt(0).toUpperCase() + myStats.role.slice(1)}</span>
@@ -658,7 +656,7 @@ export default function WaitingRoom() {
                         </div>
                       )}
                       {myStats.new_skills && myStats.new_skills.length > 0 && (
-                        <div className="col-span-2">
+                        <div className="col-span-1 sm:col-span-2">
                           <span className="text-gray-500">New Skill Unlocked:</span>
                           <span className="font-semibold text-black ml-1">{myStats.new_skills.join(', ')}</span>
                         </div>
@@ -666,7 +664,7 @@ export default function WaitingRoom() {
                     </div>
                   </div>
                   <button
-                    className="mt-4 px-8 py-3 bg-blue-500 hover:bg-blue-600 text-white rounded-lg font-semibold text-lg transition"
+                    className="mt-4 px-6 md:px-8 py-2.5 md:py-3 bg-blue-500 hover:bg-blue-600 text-white rounded-lg font-semibold text-base md:text-lg transition w-full md:w-auto"
                     onClick={() => setMatchResult(null)}
                   >
                     Close

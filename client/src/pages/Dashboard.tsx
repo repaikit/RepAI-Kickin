@@ -160,10 +160,10 @@ export default function Dashboard() {
     <div className="min-h-screen flex flex-col bg-slate-50">
       <Header />
       
-      <main className="flex-1 container mx-auto px-4 py-6 space-y-6">
+      <main className="flex-1 container mx-auto px-2 py-4 space-y-4 md:px-4 md:py-6 md:space-y-6">
         {/* Top row: Leaderboard and Chat */}
-        <section className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <div className="md:col-span-2">
+        <section className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-6">
+          <div className="md:col-span-2 overflow-x-auto rounded bg-white shadow p-2 md:p-4">
             <Leaderboard
               onPositionChange={setLeaderboardPosition}
               onSeasonChange={setLeaderboardSeason}
@@ -178,27 +178,31 @@ export default function Dashboard() {
         
         {/* Skills Section */}
         <section className="w-full">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
           {skillsError ? (
-            <div className="col-span-full text-center text-red-500">{skillsError}</div>
+            <div className="col-span-full text-center text-red-500 text-sm md:text-base">{skillsError}</div>
           ) : (
             <>
-              <SkillsSidebar
-                skills={kickerSkills}
-                userSkills={user?.kicker_skills || []}
-                title="Kicker Skills"
-                isLoading={isSkillsLoading}
-                availablePoints={user?.available_skill_points || 0}
-                onSkillBought={refreshSkills}
-              />
+              <div className="overflow-x-auto rounded bg-white shadow p-2 md:p-4">
+                <SkillsSidebar
+                  skills={kickerSkills}
+                  userSkills={user?.kicker_skills || []}
+                  title="Kicker Skills"
+                  isLoading={isSkillsLoading}
+                  availablePoints={user?.available_skill_points || 0}
+                  onSkillBought={refreshSkills}
+                />
+              </div>
 
-              <SkillsSidebar
-                skills={goalkeeperSkills}
-                userSkills={user?.goalkeeper_skills || []}
-                title="Goalkeeper Skills"
-                isLoading={isSkillsLoading}
-                availablePoints={user?.available_skill_points || 0}
-              />
+              <div className="overflow-x-auto rounded bg-white shadow p-2 md:p-4">
+                <SkillsSidebar
+                  skills={goalkeeperSkills}
+                  userSkills={user?.goalkeeper_skills || []}
+                  title="Goalkeeper Skills"
+                  isLoading={isSkillsLoading}
+                  availablePoints={user?.available_skill_points || 0}
+                />
+              </div>
 
             </>
           )}

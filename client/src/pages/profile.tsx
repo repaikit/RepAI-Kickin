@@ -51,6 +51,15 @@ import Upgrades from "@/components/profile/Upgrades";
 import Settings from "@/components/profile/Settings";
 import WeeklyLoginStats from '@/components/WeeklyLoginStats';
 
+// Add Reward interface for type safety
+interface Reward {
+  type: 'skill' | 'remaining_matches';
+  value: string | number;
+  skill_type?: 'kicker' | 'goalkeeper';
+  skill_name?: string;
+  skill_value?: number;
+}
+
 // Milestones giống backend
 const LEVEL_MILESTONES_BASIC = [
   0, 100, 300, 600, 1000, 1500, 2100, 2800, 3600, 4500, 5500, 6600, 7800, 9100, 10500, 12000, 13600, 15300, 17100, 19000, 21000, 23100, 25300, 27600, 30000, 32500, 35100, 37800, 40600, 43500, 46500, 49600, 52800, 56100, 59500, 63000, 66600, 70300, 74100, 78000, 82000, 86100, 90300, 94600, 99000, 103500, 108100, 112800, 117600, 122500, 127500, 132600, 137800, 143100, 148500, 154000, 159600, 165300, 171100, 177000, 183000, 189100, 195300, 201600, 208000, 214500, 221100, 227800, 234600, 241500, 248500, 255600, 262800, 270100, 277500, 285000, 292600, 300300, 308100, 316000, 324000, 332100, 340300, 348600, 357000, 365500, 374100, 382800, 391600, 400500, 409500, 418600, 427800, 437100, 446500, 456000, 465600, 475300, 485100, 495000
@@ -85,6 +94,7 @@ export default function Profile() {
   const [selectedWalletType, setSelectedWalletType] = useState<string | null>(null);
   const [nftCount, setNftCount] = useState<number | null>(null);
   const [isLoadingNFTs, setIsLoadingNFTs] = useState(false);
+  const [lastBoxReward, setLastBoxReward] = useState<Reward | null>(null);
 
   useEffect(() => {
     if (user) {
@@ -204,10 +214,11 @@ export default function Profile() {
     }
   };
 
-  const handleMysteryBox = () => {
+  const handleMysteryBox = async (reward: any) => {
+    setLastBoxReward(reward);
     setShowMysteryBox(true);
     setTimeout(() => setShowMysteryBox(false), 2000);
-    toast.success("Mystery box opened! Check your inventory.");
+    await checkAuth(); // Refresh user info after opening box
   };
 
   const handleUpgradeToPro = (inviteCode: string) => {
@@ -361,7 +372,7 @@ export default function Profile() {
         </div>
       )}
 
-      {showMysteryBox && (
+      {showMysteryBox && lastBoxReward && (
         <div className="fixed inset-0 z-50 flex items-center justify-center pointer-events-none bg-black/20 backdrop-blur-sm">
           <div className="text-center">
             <div className="text-6xl mb-4 animate-bounce">📦</div>
@@ -369,7 +380,9 @@ export default function Profile() {
               Mystery Box Opened!
             </div>
             <div className="text-lg text-white mt-2">
-              +50 Points Earned!
+              {lastBoxReward.type === 'skill'
+                ? `+ New ${lastBoxReward.skill_type} skill: ${lastBoxReward.skill_name} (${lastBoxReward.skill_value} pts)`
+                : `+${lastBoxReward.value} Matches!`}
             </div>
           </div>
         </div>

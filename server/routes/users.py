@@ -662,7 +662,7 @@ async def login_user(data: RegularAuthRequest):
         }
         
         # Cập nhật thông tin đăng nhập theo tuần
-        user_data = update_weekly_login(existing_user)  # Chỉ ghi nhận đăng nhập, không cộng điểm
+        user_data = update_weekly_login(existing_user)
         update_data.update({
             "weekly_logins": user_data["weekly_logins"],
             "total_point": user_data["total_point"]
@@ -691,6 +691,30 @@ async def login_user(data: RegularAuthRequest):
 async def login_with_google(data: GoogleAuthRequest):
     """Đăng nhập với Google"""
     try:
+        users_collection = await get_users_collection()
+        existing_user = await users_collection.find_one({"email": data.email})
+        
+        if not existing_user:
+            raise HTTPException(
+                status_code=404,
+                detail="User not found. Please register first."
+            )
+        update_data = {
+            "last_login": get_vietnam_time().isoformat(),
+            "updated_at": get_vietnam_time().isoformat(),
+        }
+        
+        # Cập nhật thông tin đăng nhập theo tuần
+        user_data = update_weekly_login(existing_user)
+        update_data.update({
+            "weekly_logins": user_data["weekly_logins"],
+            "total_point": user_data["total_point"]
+        })
+        
+        await users_collection.update_one(
+            {"_id": existing_user["_id"]},
+            {"$set": update_data}
+        )
         return google_login_logic(data)
     except Exception as e:
         api_logger.error(f"Error in Google login: {str(e)}")
@@ -781,7 +805,6 @@ async def get_user_by_id(user_id: str):
 
 @router.post("/level-up")
 async def level_up(request: Request):
-    """Handle user level up request"""
     user = getattr(request.state, "user", None)
     if not user:
         raise HTTPException(status_code=401, detail="Not authenticated")
@@ -794,25 +817,13 @@ async def level_up(request: Request):
     # Calculate new level
     total_point_for_level = get_total_point_for_level(user_db)
     new_level = get_basic_level(total_point_for_level)
-    is_pro = new_level >= 100
-    
-    if is_pro:
-        new_level = 100
-        legend_level = get_legend_level(total_point_for_level)
-    else:
-        legend_level = 0
-    
-    vip_amount = user_db.get("vip_amount", 0)
-    vip_level = get_vip_level(vip_amount)
     
     # Update user in database
     await users_collection.update_one(
         {"_id": ObjectId(user["_id"])},
         {"$set": {
             "level": new_level,
-            "is_pro": is_pro,
-            "legend_level": legend_level,
-            "vip_level": vip_level
+            "can_open_level_up_box": True
         }}
     )
     
@@ -824,9 +835,7 @@ async def level_up(request: Request):
             "name": user_db.get("name", "Anonymous"),
             "avatar": user_db.get("avatar", ""),
             "level": new_level,
-            "is_pro": is_pro,
-            "legend_level": legend_level,
-            "vip_level": vip_level
+            "can_open_level_up_box": True
         }
         await waiting_room_manager.broadcast({
             "type": "user_updated",
@@ -835,10 +844,8 @@ async def level_up(request: Request):
     
     return {
         "level": new_level,
-        "is_pro": is_pro,
-        "legend_level": legend_level,
-        "vip_level": vip_level,
-        "total_point_for_level": total_point_for_level
+        "total_point_for_level": total_point_for_level,
+        "can_open_level_up_box": True
     }
 
 @router.get("/auth/verify-email")
@@ -866,10 +873,6 @@ async def get_weekly_login_stats(request: Request):
         user_data = await users_collection.find_one({"_id": ObjectId(user["_id"])})
         if not user_data:
             raise HTTPException(status_code=404, detail="User not found")
-        
-        # Debug log
-        api_logger.info(f"User data from DB: {user_data}")
-        api_logger.info(f"Weekly logins: {user_data.get('weekly_logins', {})}")
             
         stats = get_weekly_stats(user_data)
         return {"stats": stats}
@@ -879,5 +882,35 @@ async def get_weekly_login_stats(request: Request):
             status_code=500,
             detail=f"Failed to get weekly stats: {str(e)}"
         )
+
+@router.post("/upgrade-to-pro")
+async def upgrade_to_pro(request: Request):
+    user = getattr(request.state, "user", None)
+    if not user:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    
+    users_collection = await get_users_collection()
+    user_db = await users_collection.find_one({"_id": ObjectId(user["_id"])})
+    if not user_db:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    # Điều kiện: Level 100 hoặc >= 5000 điểm và có NFT Pro Level
+    level = user_db.get("level", 1)
+    total_point = user_db.get("total_point", 0)
+    has_nft_pro_level = user_db.get("has_nft_pro_level", False)
+
+    if (level < 100 and total_point < 5000) or not has_nft_pro_level:
+        raise HTTPException(
+            status_code=400,
+            detail="You must reach Level 100 or 5000 points and own a Pro Level NFT to upgrade."
+        )
+    
+    # Cập nhật trạng thái PRO
+    await users_collection.update_one(
+        {"_id": ObjectId(user["_id"])},
+        {"$set": {"is_pro": True}}
+    )
+
+    return {"success": True, "message": "Successfully upgraded to PRO!"}
 
 
