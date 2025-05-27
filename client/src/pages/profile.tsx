@@ -50,6 +50,7 @@ import Statistics from "@/components/profile/Statistics";
 import Upgrades from "@/components/profile/Upgrades";
 import Settings from "@/components/profile/Settings";
 import WeeklyLoginStats from '@/components/WeeklyLoginStats';
+import XConnection from "@/components/TwitterConnection";
 
 // Add Reward interface for type safety
 interface Reward {
@@ -129,7 +130,7 @@ export default function Profile() {
     }
   };
 
-  const handleUpdateProfile = async () => {
+  const handleUpdateProfile = async (overrideData?: { [key: string]: any }) => {
     if (!user) return;
 
     setIsSavingProfile(true);
@@ -141,7 +142,14 @@ export default function Profile() {
         return;
       }
 
-      const dataToSend: { [key: string]: any } = { ...formData };
+      // Always only send name and wallet fields
+      let name = formData.name;
+      let wallet = formData.wallet;
+      if (overrideData) {
+        if (typeof overrideData.name === 'string') name = overrideData.name;
+        if (typeof overrideData.wallet === 'string') wallet = overrideData.wallet;
+      }
+      const dataToSend = { name, wallet };
 
       const response = await fetch(API_ENDPOINTS.users.updateProfile, {
         method: 'PATCH',
@@ -494,6 +502,11 @@ export default function Profile() {
               
               {/* Main Content Area */}
               <div className="lg:col-span-3 lg:col-start-2">
+                {/* X Connection Card */}
+                <div className="mb-6">
+                  <XConnection userId={user?._id || ''} />
+                </div>
+
                 {/* Tabs Navigation */}
                 <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
                   <TabsList className="grid w-full grid-cols-4 mb-6 bg-black/20 backdrop-blur-sm border-pink-500/20">
@@ -549,6 +562,7 @@ export default function Profile() {
                       handleUpgradeToVIP={handleUpgradeToVIP}
                       handleRedeemProCode={handleRedeemProCode}
                       handleRedeemVIPCode={handleRedeemVIPCode}
+                      handleUpdateProfile={handleUpdateProfile}
                     />
                   </TabsContent>
 

@@ -21,7 +21,6 @@ class UserBase(BaseModel):
     password: Optional[str] = None  # Hashed password
     auth_provider: Optional[str] = None  # google, email, guest
     wallet: Optional[str] = None
-    twitter_id: Optional[str] = None
     position: str = "both"
     role: str = "user"
     is_active: bool = True
@@ -71,6 +70,17 @@ class UserBase(BaseModel):
     sui_address: Optional[str] = None
     # Thêm trường mới để lưu thông tin đăng nhập theo tuần
     weekly_logins: Dict[str, Dict[str, int]] = Field(default_factory=dict)  # Format: {"YYYY-WW": {"YYYY-MM-DD": points}}
+    
+    # NFT minted count
+    nft_minted: int = 0
+    # X fields
+    x_connected: Optional[bool] = False
+    x_id: Optional[str] = None
+    x_username: Optional[str] = None
+    x_access_token: Optional[str] = None
+    x_refresh_token: Optional[str] = None
+    x_main_account_id: Optional[str] = None
+    x_connected_at: Optional[datetime] = None
 
     class Config:
         json_encoders = {
@@ -89,7 +99,6 @@ class UserUpdate(BaseModel):
     password: Optional[str] = None
     auth_provider: Optional[str] = None
     wallet: Optional[str] = None
-    twitter_id: Optional[str] = None
     position: Optional[str] = None
     role: Optional[str] = None
     is_active: Optional[bool] = None
@@ -115,7 +124,18 @@ class UserUpdate(BaseModel):
     last_box_open: Optional[str] = None
     mystery_box_history: Optional[List[dict]] = None
     last_claim_matches: Optional[str] = None
-    weekly_logins: Optional[Dict[str, Dict[str, int]]] = None
+    # weekly_logins: Optional[Dict[str, Dict[str, int]]] = None
+    # NFT minted count
+    nft_minted: Optional[int] = None
+    # X fields
+    x_connected: Optional[bool] = None
+    x_id: Optional[str] = None
+    x_username: Optional[str] = None
+    x_access_token: Optional[str] = None
+    x_access_secret: Optional[str] = None
+
+    class Config:
+        extra = "forbid"
 
 class UserInDB(UserBase):
     id: PyObjectId = Field(default_factory=PyObjectId, alias="_id")

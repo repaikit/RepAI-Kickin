@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -8,10 +8,21 @@ import {
   Package, 
   Clock, 
   Gamepad2, 
-  Sparkles 
+  Sparkles,
+  Send,
+  Wallet,
+  Check
 } from 'lucide-react';
 import { API_ENDPOINTS, defaultFetchOptions } from '@/config/api';
 import { toast } from "sonner";
+import { useWallet } from '@/hooks/useWallet';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 interface UpgradesProps {
   user: any;
@@ -23,6 +34,7 @@ interface UpgradesProps {
   handleUpgradeToVIP: (inviteCode: string) => void;
   handleRedeemProCode: (inviteCode: string) => void;
   handleRedeemVIPCode: (inviteCode: string) => void;
+  handleUpdateProfile: (data: { wallet: string }) => void;
 }
 
 export default function Upgrades({
@@ -34,8 +46,23 @@ export default function Upgrades({
   handleUpgradeToPro,
   handleUpgradeToVIP,
   handleRedeemProCode,
-  handleRedeemVIPCode
+  handleRedeemVIPCode,
+  handleUpdateProfile
 }: UpgradesProps) {
+  const [transferAddress, setTransferAddress] = useState('');
+  const [transferTokenId, setTransferTokenId] = useState('');
+
+  const {
+    connect,
+    connectors,
+    address,
+    isBaseNetwork,
+    isPending,
+    mintError,
+    handleMintNpas,
+    handleTransfer,
+    walletAddress,
+  } = useWallet(user, handleUpdateProfile);
 
   // Handler for Upgrade to PRO
   const canUpgradeToPro =
@@ -214,9 +241,72 @@ export default function Upgrades({
               <p className="text-sm text-gray-600 mb-3">
                 Mint exclusive NFTs with your achievements
               </p>
-              <Button size="sm" variant="outline" className="w-full">
-                Coming Soon
-              </Button>
+              {!address ? (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="w-full"
+                  onClick={() => connect({ connector: connectors[0] })}
+                >
+                  <Wallet className="w-4 h-4 mr-2" />
+                  Connect Wallet
+                </Button>
+              ) : !isBaseNetwork ? (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="w-full"
+                  disabled
+                >
+                  Switch to Base Network
+                </Button>
+              ) : (
+                <div className="space-y-3">
+                  <div className="flex items-center mb-2">
+                    <Wallet className="w-4 h-4 mr-2" />
+                    <span className="font-mono text-xs">{address}</span>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={handleMintNpas}
+                    disabled={isPending}
+                    className="w-full"
+                  >
+                    {isPending ? 'Minting...' : 'Mint NFT'}
+                  </Button>
+                  <div className="space-y-2">
+                    <div className="flex gap-2">
+                      <Input
+                        placeholder="Recipient Address"
+                        value={transferAddress}
+                        onChange={(e) => setTransferAddress(e.target.value)}
+                        className="text-sm"
+                      />
+                      <Input
+                        type="number"
+                        placeholder="Token ID"
+                        value={transferTokenId}
+                        onChange={(e) => setTransferTokenId(e.target.value)}
+                        className="text-sm w-24"
+                      />
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => handleTransfer(transferAddress)}
+                      disabled={!transferAddress || !transferTokenId || isPending}
+                      className="w-full"
+                    >
+                      <Send className="w-4 h-4 mr-2" />
+                      {isPending ? 'Transferring...' : 'Transfer NFT'}
+                    </Button>
+                  </div>
+                </div>
+              )}
+              {mintError && (
+                <p className="text-sm text-red-500 mt-2">{mintError}</p>
+              )}
             </div>
           </div>
         </CardContent>
