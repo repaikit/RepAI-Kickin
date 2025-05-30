@@ -121,7 +121,11 @@ app.include_router(cache.router, prefix="/api", tags=["cache"])
 app.include_router(leaderboard.router, prefix="/api", tags=["leaderboard"])
 app.include_router(GoogleAuthenticate.router, prefix="/api", tags=["GoogleAuthenticate"])
 app.include_router(nft.router, prefix="/api", tags=["nft"])
+# Include goalkeeper bot routes
+app.include_router(bot_goalkeeper_router,prefix="/api",tags=["bot_goalkeeper"]
+ )
 app.include_router(x.router, prefix="/api", tags=["x"])
+
 @app.middleware("http")
 async def metrics_middleware(request: Request, call_next):
     start_time = time.time()
