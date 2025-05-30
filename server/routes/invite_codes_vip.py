@@ -10,7 +10,6 @@ from database.database import get_users_collection, get_vip_codes_collection
 
 router = APIRouter()
 
-@router.on_startup
 async def setup_vip_codes():
     """
     Thiết lập collection và indexes khi khởi động ứng dụng
