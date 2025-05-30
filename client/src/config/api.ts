@@ -114,6 +114,10 @@ export const API_ENDPOINTS = {
   },
 
   upgradeToPro: `${API_BASE_URL}/api/upgrade-to-pro`,
+
+  goalkeeper_bot: {
+    me: `${API_BASE_URL}/api/goalkeeper/me`,
+  },
 };
 
 // Default fetch options

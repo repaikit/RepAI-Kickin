@@ -51,6 +51,10 @@ import Upgrades from "@/components/profile/Upgrades";
 import Settings from "@/components/profile/Settings";
 import WeeklyLoginStats from '@/components/WeeklyLoginStats';
 
+import axios from "axios";
+
+import GoalkeeperBot, { BotGoalkeeper } from "@/components/profile/GoalkeeperBot";
+
 // Add Reward interface for type safety
 interface Reward {
   type: 'skill' | 'remaining_matches';
@@ -95,6 +99,40 @@ export default function Profile() {
   const [nftCount, setNftCount] = useState<number | null>(null);
   const [isLoadingNFTs, setIsLoadingNFTs] = useState(false);
   const [lastBoxReward, setLastBoxReward] = useState<Reward | null>(null);
+
+  //set up state for the Goalkeeper Bot
+  const [bot, setBot] = useState<BotGoalkeeper | null>(null);
+  const [botLoading, setBotLoading] = useState(true);
+  const [botError, setBotError] = useState<string | null>(null);
+
+useEffect(() => {
+  const fetchBot = async () => {
+    const token = localStorage.getItem("access_token");
+    if (!token) {
+      setBotError("Bạn chưa đăng nhập.");
+      setBotLoading(false);
+      return;
+    }
+    try {
+      const res = await axios.get<BotGoalkeeper>(API_ENDPOINTS.goalkeeper_bot.me, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      setBot(res.data);
+    } catch (err: any) {
+    const message =
+      err.response?.data?.detail ||
+      err.response?.data?.message ||
+      err.message ||
+      "Lỗi không xác định từ server.";
+    setBotError(message);
+      setBotError(err);
+    } finally {
+      setBotLoading(false);
+    }
+  };
+  fetchBot();
+}, []);
+// tải bot khi component mount
 
   useEffect(() => {
     if (user) {
@@ -525,7 +563,10 @@ export default function Profile() {
                       handleLevelUp={handleLevelUp}
                       handleMysteryBox={handleMysteryBox}
                     />
+                  <GoalkeeperBot bot={bot} loading={botLoading} error={botError} />
+
                   </TabsContent>
+                  {/* goalkeeper card */}
 
                   <TabsContent value="stats">
                     <Statistics 
