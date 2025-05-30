@@ -12,7 +12,7 @@ from fastapi.responses import JSONResponse, Response
 from contextlib import asynccontextmanager
 
 # Import routers using absolute imports
-from routes import users, skills, ws_handlers, mystery_box, bot, chat, cache, leaderboard, GoogleAuthenticate, nft
+from routes import users, skills, ws_handlers, mystery_box, bot, chat, cache, leaderboard, GoogleAuthenticate, nft, x
 from middleware.database import database_middleware, DatabaseMiddleware
 from middleware.rate_limit import RateLimitMiddleware
 from middleware.cache import InMemoryCacheMiddleware
@@ -121,10 +121,7 @@ app.include_router(cache.router, prefix="/api", tags=["cache"])
 app.include_router(leaderboard.router, prefix="/api", tags=["leaderboard"])
 app.include_router(GoogleAuthenticate.router, prefix="/api", tags=["GoogleAuthenticate"])
 app.include_router(nft.router, prefix="/api", tags=["nft"])
-# Include goalkeeper bot routes
-app.include_router(bot_goalkeeper_router,prefix="/api",tags=["bot_goalkeeper"]
- )
-
+app.include_router(x.router, prefix="/api", tags=["x"])
 @app.middleware("http")
 async def metrics_middleware(request: Request, call_next):
     start_time = time.time()
