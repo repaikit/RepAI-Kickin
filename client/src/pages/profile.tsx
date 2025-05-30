@@ -56,10 +56,6 @@ import axios from "axios";
 
 import GoalkeeperBot, { BotGoalkeeper } from "@/components/profile/GoalkeeperBot";
 
-import axios from "axios";
-
-import GoalkeeperBot, { BotGoalkeeper } from "@/components/profile/GoalkeeperBot";
-
 // Add Reward interface for type safety
 interface Reward {
   type: 'skill' | 'remaining_matches';
