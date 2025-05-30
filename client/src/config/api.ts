@@ -74,6 +74,7 @@ export const API_ENDPOINTS = {
     weeklyStats: `${API_BASE_URL}/api/me/weekly-stats`,
 
     upgradeToPro: `${API_BASE_URL}/api/upgrade-to-pro`,
+    incrementNftMinted: `${API_BASE_URL}/api/users/increment-nft-minted`,
   },
 
   // Skills APIs
@@ -110,10 +111,16 @@ export const API_ENDPOINTS = {
   },
 
   nft: {
-    getNFTs: (walletAddress: string) => `${API_BASE_URL}/api/nfts/${walletAddress}`,
+    getNFTs: (walletAddress: string) => `${API_BASE_URL}/api/nfts?address=${walletAddress}`,
   },
 
   upgradeToPro: `${API_BASE_URL}/api/upgrade-to-pro`,
+
+  x: {
+    connect: `${API_BASE_URL}/api/x/connect`,
+    status: `${API_BASE_URL}/api/x/status`,
+    callback: `${API_BASE_URL}/api/x/callback`,
+  },
 
   goalkeeper_bot: {
     me: `${API_BASE_URL}/api/goalkeeper/me`,

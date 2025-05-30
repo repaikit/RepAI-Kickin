@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,7 +10,8 @@ import {
   Shield, 
   Eye, 
   EyeOff, 
-  Lock 
+  Lock,
+  Package
 } from 'lucide-react';
 import { 
   Dialog,
@@ -72,6 +73,43 @@ export default function Settings({
   isDecoding,
   logout
 }: SettingsProps) {
+  // Add state to track if wallet info is unlocked
+  const [isWalletInfoUnlocked, setIsWalletInfoUnlocked] = useState(false);
+
+  // New: handle password submit to unlock all wallet info
+  const handleWalletUnlock = async () => {
+    if (!password) return;
+    try {
+      // Call backend API to decode all wallet info at once
+      // (You may need to adjust your backend to return all info in one call)
+      const token = localStorage.getItem('access_token');
+      const response = await fetch('/api/decode-all-wallet-info', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify({ password }),
+      });
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.detail || 'Failed to decode wallet information');
+      }
+      const data = await response.json();
+      setDecodedInfo({
+        evm_private: data.evm_private,
+        evm_mnemonic: data.evm_mnemonic,
+        // ... add other fields if needed
+      });
+      setIsWalletInfoUnlocked(true);
+      setShowPasswordDialog(false);
+      setPassword('');
+      toast.success('Wallet information unlocked!');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to decode wallet information');
+    }
+  };
+
   return (
     <div className="space-y-6">
       <Card className="bg-white/80 backdrop-blur-sm border-0 shadow-lg">
@@ -132,6 +170,16 @@ export default function Settings({
                 >
                   <Pencil className="w-4 h-4" />
                 </Button>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label className="text-right font-medium">NFTs Minted</Label>
+              <div className="col-span-3">
+                <Badge variant="secondary" className="px-3 py-1 text-sm">
+                  <Package className="w-4 h-4 mr-2" />
+                  {user?.nft_minted ?? 0} NFTs
+                </Badge>
               </div>
             </div>
 
@@ -199,111 +247,32 @@ export default function Settings({
                       <Label className="text-sm text-gray-500">Private Key</Label>
                       <div className="flex items-center gap-2">
                         <Input
-                          type={showDecodedInfo['evm_private'] ? 'text' : 'password'}
-                          value={showDecodedInfo['evm_private'] ? decodedInfo['evm_private'] : '••••••••••••••••••••••••••••••••'}
+                          type={isWalletInfoUnlocked ? 'text' : 'password'}
+                          value={isWalletInfoUnlocked ? decodedInfo['evm_private'] : '••••••••••••••••••••••••••••••••'}
                           readOnly
                           className="bg-gray-50 font-mono text-sm"
                         />
-                        <div className="flex gap-1">
-                          {user.auth_provider === 'google' ? (
-                            <>
-                              <Button
-                                size="icon"
-                                variant="ghost"
-                                onClick={() => {
-                                  if (user.evm_private_key) {
-                                    if (showDecodedInfo['evm_private']) {
-                                      const newShowDecodedInfo = { ...showDecodedInfo };
-                                      newShowDecodedInfo['evm_private'] = false;
-                                      setShowDecodedInfo(newShowDecodedInfo);
-                                    } else {
-                                      // Decode private key here
-                                      try {
-                                        const decodedKey = atob(user.evm_private_key);
-                                        const newDecodedInfo = { ...decodedInfo };
-                                        newDecodedInfo['evm_private'] = decodedKey;
-                                        setDecodedInfo(newDecodedInfo);
-                                        
-                                        const newShowDecodedInfo = { ...showDecodedInfo };
-                                        newShowDecodedInfo['evm_private'] = true;
-                                        setShowDecodedInfo(newShowDecodedInfo);
-                                      } catch (error) {
-                                        console.error('Error decoding private key:', error);
-                                        toast.error('Failed to decode private key');
-                                      }
-                                    }
-                                  }
-                                }}
-                                className="p-2"
-                              >
-                                {showDecodedInfo['evm_private'] ? (
-                                  <EyeOff className="w-4 h-4" />
-                                ) : (
-                                  <Eye className="w-4 h-4" />
-                                )}
-                              </Button>
-                              <Button
-                                size="icon"
-                                variant="ghost"
-                                onClick={() => {
-                                  if (showDecodedInfo['evm_private'] && decodedInfo['evm_private']) {
-                                    handleCopyWallet(decodedInfo['evm_private'], 'evm_private');
-                                    toast.success('Private key copied to clipboard');
-                                  } else {
-                                    toast.error('Please decode private key first');
-                                  }
-                                }}
-                                className="p-2"
-                              >
-                                {copiedWallet === 'evm_private' ? (
-                                  <span className="text-green-600 text-xs">✓</span>
-                                ) : (
-                                  <Copy className="w-4 h-4" />
-                                )}
-                              </Button>
-                            </>
-                          ) : user.auth_provider === 'email' ? (
-                            <>
-                              <Button
-                                size="icon"
-                                variant="ghost"
-                                onClick={() => handleDecodeWalletInfo('evm_private')}
-                                className="p-2"
-                              >
-                                {showDecodedInfo['evm_private'] ? (
-                                  <EyeOff className="w-4 h-4" />
-                                ) : (
-                                  <Eye className="w-4 h-4" />
-                                )}
-                              </Button>
-                              <Button
-                                size="icon"
-                                variant="ghost"
-                                onClick={() => {
-                                  if (showDecodedInfo['evm_private'] && decodedInfo['evm_private']) {
-                                    handleCopyWallet(decodedInfo['evm_private'], 'evm_private');
-                                    toast.success('Private key copied to clipboard');
-                                  } else {
-                                    toast.error('Please decode private key first');
-                                  }
-                                }}
-                                className="p-2"
-                              >
-                                {copiedWallet === 'evm_private' ? (
-                                  <span className="text-green-600 text-xs">✓</span>
-                                ) : (
-                                  <Copy className="w-4 h-4" />
-                                )}
-                              </Button>
-                            </>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          onClick={() => {
+                            if (isWalletInfoUnlocked && decodedInfo['evm_private']) {
+                              handleCopyWallet(decodedInfo['evm_private'], 'evm_private');
+                              toast.success('Private key copied to clipboard');
+                            } else {
+                              toast.error('Please unlock wallet info first');
+                            }
+                          }}
+                          className="p-2"
+                        >
+                          {copiedWallet === 'evm_private' ? (
+                            <span className="text-green-600 text-xs">✓</span>
                           ) : (
-                            <div className="text-sm text-gray-500">
-                              Please contact support to access wallet information
-                            </div>
+                            <Copy className="w-4 h-4" />
                           )}
-                        </div>
+                        </Button>
                       </div>
-                      {showDecodedInfo['evm_private'] && (
+                      {isWalletInfoUnlocked && (
                         <p className="text-xs text-yellow-600 mt-1">
                           ⚠️ Private key is now visible. Make sure no one can see your screen.
                         </p>
@@ -316,91 +285,30 @@ export default function Settings({
                       <Label className="text-sm text-gray-500">Mnemonic Phrase</Label>
                       <div className="flex items-center gap-2">
                         <Input
-                          type={showDecodedInfo['evm_mnemonic'] ? 'text' : 'password'}
-                          value={showDecodedInfo['evm_mnemonic'] ? decodedInfo['evm_mnemonic'] : user.evm_mnemonic}
+                          type={isWalletInfoUnlocked ? 'text' : 'password'}
+                          value={isWalletInfoUnlocked ? decodedInfo['evm_mnemonic'] : user.evm_mnemonic}
                           readOnly
                           className="bg-gray-50 font-mono text-sm"
                         />
-                        <div className="flex gap-1">
-                          {user.auth_provider === 'google' ? (
-                            <>
-                              <Button
-                                size="icon"
-                                variant="ghost"
-                                onClick={() => {
-                                  if (user.evm_mnemonic) {
-                                    if (showDecodedInfo['evm_mnemonic']) {
-                                      const newShowDecodedInfo = { ...showDecodedInfo };
-                                      newShowDecodedInfo['evm_mnemonic'] = false;
-                                      setShowDecodedInfo(newShowDecodedInfo);
-                                    } else {
-                                      const newDecodedInfo = { ...decodedInfo };
-                                      newDecodedInfo['evm_mnemonic'] = user.evm_mnemonic;
-                                      setDecodedInfo(newDecodedInfo);
-                                      
-                                      const newShowDecodedInfo = { ...showDecodedInfo };
-                                      newShowDecodedInfo['evm_mnemonic'] = true;
-                                      setShowDecodedInfo(newShowDecodedInfo);
-                                    }
-                                  }
-                                }}
-                                className="p-2"
-                              >
-                                {showDecodedInfo['evm_mnemonic'] ? (
-                                  <EyeOff className="w-4 h-4" />
-                                ) : (
-                                  <Eye className="w-4 h-4" />
-                                )}
-                              </Button>
-                              <Button
-                                size="icon"
-                                variant="ghost"
-                                onClick={() => user.evm_mnemonic && handleCopyWallet(user.evm_mnemonic, 'evm_mnemonic')}
-                                className="p-2"
-                              >
-                                {copiedWallet === 'evm_mnemonic' ? (
-                                  <span className="text-green-600 text-xs">✓</span>
-                                ) : (
-                                  <Copy className="w-4 h-4" />
-                                )}
-                              </Button>
-                            </>
-                          ) : user.auth_provider === 'email' ? (
-                            <>
-                              <Button
-                                size="icon"
-                                variant="ghost"
-                                onClick={() => handleDecodeWalletInfo('evm_mnemonic')}
-                                className="p-2"
-                              >
-                                {showDecodedInfo['evm_mnemonic'] ? (
-                                  <EyeOff className="w-4 h-4" />
-                                ) : (
-                                  <Eye className="w-4 h-4" />
-                                )}
-                              </Button>
-                              <Button
-                                size="icon"
-                                variant="ghost"
-                                onClick={() => handleCopyWallet(
-                                  showDecodedInfo['evm_mnemonic'] ? decodedInfo['evm_mnemonic'] : user.evm_mnemonic,
-                                  'evm_mnemonic'
-                                )}
-                                className="p-2"
-                              >
-                                {copiedWallet === 'evm_mnemonic' ? (
-                                  <span className="text-green-600 text-xs">✓</span>
-                                ) : (
-                                  <Copy className="w-4 h-4" />
-                                )}
-                              </Button>
-                            </>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          onClick={() => {
+                            if (isWalletInfoUnlocked && decodedInfo['evm_mnemonic']) {
+                              handleCopyWallet(decodedInfo['evm_mnemonic'], 'evm_mnemonic');
+                              toast.success('Mnemonic copied to clipboard');
+                            } else {
+                              toast.error('Please unlock wallet info first');
+                            }
+                          }}
+                          className="p-2"
+                        >
+                          {copiedWallet === 'evm_mnemonic' ? (
+                            <span className="text-green-600 text-xs">✓</span>
                           ) : (
-                            <div className="text-sm text-gray-500">
-                              Please contact support to access wallet information
-                            </div>
+                            <Copy className="w-4 h-4" />
                           )}
-                        </div>
+                        </Button>
                       </div>
                     </div>
                   )}
@@ -529,51 +437,53 @@ export default function Settings({
         </DialogContent>
       </Dialog>
 
-      {/* Password Dialog */}
-      <Dialog open={showPasswordDialog} onOpenChange={setShowPasswordDialog}>
-        <DialogContent className="sm:max-w-[425px]">
-          <DialogHeader>
-            <DialogTitle className="flex items-center space-x-2">
-              <Lock className="w-5 h-5" />
-              <span>Enter Password</span>
-            </DialogTitle>
-            <DialogDescription>
-              Please enter your password to view the wallet information.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="grid gap-4 py-4">
-            <div className="space-y-2">
-              <Label htmlFor="password">Password</Label>
-              <Input
-                id="password"
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="Enter your password"
-              />
+      {/* Password Dialog - only show if not unlocked */}
+      {!isWalletInfoUnlocked && (
+        <Dialog open={showPasswordDialog} onOpenChange={setShowPasswordDialog}>
+          <DialogContent className="sm:max-w-[425px]">
+            <DialogHeader>
+              <DialogTitle className="flex items-center space-x-2">
+                <Lock className="w-5 h-5" />
+                <span>Enter Password</span>
+              </DialogTitle>
+              <DialogDescription>
+                Please enter your password to view the wallet information.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="grid gap-4 py-4">
+              <div className="space-y-2">
+                <Label htmlFor="password">Password</Label>
+                <Input
+                  id="password"
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="Enter your password"
+                />
+              </div>
             </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowPasswordDialog(false)}>
-              Cancel
-            </Button>
-            <Button
-              onClick={handlePasswordSubmit}
-              disabled={isDecoding || !password}
-              className="bg-gradient-to-r from-purple-500 to-blue-500 hover:from-purple-600 hover:to-blue-600"
-            >
-              {isDecoding ? (
-                <div className="flex items-center">
-                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                  Decoding...
-                </div>
-              ) : (
-                'Decode'
-              )}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setShowPasswordDialog(false)}>
+                Cancel
+              </Button>
+              <Button
+                onClick={handleWalletUnlock}
+                disabled={isDecoding || !password}
+                className="bg-gradient-to-r from-purple-500 to-blue-500 hover:from-purple-600 hover:to-blue-600"
+              >
+                {isDecoding ? (
+                  <div className="flex items-center">
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                    Decoding...
+                  </div>
+                ) : (
+                  'Unlock'
+                )}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
     </div>
   );
 } 

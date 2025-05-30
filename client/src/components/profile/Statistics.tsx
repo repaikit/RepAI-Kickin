@@ -1,8 +1,9 @@
-import React from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Copy, RefreshCw } from 'lucide-react';
 import { format } from 'date-fns';
+import { fetchUserNFTs } from '@/api/nft';
 
 interface StatisticsProps {
   user: any;
@@ -21,6 +22,34 @@ export default function Statistics({
   handleCopyWallet,
   fetchNFTs
 }: StatisticsProps) {
+  const [localNFTCount, setLocalNFTCount] = useState<number | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [hasLoaded, setHasLoaded] = useState(false);
+
+  // Hàm mới để fetch NFTs
+  const handleFetchNFTs = useCallback(async (walletAddress: string | undefined) => {
+    if (!walletAddress) return;
+    
+    try {
+      setIsLoading(true);
+      const response = await fetchUserNFTs(walletAddress);
+      setLocalNFTCount(response.total_nfts);
+      setHasLoaded(true);
+    } catch (error) {
+      console.error('Error fetching NFTs:', error);
+      setLocalNFTCount(null);
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  // Fetch NFTs chỉ một lần khi component mount
+  useEffect(() => {
+    if (user?.evm_address && !hasLoaded) {
+      handleFetchNFTs(user.evm_address);
+    }
+  }, [user?.evm_address, hasLoaded, handleFetchNFTs]);
+
   return (
     <div className="space-y-6">
       <div className="grid md:grid-cols-2 gap-6">
@@ -80,10 +109,10 @@ export default function Statistics({
                 {user?.evm_address && (
                   <div className="flex items-center space-x-1 text-sm text-gray-500">
                     <span>•</span>
-                    {isLoadingNFTs ? (
+                    {isLoading ? (
                       <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-gray-600"></div>
                     ) : (
-                      <span className="font-semibold">{nftCount !== null ? `${nftCount} NFTs` : 'N/A'}</span>
+                      <span className="font-semibold">{localNFTCount !== null ? `${localNFTCount} NFTs` : 'N/A'}</span>
                     )}
                   </div>
                 )}
@@ -104,19 +133,20 @@ export default function Statistics({
             <div className="flex justify-between items-center">
               <span className="text-gray-600">NFTs in Wallet:</span>
               <div className="flex items-center space-x-2">
-                {isLoadingNFTs ? (
+                {isLoading ? (
                   <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-gray-600"></div>
                 ) : (
-                  <span className="font-semibold">{nftCount !== null ? nftCount : 'N/A'}</span>
+                  <span className="font-semibold">{localNFTCount !== null ? localNFTCount : 'N/A'}</span>
                 )}
                 {user?.evm_address && (
                   <Button
                     size="sm"
                     variant="ghost"
-                    onClick={() => fetchNFTs(user.evm_address)}
+                    onClick={() => handleFetchNFTs(user.evm_address)}
                     className="p-1"
+                    disabled={isLoading}
                   >
-                    <RefreshCw className="w-4 h-4" />
+                    <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
                   </Button>
                 )}
               </div>
