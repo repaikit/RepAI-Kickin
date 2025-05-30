@@ -122,6 +122,7 @@ export const API_ENDPOINTS = {
     connect: `${API_BASE_URL}/api/x/connect`,
     status: `${API_BASE_URL}/api/x/status`,
     callback: `${API_BASE_URL}/api/x/callback`,
+    disconnect: `${API_BASE_URL}/api/x/disconnect`,
   },
 
   goalkeeper_bot: {

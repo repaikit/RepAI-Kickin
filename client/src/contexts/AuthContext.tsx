@@ -54,6 +54,13 @@ interface User {
   evm_mnemonic?: string;
   sol_mnemonic?: string;
   sui_mnemonic?: string;
+  x_connected?: boolean;
+  x_id?: string;
+  x_username?: string;
+  x_access_token?: string;
+  x_refresh_token?: string;
+  x_token_expires_at?: number;
+  x_main_account_id?: string;
 }
 
 interface AuthContextType {

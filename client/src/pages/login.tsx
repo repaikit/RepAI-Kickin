@@ -1,18 +1,23 @@
 import { useEffect } from 'react';
 import { useRouter } from 'next/router';
 import LoginPage from './LoginPage';
+import { useAuth } from '@/contexts/AuthContext';
 
 export default function LoginRoute() {
   const router = useRouter();
+  const { checkAuth } = useAuth();
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const token = params.get('token');
     if (token) {
+      console.log('Received token from Google auth:', token);
       localStorage.setItem('access_token', token);
-      router.push('/');
+      checkAuth().then(() => {
+        router.push('/');
+      });
     }
-  }, []);
+  }, [router, checkAuth]);
 
   const handleDone = () => {
     router.push('/');

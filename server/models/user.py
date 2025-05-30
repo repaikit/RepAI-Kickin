@@ -1,4 +1,4 @@
-from typing import Optional, List, Any, Dict, Annotated
+from typing import Optional, List, Any, Dict, Annotated, Union
 from pydantic import BaseModel, Field, BeforeValidator, EmailStr
 from datetime import datetime
 from bson import ObjectId
@@ -69,18 +69,20 @@ class UserBase(BaseModel):
     sui_private_key: Optional[str] = None
     sui_address: Optional[str] = None
     # Thêm trường mới để lưu thông tin đăng nhập theo tuần
-    weekly_logins: Dict[str, Dict[str, int]] = Field(default_factory=dict)  # Format: {"YYYY-WW": {"YYYY-MM-DD": points}}
+    weekly_logins: Dict[str, Dict[str, Any]] = Field(default_factory=dict)  # Format: {"YYYY-WW": {"login": bool, "points": int}}
     
     # NFT minted count
     nft_minted: int = 0
     # X fields
-    x_connected: Optional[bool] = False
-    x_id: Optional[str] = None
-    x_username: Optional[str] = None
-    x_access_token: Optional[str] = None
-    x_refresh_token: Optional[str] = None
-    x_main_account_id: Optional[str] = None
-    x_connected_at: Optional[datetime] = None
+    x_connected: bool = False 
+    x_id: Optional[str] = None 
+    x_username: Optional[str] = None 
+    x_access_token: Optional[str] = None 
+    x_refresh_token: Optional[str] = None 
+    x_token_expires_at: Optional[Union[int, datetime]] = None 
+    x_main_account_id: Optional[str] = None 
+    x_connected_at: Optional[datetime] = None 
+    x_auth_state: Optional[str] = None
     used_invite_codes: List[str] = []
 
     class Config:
@@ -129,11 +131,15 @@ class UserUpdate(BaseModel):
     # NFT minted count
     nft_minted: Optional[int] = None
     # X fields
-    x_connected: Optional[bool] = None
-    x_id: Optional[str] = None
-    x_username: Optional[str] = None
-    x_access_token: Optional[str] = None
-    x_access_secret: Optional[str] = None
+    x_connected: bool = False 
+    x_id: Optional[str] = None 
+    x_username: Optional[str] = None 
+    x_access_token: Optional[str] = None 
+    x_refresh_token: Optional[str] = None 
+    x_token_expires_at: Optional[Union[int, datetime]] = None 
+    x_main_account_id: Optional[str] = None 
+    x_connected_at: Optional[datetime] = None 
+    x_auth_state: Optional[str] = None
 
     class Config:
         extra = "forbid"

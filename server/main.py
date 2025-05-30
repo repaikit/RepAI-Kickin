@@ -129,7 +129,7 @@ app.include_router(nft.router, prefix="/api", tags=["nft"])
 # Include goalkeeper bot routes
 app.include_router(bot_goalkeeper_router,prefix="/api",tags=["bot_goalkeeper"]
  )
-app.include_router(x.router, prefix="/api", tags=["x"])
+app.include_router(x.router, prefix="/api/x", tags=["x"])
 app.include_router(invite_codes_vip.router, prefix="/api/vip", tags=["vip"])
 
 

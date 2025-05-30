@@ -221,20 +221,21 @@ export default function Leaderboard({
                     </td>
                     <td className="px-2 py-2 md:px-4 md:py-3">
                       <div className="flex items-center min-w-0">
-                        <div className="relative flex-shrink-0">
-                          <img
-                            src={u.avatar || '/default-avatar.png'}
-                            alt={u.name}
-                            className={`w-8 h-8 md:w-12 md:h-12 rounded-full object-cover mr-2 md:mr-3 ${
-                              isVIP ? 'border-2 border-yellow-400 shadow-md' : ''
-                            }`}
-                            style={isVIP ? { boxShadow: '0 0 10px rgba(245, 158, 11, 0.5)' } : {}}
-                            onError={e => { e.currentTarget.onerror = null; e.currentTarget.src = '/default-avatar.png'; }}
-                          />
-                          {isVIP && (
-                            <FaCrown className="absolute -top-1 -right-1 md:-top-2 md:-right-2 text-yellow-400 text-sm md:text-lg bg-white rounded-full p-0.5 shadow" />
-                          )}
-                        </div>
+                        {u.avatar && (
+                          <div className="relative flex-shrink-0">
+                            <img
+                              src={u.avatar}
+                              alt={u.name}
+                              className={`w-8 h-8 md:w-12 md:h-12 rounded-full object-cover mr-2 md:mr-3 ${
+                                isVIP ? 'border-2 border-yellow-400 shadow-md' : ''
+                              }`}
+                              style={isVIP ? { boxShadow: '0 0 10px rgba(245, 158, 11, 0.5)' } : {}}
+                            />
+                            {isVIP && (
+                              <FaCrown className="absolute -top-1 -right-1 md:-top-2 md:-right-2 text-yellow-400 text-sm md:text-lg bg-white rounded-full p-0.5 shadow" />
+                            )}
+                          </div>
+                        )}
                         <div className="min-w-0 flex-1">
                           <p className={`font-medium truncate ${isVIP ? 'text-yellow-700 mr-2' : 'text-slate-800'}`}>{u.name}</p>
                           {isVIP && (
