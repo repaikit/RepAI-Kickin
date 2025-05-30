@@ -12,7 +12,7 @@ from fastapi.responses import JSONResponse, Response
 from contextlib import asynccontextmanager
 
 # Import routers using absolute imports
-from routes import users, skills, ws_handlers, mystery_box, bot, chat, cache, leaderboard, GoogleAuthenticate, nft, x
+from routes import users, skills, ws_handlers, mystery_box, bot, chat, cache, leaderboard, GoogleAuthenticate, nft, x, invite_codes_vip
 from middleware.database import database_middleware, DatabaseMiddleware
 from middleware.rate_limit import RateLimitMiddleware
 from middleware.cache import InMemoryCacheMiddleware
@@ -23,6 +23,9 @@ from config.settings import settings
 from routes.task_claim_matches import router as task_claim_matches_router
 from routes.daily_tasks import router as daily_tasks_router
 from tasks.scheduler import setup_scheduler
+# Import additional goalkeeper routers
+from routes.bot_goalkeeper_route import router as bot_goalkeeper_router
+from routes.invite_codes_vip import setup_vip_codes
 
 import time
 import asyncio
@@ -42,6 +45,10 @@ def init_metrics():
         'HTTP request latency in seconds',
         ['method', 'endpoint']
     )
+
+app = FastAPI()
+async def startup_event():
+    await setup_vip_codes()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -119,7 +126,13 @@ app.include_router(cache.router, prefix="/api", tags=["cache"])
 app.include_router(leaderboard.router, prefix="/api", tags=["leaderboard"])
 app.include_router(GoogleAuthenticate.router, prefix="/api", tags=["GoogleAuthenticate"])
 app.include_router(nft.router, prefix="/api", tags=["nft"])
-app.include_router(x.router, prefix="/api", tags=["x"])
+# Include goalkeeper bot routes
+app.include_router(bot_goalkeeper_router,prefix="/api",tags=["bot_goalkeeper"]
+ )
+app.include_router(x.router, prefix="/api/x", tags=["x"])
+app.include_router(invite_codes_vip.router, prefix="/api/vip", tags=["vip"])
+
+
 @app.middleware("http")
 async def metrics_middleware(request: Request, call_next):
     start_time = time.time()

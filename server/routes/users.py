@@ -933,3 +933,5 @@ async def increment_nft_minted(request: Request):
     return {"nft_minted": new_count}
 
 
+class InviteCodeRequest(BaseModel):
+    invite_code: str

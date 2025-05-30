@@ -10,7 +10,7 @@ import traceback
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
-FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3000/login")
+FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3000")
 
 @router.get("/")
 def home():
@@ -66,7 +66,8 @@ async def auth_google_callback(request: Request):
                     raise
             else:
                 raise
-        redirect_url = f"{FRONTEND_URL}?token={token}"
+        redirect_url = f"{FRONTEND_URL}/login?token={token}"
+        logger.info(f"Redirecting to: {redirect_url}")
         return RedirectResponse(redirect_url)
     except Exception as e:
         logger.error(f"Unexpected error in auth_google_callback: {str(e)}")

@@ -29,6 +29,7 @@ class JWTAuthMiddleware(BaseHTTPMiddleware):
             "/api/leaderboard/weekly",
             "/api/leaderboard/monthly",
             "/api/auth/verify-email",
+            "/api/x/callback",
         ]:
             return await call_next(request)
 
