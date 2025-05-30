@@ -81,6 +81,7 @@ class UserBase(BaseModel):
     x_refresh_token: Optional[str] = None
     x_main_account_id: Optional[str] = None
     x_connected_at: Optional[datetime] = None
+    used_invite_codes: List[str] = []
 
     class Config:
         json_encoders = {

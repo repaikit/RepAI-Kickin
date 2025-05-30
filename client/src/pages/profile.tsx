@@ -2,19 +2,20 @@ import React, { useEffect, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
-import { format } from 'date-fns';
+import { format } from "date-fns";
 import { Button } from "@/components/ui/button";
-import { API_ENDPOINTS, defaultFetchOptions } from '@/config/api';
+import { API_ENDPOINTS, defaultFetchOptions } from "@/config/api";
 import { toast } from "sonner";
-import { 
-  Pencil, 
-  Copy, 
-  ArrowUp, 
-  Trophy, 
-  Star, 
-  Gift, 
-  Crown, 
-  Zap, 
+import { useRouter } from "next/router";
+import {
+  Pencil,
+  Copy,
+  ArrowUp,
+  Trophy,
+  Star,
+  Gift,
+  Crown,
+  Zap,
   Target,
   TrendingUp,
   Award,
@@ -28,9 +29,9 @@ import {
   Eye,
   EyeOff,
   Lock,
-  RefreshCw
-} from 'lucide-react';
-import { 
+  RefreshCw,
+} from "lucide-react";
+import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -40,8 +41,14 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { useLeaderboard } from '@/hooks/useLeaderboard';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { useLeaderboard } from "@/hooks/useLeaderboard";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -67,7 +74,16 @@ interface Reward {
 
 // Milestones giống backend
 const LEVEL_MILESTONES_BASIC = [
-  0, 100, 300, 600, 1000, 1500, 2100, 2800, 3600, 4500, 5500, 6600, 7800, 9100, 10500, 12000, 13600, 15300, 17100, 19000, 21000, 23100, 25300, 27600, 30000, 32500, 35100, 37800, 40600, 43500, 46500, 49600, 52800, 56100, 59500, 63000, 66600, 70300, 74100, 78000, 82000, 86100, 90300, 94600, 99000, 103500, 108100, 112800, 117600, 122500, 127500, 132600, 137800, 143100, 148500, 154000, 159600, 165300, 171100, 177000, 183000, 189100, 195300, 201600, 208000, 214500, 221100, 227800, 234600, 241500, 248500, 255600, 262800, 270100, 277500, 285000, 292600, 300300, 308100, 316000, 324000, 332100, 340300, 348600, 357000, 365500, 374100, 382800, 391600, 400500, 409500, 418600, 427800, 437100, 446500, 456000, 465600, 475300, 485100, 495000
+  0, 100, 300, 600, 1000, 1500, 2100, 2800, 3600, 4500, 5500, 6600, 7800, 9100,
+  10500, 12000, 13600, 15300, 17100, 19000, 21000, 23100, 25300, 27600, 30000,
+  32500, 35100, 37800, 40600, 43500, 46500, 49600, 52800, 56100, 59500, 63000,
+  66600, 70300, 74100, 78000, 82000, 86100, 90300, 94600, 99000, 103500, 108100,
+  112800, 117600, 122500, 127500, 132600, 137800, 143100, 148500, 154000,
+  159600, 165300, 171100, 177000, 183000, 189100, 195300, 201600, 208000,
+  214500, 221100, 227800, 234600, 241500, 248500, 255600, 262800, 270100,
+  277500, 285000, 292600, 300300, 308100, 316000, 324000, 332100, 340300,
+  348600, 357000, 365500, 374100, 382800, 391600, 400500, 409500, 418600,
+  427800, 437100, 446500, 456000, 465600, 475300, 485100, 495000,
 ];
 
 export default function Profile() {
@@ -79,24 +95,31 @@ export default function Profile() {
   const [showMysteryBox, setShowMysteryBox] = useState(false);
   const [activeTab, setActiveTab] = useState("overview");
   const [formData, setFormData] = useState({
-    name: user?.name || '',
-    wallet: user?.wallet || '',
+    name: user?.name || "",
+    wallet: user?.wallet || "",
   });
   const [copied, setCopied] = useState(false);
   const [isSavingProfile, setIsSavingProfile] = useState(false);
-  const [proInviteCode, setProInviteCode] = useState('');
-  const [vipInviteCode, setVipInviteCode] = useState('');
-  const [evmWallet, setEvmWallet] = useState(user?.evm_address || '');
-  const [solanaWallet, setSolanaWallet] = useState(user?.sol_address || '');
-  const [suiWallet, setSuiWallet] = useState(user?.sui_address || '');
+  const [proInviteCode, setProInviteCode] = useState("");
+  const [vipInviteCode, setVipInviteCode] = useState("");
+  const [evmWallet, setEvmWallet] = useState(user?.evm_address || "");
+  const [solanaWallet, setSolanaWallet] = useState(user?.sol_address || "");
+  const [suiWallet, setSuiWallet] = useState(user?.sui_address || "");
   const [copiedWallet, setCopiedWallet] = useState<string | null>(null);
-  const [qrWallet, setQrWallet] = useState<{ type: string, address: string } | null>(null);
-  const [showDecodedInfo, setShowDecodedInfo] = useState<{[key: string]: boolean}>({});
-  const [decodedInfo, setDecodedInfo] = useState<{[key: string]: string}>({});
+  const [qrWallet, setQrWallet] = useState<{
+    type: string;
+    address: string;
+  } | null>(null);
+  const [showDecodedInfo, setShowDecodedInfo] = useState<{
+    [key: string]: boolean;
+  }>({});
+  const [decodedInfo, setDecodedInfo] = useState<{ [key: string]: string }>({});
   const [isDecoding, setIsDecoding] = useState(false);
   const [showPasswordDialog, setShowPasswordDialog] = useState(false);
-  const [password, setPassword] = useState('');
-  const [selectedWalletType, setSelectedWalletType] = useState<string | null>(null);
+  const [password, setPassword] = useState("");
+  const [selectedWalletType, setSelectedWalletType] = useState<string | null>(
+    null
+  );
   const [nftCount, setNftCount] = useState<number | null>(null);
   const [isLoadingNFTs, setIsLoadingNFTs] = useState(false);
   const [lastBoxReward, setLastBoxReward] = useState<Reward | null>(null);
@@ -134,37 +157,43 @@ useEffect(() => {
   fetchBot();
 }, []);
 // tải bot khi component mount
+  const [isLoadingRedeem, setLoadingRedeem] = useState(false);
+  const router = useRouter();
 
   useEffect(() => {
     if (user) {
       setFormData({
-        name: user.name || '',
-        wallet: user.wallet || '',
+        name: user.name || "",
+        wallet: user.wallet || "",
       });
     }
   }, [user]);
 
   const getAvatarUrl = () => {
     if (user?.avatar) return user.avatar;
-    if (user && 'picture' in user && user.picture) return user.picture as string;
+    if (user && "picture" in user && user.picture)
+      return user.picture as string;
     return undefined;
   };
 
-  const displayName = user?.name || user?.email?.split('@')[0] || 'Guest';
-  
-  const handleCopyWallet = async (address: string | undefined, type: string) => {
+  const displayName = user?.name || user?.email?.split("@")[0] || "Guest";
+
+  const handleCopyWallet = async (
+    address: string | undefined,
+    type: string
+  ) => {
     if (!address) {
-      toast.error('No wallet address available');
+      toast.error("No wallet address available");
       return;
     }
     try {
       await navigator.clipboard.writeText(address);
       setCopiedWallet(type);
-      toast.success('Wallet address copied!');
+      toast.success("Wallet address copied!");
       setTimeout(() => setCopiedWallet(null), 1500);
     } catch (err) {
-      console.error('Failed to copy wallet address: ', err);
-      toast.error('Failed to copy wallet address.');
+      console.error("Failed to copy wallet address: ", err);
+      toast.error("Failed to copy wallet address.");
     }
   };
 
@@ -174,9 +203,9 @@ useEffect(() => {
     setIsSavingProfile(true);
 
     try {
-      const token = localStorage.getItem('access_token');
+      const token = localStorage.getItem("access_token");
       if (!token) {
-        toast.error('No access token found');
+        toast.error("No access token found");
         return;
       }
 
@@ -190,30 +219,31 @@ useEffect(() => {
       const dataToSend = { name, wallet };
 
       const response = await fetch(API_ENDPOINTS.users.updateProfile, {
-        method: 'PATCH',
+        method: "PATCH",
         headers: {
           ...defaultFetchOptions.headers,
-          'Authorization': `Bearer ${token}`,
+          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify(dataToSend),
       });
 
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.detail || 'Failed to update profile');
+        throw new Error(errorData.detail || "Failed to update profile");
       }
 
       const updatedUserData = await response.json();
 
-      await checkAuth(); 
+      await checkAuth();
       await fetchInitialData();
-      
-      toast.success('Profile updated successfully!');
-      setIsEditing(false);
 
+      toast.success("Profile updated successfully!");
+      setIsEditing(false);
     } catch (error) {
-      console.error('Error updating profile:', error);
-      toast.error(error instanceof Error ? error.message : 'Failed to update profile');
+      console.error("Error updating profile:", error);
+      toast.error(
+        error instanceof Error ? error.message : "Failed to update profile"
+      );
     } finally {
       setIsSavingProfile(false);
     }
@@ -221,9 +251,9 @@ useEffect(() => {
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
-    setFormData(prevData => ({
+    setFormData((prevData) => ({
       ...prevData,
-      [name]: value
+      [name]: value,
     }));
   };
 
@@ -231,21 +261,21 @@ useEffect(() => {
     if (!user) return;
     setIsLevelingUp(true);
     try {
-      const token = localStorage.getItem('access_token');
+      const token = localStorage.getItem("access_token");
       if (!token) {
-        toast.error('No access token found');
+        toast.error("No access token found");
         return;
       }
       const response = await fetch(API_ENDPOINTS.users.levelUp, {
-        method: 'POST',
+        method: "POST",
         headers: {
           ...defaultFetchOptions.headers,
-          'Authorization': `Bearer ${token}`,
+          Authorization: `Bearer ${token}`,
         },
       });
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.detail || 'Failed to level up');
+        throw new Error(errorData.detail || "Failed to level up");
       }
       const result = await response.json();
       setShowLevelUpAnimation(true);
@@ -253,8 +283,10 @@ useEffect(() => {
       checkAuth();
       toast.success(`Level up successful! You are now level ${result.level}`);
     } catch (error) {
-      console.error('Error leveling up:', error);
-      toast.error(error instanceof Error ? error.message : 'Failed to level up');
+      console.error("Error leveling up:", error);
+      toast.error(
+        error instanceof Error ? error.message : "Failed to level up"
+      );
     } finally {
       setIsLevelingUp(false);
     }
@@ -279,8 +311,54 @@ useEffect(() => {
     toast.info("Redeem Pro code: " + inviteCode);
   };
 
-  const handleRedeemVIPCode = (inviteCode: string) => {
-    toast.info("Redeem VIP code: " + inviteCode);
+  const handleRedeemVIPCode = async (inviteCode: string) => {
+    setLoadingRedeem(true);
+    try {
+      const verifyResponse = await fetch(
+        API_ENDPOINTS.vip.verifyCode(inviteCode),
+        {
+          ...defaultFetchOptions,
+          headers: {
+            ...defaultFetchOptions.headers,
+            Authorization: `Bearer ${localStorage.getItem("access_token")}`,
+          },
+        }
+      );
+
+      if (!verifyResponse.ok) {
+        const error = await verifyResponse.json();
+        throw new Error(error.detail || "Invalid code");
+        toast.error("Invalid code!");
+      }
+
+      // If verified, redeem code
+      const redeemResponse = await fetch(
+        API_ENDPOINTS.vip.redeemCode(inviteCode),
+        {
+          ...defaultFetchOptions,
+          method: "POST",
+          headers: {
+            ...defaultFetchOptions.headers,
+            Authorization: `Bearer ${localStorage.getItem("access_token")}`,
+          },
+        }
+      );
+
+      if (!redeemResponse.ok) {
+        throw new Error("Failed to activate VIP status");
+      }
+
+      // Cập nhật trạng thái người dùng
+      await checkAuth();
+      await fetchInitialData();
+
+      toast.success("VIP status activated successfully!");
+      setVipInviteCode(""); // Reset input field
+    } catch (error: any) {
+      toast.error(error.message || "Something went wrong");
+    } finally {
+      setLoadingRedeem(false);
+    }
   };
 
   // Tính milestone tiếp theo cho progress bar
@@ -290,12 +368,25 @@ useEffect(() => {
   if (currentLevel > 0 && currentLevel < LEVEL_MILESTONES_BASIC.length) {
     nextMilestone = LEVEL_MILESTONES_BASIC[currentLevel];
   }
-  const progress = Math.max(0, Math.min(100, (currentPoint / nextMilestone) * 100));
+  const progress = Math.max(
+    0,
+    Math.min(100, (currentPoint / nextMilestone) * 100)
+  );
 
   const getUserBadges = () => {
     const badges = [];
-    if (user?.is_pro) badges.push({ label: "PRO", color: "bg-gradient-to-r from-purple-500 to-pink-500", icon: <Crown className="w-3 h-3" /> });
-    if (user?.is_vip) badges.push({ label: "VIP", color: "bg-gradient-to-r from-yellow-400 to-orange-500", icon: <Star className="w-3 h-3" /> });
+    if (user?.is_pro)
+      badges.push({
+        label: "PRO",
+        color: "bg-gradient-to-r from-purple-500 to-pink-500",
+        icon: <Crown className="w-3 h-3" />,
+      });
+    if (user?.is_vip)
+      badges.push({
+        label: "VIP",
+        color: "bg-gradient-to-r from-yellow-400 to-orange-500",
+        icon: <Star className="w-3 h-3" />,
+      });
     // if (user?.legend_level > 0) badges.push({ label: `Legend ${user.legend_level}`, color: "bg-gradient-to-r from-red-500 to-pink-600", icon: <Trophy className="w-3 h-3" /> });
     return badges;
   };
@@ -307,47 +398,53 @@ useEffect(() => {
 
   const handlePasswordSubmit = async () => {
     if (!selectedWalletType || !password) return;
-    
+
     setIsDecoding(true);
     try {
-      const token = localStorage.getItem('access_token');
+      const token = localStorage.getItem("access_token");
       if (!token) {
-        toast.error('No access token found');
+        toast.error("No access token found");
         return;
       }
 
       const response = await fetch(API_ENDPOINTS.users.decodeWalletInfo, {
-        method: 'POST',
+        method: "POST",
         headers: {
           ...defaultFetchOptions.headers,
-          'Authorization': `Bearer ${token}`,
+          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
           wallet_type: selectedWalletType,
-          password: password
+          password: password,
         }),
       });
 
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.detail || 'Failed to decode wallet information');
+        throw new Error(
+          errorData.detail || "Failed to decode wallet information"
+        );
       }
 
       const data = await response.json();
-      setDecodedInfo(prev => ({
+      setDecodedInfo((prev) => ({
         ...prev,
-        [selectedWalletType]: data.decoded_info
+        [selectedWalletType]: data.decoded_info,
       }));
-      setShowDecodedInfo(prev => ({
+      setShowDecodedInfo((prev) => ({
         ...prev,
-        [selectedWalletType]: true
+        [selectedWalletType]: true,
       }));
       setShowPasswordDialog(false);
-      setPassword('');
-      toast.success('Wallet information decoded successfully');
+      setPassword("");
+      toast.success("Wallet information decoded successfully");
     } catch (error) {
-      console.error('Error decoding wallet info:', error);
-      toast.error(error instanceof Error ? error.message : 'Failed to decode wallet information');
+      console.error("Error decoding wallet info:", error);
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Failed to decode wallet information"
+      );
     } finally {
       setIsDecoding(false);
     }
@@ -355,12 +452,12 @@ useEffect(() => {
 
   const fetchNFTs = async (walletAddress: string | undefined) => {
     if (!walletAddress) return;
-    
+
     setIsLoadingNFTs(true);
     try {
-      const token = localStorage.getItem('access_token');
+      const token = localStorage.getItem("access_token");
       if (!token) {
-        toast.error('No access token found');
+        toast.error("No access token found");
         return;
       }
 
@@ -368,22 +465,25 @@ useEffect(() => {
         ...defaultFetchOptions,
         headers: {
           ...defaultFetchOptions.headers,
-          'Authorization': `Bearer ${token}`,
+          Authorization: `Bearer ${token}`,
         },
       });
 
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.detail || 'Failed to fetch NFTs');
+        throw new Error(errorData.detail || "Failed to fetch NFTs");
       }
 
       const data = await response.json();
 
       setNftCount(data.total_nfts);
-
     } catch (error) {
-      console.error('Error fetching NFTs:', error);
-      toast.error(error instanceof Error ? error.message : 'Failed to fetch NFT information');
+      console.error("Error fetching NFTs:", error);
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Failed to fetch NFT information"
+      );
     } finally {
       setIsLoadingNFTs(false);
     }
@@ -454,19 +554,23 @@ useEffect(() => {
               <div className="absolute inset-0 bg-black/30"></div>
               <div className="absolute top-0 right-0 w-64 h-64 bg-white/10 rounded-full -translate-y-32 translate-x-32"></div>
               <div className="absolute bottom-0 left-0 w-48 h-48 bg-white/5 rounded-full translate-y-24 -translate-x-24"></div>
-              
+
               <CardContent className="p-8 relative z-10">
                 <div className="flex flex-col md:flex-row items-center md:items-start space-y-4 md:space-y-0 md:space-x-6">
                   <div className="relative group">
                     <div className="w-24 h-24 rounded-full border-4 border-white/30 overflow-hidden shadow-xl relative">
                       {getAvatarUrl() ? (
-                        <img src={getAvatarUrl()} alt="Avatar" className="w-full h-full object-cover" />
+                        <img
+                          src={getAvatarUrl()}
+                          alt="Avatar"
+                          className="w-full h-full object-cover"
+                        />
                       ) : (
                         <div className="w-full h-full bg-gradient-to-br from-pink-400 to-rose-400 flex items-center justify-center text-white text-3xl font-bold">
                           {displayName[0]?.toUpperCase()}
                         </div>
                       )}
-                      <div 
+                      <div
                         className="absolute inset-0 bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all duration-300 cursor-pointer"
                         onClick={() => setIsEditing(true)}
                       >
@@ -478,17 +582,22 @@ useEffect(() => {
                       <span className="text-xs font-bold text-black px-1">{currentLevel}</span>
                     </div>
                   </div>
-                  
+
                   <div className="flex-1 text-center md:text-left">
                     <h1 className="text-3xl font-bold mb-2">{displayName}</h1>
                     <p className="text-white/80 mb-3">
-                      {user?.user_type === 'guest' ? 'Guest Account' : user?.email || 'User Account'}
+                      {user?.user_type === "guest"
+                        ? "Guest Account"
+                        : user?.email || "User Account"}
                     </p>
-                    
+
                     {/* Badges */}
                     <div className="flex flex-wrap justify-center md:justify-start gap-2 mb-4">
                       {getUserBadges().map((badge, index) => (
-                        <Badge key={index} className={`${badge.color} text-white border-0 shadow-lg`}>
+                        <Badge
+                          key={index}
+                          className={`${badge.color} text-white border-0 shadow-lg`}
+                        >
                           {badge.icon}
                           <span className="ml-1">{badge.label}</span>
                         </Badge>
@@ -498,15 +607,26 @@ useEffect(() => {
                     {/* Quick Stats */}
                     <div className="flex justify-center md:justify-start space-x-6 text-sm">
                       <div className="text-center">
-                        <div className="font-bold text-lg">{user?.total_point ?? 0}</div>
+                        <div className="font-bold text-lg">
+                          {user?.total_point ?? 0}
+                        </div>
                         <div className="text-white/70">Total Points</div>
                       </div>
                       <div className="text-center">
-                        <div className="font-bold text-lg">{user?.remaining_matches ?? 0}</div>
+                        <div className="font-bold text-lg">
+                          {user?.remaining_matches ?? 0}
+                        </div>
                         <div className="text-white/70">Matches Left</div>
                       </div>
                       <div className="text-center">
-                        <div className="font-bold text-lg">{Math.round(((user?.kicked_win ?? 0) / Math.max(user?.total_kicked ?? 1, 1)) * 100)}%</div>
+                        <div className="font-bold text-lg">
+                          {Math.round(
+                            ((user?.kicked_win ?? 0) /
+                              Math.max(user?.total_kicked ?? 1, 1)) *
+                              100
+                          )}
+                          %
+                        </div>
                         <div className="text-white/70">Win Rate</div>
                       </div>
                     </div>
@@ -516,7 +636,9 @@ useEffect(() => {
                 {/* Experience Bar */}
                 <div className="mt-6 bg-white/10 rounded-full p-1 backdrop-blur-sm">
                   <div className="flex justify-between text-xs mb-2 px-2">
-                    <span>EXP: {currentPoint} / {nextMilestone}</span>
+                    <span>
+                      EXP: {currentPoint} / {nextMilestone}
+                    </span>
                     <span>Next Level: {currentLevel + 1}</span>
                   </div>
                   <Progress value={progress} className="h-3 bg-white/20" />
