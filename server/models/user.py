@@ -43,6 +43,7 @@ class UserBase(BaseModel):
     kicked_win: int = 0
     total_keep: int = 0
     keep_win: int = 0
+    available_skill_points: int = 0  # Số điểm kỹ năng có sẵn
     is_pro: bool = False
     is_vip: bool = False
     level: int = 1

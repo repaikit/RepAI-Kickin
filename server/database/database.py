@@ -121,4 +121,4 @@ async def get_skills_collection():
 
 async def get_chat_messages_collection():
     db = await get_database()
-    return db.chat_messages 
+    return db.chat_messages
