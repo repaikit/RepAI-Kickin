@@ -20,7 +20,7 @@ class Settings(BaseSettings):
         "http://localhost:3000",
         "https://kickin.olym3.com",
         "https://rep-ai-kickin.vercel.app",
-        "https://kickin-game.vercel.app"
+        "https://kickin.repai.vn/"
     ]
     
     # Database settings
