@@ -1,177 +1,408 @@
-from fastapi import APIRouter, HTTPException, Request, Depends
-from fastapi.responses import RedirectResponse
 import requests
-from typing import Optional
+import base64
+import urllib.parse
+from fastapi import APIRouter, Request, Response, HTTPException
+from fastapi.responses import RedirectResponse, JSONResponse
 import os
 from dotenv import load_dotenv
-from pymongo import MongoClient
-from bson import ObjectId
+from typing import Optional, Dict, Any
 from pydantic import BaseModel
+from models.user import User
+from database.database import get_database
+from datetime import datetime, timedelta
+from bson import ObjectId
 import logging
-import traceback
-import base64
 import hashlib
-from datetime import datetime
-from cryptography.fernet import Fernet
 import secrets
-from fastapi.security import OAuth2PasswordBearer
-from database.database import get_users_collection
-# Tải biến môi trường
+import json
+import traceback
+import sys
+
+# Load environment variables
 load_dotenv()
 
-# Setup logging
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler(sys.stdout)
+    ]
+)
 logger = logging.getLogger(__name__)
-logging.basicConfig(level=logging.INFO)
 
 router = APIRouter()
 
-# Cấu hình X API
-X_API_KEY = os.getenv("X_API_KEY")
-X_API_SECRET = os.getenv("X_API_SECRET")
-X_MAIN_ACCOUNT_ID = os.getenv("X_MAIN_ACCOUNT_ID")
-X_REDIRECT_URI = os.getenv("X_REDIRECT_URI", "http://localhost:3000/x/callback")
-X_SCOPES = "tweet.read users.read offline.access"
+# Twitter OAuth 2.0 Configuration
+CLIENT_ID = os.getenv('X_CLIENT_ID')
+CLIENT_SECRET = os.getenv('X_CLIENT_SECRET')
+FRONTEND_URL = os.getenv('FRONTEND_URL', 'http://localhost:3000')
+BACKEND_URL = os.getenv('BACKEND_URL', 'http://localhost:5000')
+CALLBACK_URL = f"{BACKEND_URL}/api/x/callback"
+SCOPE = 'tweet.read users.read offline.access'
 
-# Khóa mã hóa cho token
-ENCRYPTION_KEY = os.getenv("ENCRYPTION_KEY", Fernet.generate_key().decode())
-cipher = Fernet(ENCRYPTION_KEY)
+# OAuth 2.0 URLs
+AUTH_URL = 'https://twitter.com/i/oauth2/authorize'
+TOKEN_URL = 'https://api.twitter.com/2/oauth2/token'
+USER_INFO_URL = 'https://api.twitter.com/2/users/me'
 
-# Giả lập xác thực JWT (thay bằng hệ thống xác thực của bạn)
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")  # Thay "token" bằng endpoint đăng nhập của bạn
+class XStatusResponse(BaseModel):
+    is_connected: bool
+    username: Optional[str] = None
+    error: Optional[str] = None
 
-# Lưu tạm code_verifier và state theo user_id (bạn có thể thay bằng cache/session thực tế)
-temp_pkce = {}
+class TokenResponse(BaseModel):
+    access_token: str
+    refresh_token: Optional[str]
+    expires_in: int
+    token_type: str
+    scope: str
 
-def generate_pkce():
-    code_verifier = base64.urlsafe_b64encode(os.urandom(32)).decode("utf-8").rstrip("=")
-    code_challenge = base64.urlsafe_b64encode(
-        hashlib.sha256(code_verifier.encode("utf-8")).digest()
-    ).decode("utf-8").rstrip("=")
-    return code_verifier, code_challenge
+def generate_code_verifier() -> str:
+    """
+    Generate a code verifier for PKCE.
+    Returns a URL-safe random string of length 32.
+    """
+    return secrets.token_urlsafe(32)
 
-@router.get("/x/connect")
-async def connect_x(request: Request):
-    user = getattr(request.state, "user", None)
-    if not user or not user.get("_id"):
-        raise HTTPException(status_code=401, detail="Unauthorized")
-    user_id = str(user["_id"])
+def generate_code_challenge(code_verifier: str) -> str:
+    """
+    Generate a code challenge from the verifier using SHA-256.
+    Returns a base64url-encoded string without padding.
+    """
+    sha256_hash = hashlib.sha256(code_verifier.encode('utf-8')).digest()
+    code_challenge = base64.urlsafe_b64encode(sha256_hash).decode('utf-8').rstrip('=')
+    return code_challenge
 
+async def get_current_user(request: Request) -> User:
+    """
+    Get current user from request state.
+    Raises HTTPException if user not found or invalid.
+    """
     try:
-        state = secrets.token_urlsafe(32)
-        code_verifier, code_challenge = generate_pkce()
-        temp_pkce[user_id] = {"code_verifier": code_verifier, "state": state}
-
-        auth_url = (
-            f"https://twitter.com/i/oauth2/authorize?response_type=code"
-            f"&client_id={X_API_KEY}&redirect_uri={X_REDIRECT_URI}"
-            f"&scope={X_SCOPES}&state={state}"
-            f"&code_challenge={code_challenge}&code_challenge_method=S256"
-        )
-        return {"auth_url": auth_url, "state": state}
+        user = request.state.user
+        if not user:
+            raise HTTPException(status_code=401, detail="User not found in request state")
+        return User(**user)
     except Exception as e:
-        logger.error(f"Error in connect_x: {str(e)}\n{traceback.format_exc()}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Error in get_current_user: {str(e)}")
+        raise HTTPException(status_code=401, detail=str(e))
 
-@router.get("/x/callback")
-async def x_callback(request: Request, code: str, state: str):
-    user = getattr(request.state, "user", None)
-    if not user or not user.get("_id"):
-        raise HTTPException(status_code=401, detail="Unauthorized")
-    user_id = str(user["_id"])
-
-    pkce_data = temp_pkce.get(user_id)
-    if not pkce_data or pkce_data["state"] != state:
-        raise HTTPException(status_code=400, detail="Invalid state or code_verifier")
-
-    code_verifier = pkce_data["code_verifier"]
-
+async def save_tokens_to_db(user_id: str, token_data: Dict[str, Any]) -> bool:
+    """
+    Save OAuth tokens to database.
+    Returns True if successful, False otherwise.
+    """
     try:
-        token_url = "https://api.twitter.com/2/oauth2/token"
-        token_data = {
-            "grant_type": "authorization_code",
-            "code": code,
-            "redirect_uri": X_REDIRECT_URI,
-            "code_verifier": code_verifier,
-        }
-        token_headers = {
-            "Content-Type": "application/x-www-form-urlencoded",
-            "Authorization": f"Basic {base64.b64encode(f'{X_API_KEY}:{X_API_SECRET}'.encode()).decode()}"
-        }
-
-        token_response = requests.post(token_url, data=token_data, headers=token_headers)
-        if not token_response.ok:
-            raise HTTPException(status_code=400, detail=f"Failed to get access token: {token_response.text}")
-
-        token_data = token_response.json()
-        access_token = token_data["access_token"]
-        refresh_token = token_data.get("refresh_token")
-
-        # Lấy thông tin user từ X
-        user_url = "https://api.twitter.com/2/users/me?user.fields=id,username"
-        user_headers = {"Authorization": f"Bearer {access_token}"}
-        user_response = requests.get(user_url, headers=user_headers)
-        if not user_response.ok:
-            raise HTTPException(status_code=400, detail=f"Failed to get user info: {user_response.text}")
-
-        user_data = user_response.json()
-        x_user_id = user_data["data"]["id"]
-        x_username = user_data["data"]["username"]
-
-        # Cập nhật thông tin X vào user (async)
-        users_collection = await get_users_collection()
-        await users_collection.update_one(
+        db = await get_database()
+        update_result = await db.users.update_one(
             {"_id": ObjectId(user_id)},
-            {"$set": {
-                "x_connected": True,
-                "x_id": x_user_id,
-                "x_username": x_username,
-                "x_access_token": access_token,
-                "x_access_secret": refresh_token,
-                "x_connected_at": datetime.utcnow().isoformat()
-            }}
-        )
-
-        # Xóa tạm pkce
-        del temp_pkce[user_id]
-
-        return RedirectResponse(url=f"{os.getenv('FRONTEND_URL', 'http://localhost:3000')}/profile?x=connected")
-    except Exception as e:
-        logger.error(f"Error in x_callback: {str(e)}\n{traceback.format_exc()}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-@router.get("/x/status/{user_id}")
-async def check_x_status(request: Request, user_id: str):
-    try:
-        user = getattr(request.state, "user", None)
-        if not user or str(user["_id"]) != user_id:
-            raise HTTPException(status_code=403, detail="Unauthorized")
-        
-        users_collection = await get_users_collection()
-        user_db = await users_collection.find_one({"_id": ObjectId(user_id)})
-        if not user_db or not user_db.get("x_connected"):
-            return {
-                "is_connected": False,
-                "username": None,
-                "is_following": False
+            {
+                "$set": {
+                    "x_access_token": token_data['access_token'],
+                    "x_refresh_token": token_data.get('refresh_token'),
+                    "x_token_expires_at": int((datetime.now() + timedelta(seconds=token_data.get('expires_in', 7200))).timestamp()),
+                    "x_connected": True,
+                    "x_connected_at": datetime.now()
+                },
+                "$unset": {
+                    "x_auth_state": "",
+                    "x_code_verifier": ""
+                }
             }
+        )
+        return update_result.modified_count > 0
+    except Exception as e:
+        logger.error(f"Error saving tokens to database: {str(e)}")
+        return False
 
-        access_token = user_db.get("x_access_token")
-        # Nếu bạn có mã hóa access_token thì giải mã ở đây, nếu không thì bỏ dòng dưới
-        # access_token = cipher.decrypt(access_token.encode()).decode()
+@router.get('/status', response_model=XStatusResponse)
+async def get_x_status(request: Request):
+    """
+    Check X connection status for current user.
+    Returns connection status and username if connected.
+    """
+    try:
+        current_user = await get_current_user(request)
+        
+        if not current_user.x_access_token:
+            return XStatusResponse(is_connected=False)
+        
+        # Verify token by getting user info
+        headers = {
+            'Authorization': f'Bearer {current_user.x_access_token}'
+        }
+        
+        response = requests.get(USER_INFO_URL, headers=headers)
+        if response.status_code != 200:
+            return XStatusResponse(is_connected=False)
+        
+        data = response.json()
+        return XStatusResponse(
+            is_connected=True,
+            username=data.get('data', {}).get('username')
+        )
+    except Exception as e:
+        logger.error(f"Error checking X status: {str(e)}")
+        return XStatusResponse(is_connected=False, error=str(e))
 
-        # Kiểm tra follow status
-        response = requests.get(
-            f"https://api.twitter.com/2/users/{user_db['x_id']}/following?target_user_id={X_MAIN_ACCOUNT_ID}",
-            headers={"Authorization": f"Bearer {access_token}"}
+@router.get('/connect')
+async def connect_x(request: Request):
+    """
+    Start X OAuth flow.
+    Generates PKCE values and returns authorization URL.
+    """
+    try:
+        current_user = await get_current_user(request)
+        
+        # Generate state and PKCE values
+        state = secrets.token_urlsafe(16)
+        code_verifier = generate_code_verifier()
+        code_challenge = generate_code_challenge(code_verifier)
+        
+        # Store state and code verifier
+        db = await get_database()
+        update_result = await db.users.update_one(
+            {"_id": ObjectId(current_user.id)},
+            {
+                "$set": {
+                    "x_auth_state": state,
+                    "x_code_verifier": code_verifier
+                }
+            }
+        )
+        
+        if update_result.modified_count == 0:
+            raise HTTPException(status_code=500, detail="Failed to store authentication state")
+        
+        # Build authorization URL
+        params = {
+            'response_type': 'code',
+            'client_id': CLIENT_ID,
+            'redirect_uri': CALLBACK_URL,
+            'scope': SCOPE,
+            'state': state,
+            'code_challenge': code_challenge,
+            'code_challenge_method': 'S256'
+        }
+        
+        auth_url = f"{AUTH_URL}?{urllib.parse.urlencode(params)}"
+        logger.info(f"Generated auth URL for user {current_user.id}")
+        
+        return JSONResponse(content={"auth_url": auth_url})
+    except Exception as e:
+        logger.error(f"Error in connect_x: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to initiate X connection: {str(e)}")
+
+@router.get('/callback')
+async def x_callback(code: str, state: str):
+    """
+    Handle X OAuth callback.
+    Exchanges authorization code for access token and saves tokens.
+    """
+    try:
+        logger.info(f"Received callback with state: {state}")
+        
+        # Get user from state
+        db = await get_database()
+        user = await db.users.find_one({"x_auth_state": state})
+        if not user:
+            logger.error(f"No user found for state: {state}")
+            return RedirectResponse(
+                url=f"{FRONTEND_URL}/profile?x_error=Invalid state",
+                status_code=303
+            )
+        
+        logger.info(f"Found user: {user['_id']}")
+        
+        # Get code verifier
+        if 'x_code_verifier' not in user:
+            logger.error(f"No code verifier found for user: {user['_id']}")
+            return RedirectResponse(
+                url=f"{FRONTEND_URL}/profile?x_error=Code verifier not found",
+                status_code=303
+            )
+        
+        code_verifier = user['x_code_verifier']
+        logger.info("Found code verifier")
+        
+        # Exchange code for token
+        auth_string = f"{CLIENT_ID}:{CLIENT_SECRET}"
+        auth_bytes = auth_string.encode('ascii')
+        base64_auth = base64.b64encode(auth_bytes).decode('ascii')
+        
+        headers = {
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'Authorization': f'Basic {base64_auth}'
+        }
+        
+        data = {
+            'code': code,
+            'grant_type': 'authorization_code',
+            'client_id': CLIENT_ID,
+            'redirect_uri': CALLBACK_URL,
+            'code_verifier': code_verifier
+        }
+
+        try:
+            response = requests.post(TOKEN_URL, headers=headers, data=data)
+            logger.info(f"Token exchange response status: {response.status_code}")
+            logger.info(f"Token exchange response: {response.text}")
+            
+            if response.status_code != 200:
+                logger.error(f"Token exchange failed: {response.text}")
+                return RedirectResponse(
+                    url=f"{FRONTEND_URL}/profile?x_error=Failed to get access token",
+                    status_code=303
+                )
+            
+            token_data = response.json()
+            logger.info("Successfully exchanged code for token")
+
+            # --- LẤY THÔNG TIN USER TỪ TWITTER ---
+            x_id = None
+            x_username = None
+            try:
+                user_headers = {
+                    'Authorization': f'Bearer {token_data["access_token"]}'
+                }
+                user_info_resp = requests.get('https://api.twitter.com/2/users/me', headers=user_headers)
+                logger.info(f"User info response status: {user_info_resp.status_code}")
+                logger.info(f"User info response: {user_info_resp.text}")
+                if user_info_resp.status_code == 200:
+                    user_info = user_info_resp.json().get('data', {})
+                    x_id = user_info.get('id')
+                    x_username = user_info.get('username')
+            except Exception as info_err:
+                logger.error(f"Error fetching user info from Twitter: {str(info_err)}")
+
+            # Save tokens + user info
+            try:
+                update_result = await db.users.update_one(
+                    {"_id": user["_id"]},
+                    {
+                        "$set": {
+                            "x_access_token": token_data['access_token'],
+                            "x_refresh_token": token_data.get('refresh_token'),
+                            "x_token_expires_at": int((datetime.now() + timedelta(seconds=token_data.get('expires_in', 7200))).timestamp()),
+                            "x_connected": True,
+                            "x_connected_at": datetime.now(),
+                            "x_id": x_id,
+                            "x_username": x_username
+                        },
+                        "$unset": {
+                            "x_auth_state": "",
+                            "x_code_verifier": ""
+                        },
+                        "$push": {
+                            "x_connection_history": {
+                                "x_id": x_id,
+                                "x_username": x_username,
+                                "connected_at": datetime.now()
+                            }
+                        }
+                    }
+                )
+                if update_result.modified_count == 0:
+                    logger.error("Failed to save tokens and user info to database")
+                    return RedirectResponse(
+                        url=f"{FRONTEND_URL}/profile?x_error=Failed to save X credentials",
+                        status_code=303
+                    )
+                logger.info("Successfully saved tokens and user info to database")
+                return RedirectResponse(
+                    url=f"{FRONTEND_URL}/profile?x_connected=true",
+                    status_code=303
+                )
+            except Exception as db_error:
+                logger.error(f"Database error: {str(db_error)}")
+                logger.error(f"Database error traceback: {traceback.format_exc()}")
+                return RedirectResponse(
+                    url=f"{FRONTEND_URL}/profile?x_error=Database error while saving credentials",
+                    status_code=303
+                )
+        except requests.exceptions.RequestException as req_error:
+            logger.error(f"Request error: {str(req_error)}")
+            logger.error(f"Request error traceback: {traceback.format_exc()}")
+            return RedirectResponse(
+                url=f"{FRONTEND_URL}/profile?x_error=Failed to communicate with X API",
+                status_code=303
+            )
+    except Exception as e:
+        logger.error(f"Error in x_callback: {str(e)}")
+        logger.error(f"Traceback: {traceback.format_exc()}")
+        return RedirectResponse(
+            url=f"{FRONTEND_URL}/profile?x_error={urllib.parse.quote(str(e))}",
+            status_code=303
         )
 
-        is_following = response.ok and len(response.json().get("data", [])) > 0
-
-        return {
-            "is_connected": True,
-            "username": user_db.get("x_username"),
-            "is_following": is_following
+@router.post('/refresh')
+async def refresh_token(request: Request):
+    """
+    Refresh X access token using refresh token.
+    """
+    try:
+        current_user = await get_current_user(request)
+        
+        if not current_user.x_refresh_token:
+            raise HTTPException(status_code=400, detail="No refresh token available")
+        
+        auth_string = f"{CLIENT_ID}:{CLIENT_SECRET}"
+        auth_bytes = auth_string.encode('ascii')
+        base64_auth = base64.b64encode(auth_bytes).decode('ascii')
+        
+        headers = {
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'Authorization': f'Basic {base64_auth}'
         }
+        
+        data = {
+            'grant_type': 'refresh_token',
+            'refresh_token': current_user.x_refresh_token,
+            'client_id': CLIENT_ID
+        }
+        
+        response = requests.post(TOKEN_URL, headers=headers, data=data)
+        if response.status_code != 200:
+            raise HTTPException(status_code=400, detail="Failed to refresh token")
+        
+        token_data = response.json()
+        
+        # Save new tokens
+        if not await save_tokens_to_db(current_user.id, token_data):
+            raise HTTPException(status_code=500, detail="Failed to save refreshed tokens")
+        
+        return JSONResponse(content={"message": "Token refreshed successfully"})
     except Exception as e:
-        logger.error(f"Error in check_x_status: {str(e)}\n{traceback.format_exc()}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Error refreshing token: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to refresh token: {str(e)}")
+
+@router.post('/disconnect')
+async def disconnect_x(request: Request):
+    """
+    Disconnect X account for current user.
+    """
+    try:
+        current_user = await get_current_user(request)
+        db = await get_database()
+        update_result = await db.users.update_one(
+            {"_id": ObjectId(current_user.id)},
+            {
+                "$unset": {
+                    "x_access_token": "",
+                    "x_refresh_token": "",
+                    "x_token_expires_at": "",
+                    "x_connected": "",
+                    "x_connected_at": "",
+                    "x_id": "",
+                    "x_username": "",
+                    "x_main_account_id": ""
+                }
+            }
+        )
+        if update_result.modified_count == 0:
+            raise HTTPException(status_code=400, detail="Failed to disconnect X account")
+        return JSONResponse(content={"message": "Disconnected X account successfully"})
+    except Exception as e:
+        logger.error(f"Error disconnecting X: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to disconnect X: {str(e)}")

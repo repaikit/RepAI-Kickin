@@ -364,16 +364,16 @@ export default function GlobalChat() {
                 className={`flex ${isMyMessage ? 'justify-end' : 'justify-start'}`}
               >
                 <div className={`flex max-w-[80%] ${isMyMessage ? 'flex-row-reverse' : 'flex-row'}`}>
-                  <div className={`flex-shrink-0 ${isMyMessage ? 'ml-2' : 'mr-2'}`}>
-                    <div className="relative">
-                      <img
-                        src={group.sender.avatar || '/default-avatar.png'}
-                        alt={group.sender.name}
-                        className="w-8 h-8 rounded-full object-cover"
-                      />
-                      <div className="absolute bottom-0 right-0 h-2 w-2 bg-green-500 rounded-full border border-white"></div>
-                    </div>
+                <div className={`flex-shrink-0 ${isMyMessage ? 'ml-2' : 'mr-2'}`}>
+                  <div className="relative">
+                    <img
+                      src={group.sender.avatar}
+                      alt={group.sender.name}
+                      className="w-8 h-8 rounded-full object-cover"
+                    />
+                    <div className="absolute bottom-0 right-0 h-2 w-2 bg-green-500 rounded-full border border-white"></div>
                   </div>
+                </div>
 
                   <div className="space-y-1">
                     <div className={`${isMyMessage ? 'text-right' : 'text-left'} mb-1`}>

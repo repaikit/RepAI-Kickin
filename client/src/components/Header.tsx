@@ -4,15 +4,20 @@ import { useAuth } from "@/contexts/AuthContext";
 import { API_ENDPOINTS, defaultFetchOptions } from "@/config/api";
 import { Skeleton } from "@/components/ui/skeleton";
 import TaskMysteryBoxDropdown from "./TaskMysteryBoxDropdown";
-import { websocketService } from '@/services/websocket';
+import { websocketService } from "@/services/websocket";
 import { toast } from "sonner";
+import VIPZoneModal from "./VIPZoneModal";
 
 export default function Header() {
   const { user, isAuthenticated, isLoading, logout, checkAuth } = useAuth();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [upgradeError, setUpgradeError] = useState<string | null>(null);
   const [upgradeLoading, setUpgradeLoading] = useState(false);
-  const [upgradeForm, setUpgradeForm] = useState({ email: '', password: '', name: '' });
+  const [upgradeForm, setUpgradeForm] = useState({
+    email: "",
+    password: "",
+    name: "",
+  });
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
   const [upgradeSuccess, setUpgradeSuccess] = useState<string | null>(null);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -20,47 +25,57 @@ export default function Header() {
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       const target = event.target as HTMLElement;
-      if (!target.closest('.profile-menu')) {
+      if (!target.closest(".profile-menu")) {
         setIsMenuOpen(false);
       }
     };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
   const handleRefreshGuest = async () => {
     try {
-      const token = localStorage.getItem('access_token');
+      const token = localStorage.getItem("access_token");
       if (!token) {
         return;
       }
       const response = await fetch(API_ENDPOINTS.users.refreshGuest, {
-        method: 'POST',
+        method: "POST",
         headers: {
           ...defaultFetchOptions.headers,
-          'Authorization': `Bearer ${token}`,
+          Authorization: `Bearer ${token}`,
         },
       });
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.detail || 'Failed to refresh turn');
+        throw new Error(errorData.detail || "Failed to refresh turn");
       }
       const data = await response.json();
       await checkAuth();
       websocketService.sendMessage({
-        type: 'user_updated',
-        user: data.user
+        type: "user_updated",
+        user: data.user,
       });
       toast.success(
         <div className="flex items-center space-x-2">
-          <svg className="w-5 h-5 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+          <svg
+            className="w-5 h-5 text-green-500"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M5 13l4 4L19 7"
+            />
           </svg>
           <span>Turn refreshed successfully!</span>
         </div>
       );
     } catch (err) {
-      toast.error('Failed to refresh turn!');
+      toast.error("Failed to refresh turn!");
     }
   };
 
@@ -70,48 +85,50 @@ export default function Header() {
     setUpgradeError(null);
     setUpgradeSuccess(null);
     try {
-      const token = localStorage.getItem('access_token');
+      const token = localStorage.getItem("access_token");
       if (!token) {
-        setUpgradeError('Access token not found!');
+        setUpgradeError("Access token not found!");
         return;
       }
       const response = await fetch(API_ENDPOINTS.users.upgradeGuest, {
-        method: 'POST',
+        method: "POST",
         headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-          'Authorization': `Bearer ${token}`
+          "Content-Type": "application/json",
+          Accept: "application/json",
+          Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify(upgradeForm)
+        body: JSON.stringify(upgradeForm),
       });
       const data = await response.json();
       if (!response.ok) {
-        setUpgradeError(data.detail || 'Failed to upgrade account');
+        setUpgradeError(data.detail || "Failed to upgrade account");
         return;
       }
       if (data.access_token) {
-        localStorage.setItem('access_token', data.access_token);
+        localStorage.setItem("access_token", data.access_token);
         await checkAuth();
         window.location.reload();
       } else if (data.message) {
-        setUpgradeSuccess("Verification email sent! Please check your mailbox to verify your account before logging in.");
+        setUpgradeSuccess(
+          "Verification email sent! Please check your mailbox to verify your account before logging in."
+        );
         setShowUpgradeModal(true);
-        setUpgradeForm({ email: '', password: '', name: '' });
+        setUpgradeForm({ email: "", password: "", name: "" });
         setUpgradeError(null);
       } else {
         setUpgradeError(null);
       }
     } catch (error) {
-      setUpgradeError(error instanceof Error ? error.message : 'Unknown error');
+      setUpgradeError(error instanceof Error ? error.message : "Unknown error");
     } finally {
       setUpgradeLoading(false);
     }
   };
 
-  const displayName = user?.name || user?.email || 'Guest';
-  const avatarInitial = displayName[0]?.toUpperCase() || 'G';
+  const displayName = user?.name || user?.email || "Guest";
+  const avatarInitial = displayName[0]?.toUpperCase() || "G";
   const getAvatarUrl = () => user?.avatar;
-  const isGuestUser = user?.user_type === 'guest';
+  const isGuestUser = user?.user_type === "guest";
 
   return (
     <>
@@ -120,7 +137,10 @@ export default function Header() {
         <div className="container mx-auto px-4 lg:px-6 relative z-10">
           <div className="flex justify-between items-center py-4">
             {/* Logo */}
-            <Link href="/" className="flex items-center space-x-3 hover:opacity-80 transition-all duration-300 group">
+            <Link
+              href="/"
+              className="flex items-center space-x-3 hover:opacity-80 transition-all duration-300 group"
+            >
               <div className="relative">
                 <div className="w-8 h-8 bg-gradient-to-br from-pink-500 to-rose-600 rounded-xl flex items-center justify-center transform group-hover:scale-110 transition-transform duration-300 shadow-lg">
                   <svg className="w-5 h-5 text-white" viewBox="0 0 24 24" fill="currentColor">
@@ -137,23 +157,50 @@ export default function Header() {
             {/* Desktop Navigation */}
             <nav className="hidden lg:flex items-center space-x-8">
               {[
-                { href: "/", label: "Dashboard", icon: "M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2H5a2 2 0 00-2 2z" },
-                { href: "/matches", label: "Matches", icon: "M9 12l2 2 4-4M21 12a9 9 0 11-18 0 9 9 0 0118 0z" },
-                { href: "/players", label: "Players", icon: "M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m13.5-9a2.5 2.5 0 11-5 0 2.5 2.5 0 015 0z" },
-                { href: "/statistics", label: "Statistics", icon: "M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" }
+                {
+                  href: "/",
+                  label: "Dashboard",
+                  icon: "M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2H5a2 2 0 00-2 2z",
+                },
+                {
+                  href: "/matches",
+                  label: "Matches",
+                  icon: "M9 12l2 2 4-4M21 12a9 9 0 11-18 0 9 9 0 0118 0z",
+                },
+                {
+                  href: "/players",
+                  label: "Players",
+                  icon: "M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m13.5-9a2.5 2.5 0 11-5 0 2.5 2.5 0 015 0z",
+                },
+                {
+                  href: "/statistics",
+                  label: "Statistics",
+                  icon: "M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z",
+                },
               ].map((item, index) => (
-                <Link 
+                <Link
                   key={item.href}
                   href={item.href} 
                   className="group flex items-center space-x-2 px-3 py-2 rounded-lg text-pink-100 hover:text-white hover:bg-pink-500/20 transition-all duration-300 relative backdrop-blur-sm"
                 >
-                  <svg className="w-4 h-4 transition-transform group-hover:scale-110" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={item.icon} />
+                  <svg
+                    className="w-4 h-4 transition-transform group-hover:scale-110"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d={item.icon}
+                    />
                   </svg>
                   <span className="font-medium">{item.label}</span>
                   <div className="absolute bottom-0 left-0 w-0 h-0.5 bg-gradient-to-r from-pink-400 to-rose-500 group-hover:w-full transition-all duration-300"></div>
                 </Link>
               ))}
+              <VIPZoneModal />
             </nav>
 
             {/* Right Section */}
@@ -231,7 +278,9 @@ export default function Header() {
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
                                   </svg>
                                 </div>
-                                <span className="font-medium">Profile Settings</span>
+                                <span className="font-medium">
+                                  Profile Settings
+                                </span>
                               </Link>
                               <button
                                 onClick={logout}
@@ -243,7 +292,9 @@ export default function Header() {
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
                                   </svg>
                                 </div>
-                                <span className="font-medium">{isLoading ? 'Logging out...' : 'Logout'}</span>
+                                <span className="font-medium">
+                                  {isLoading ? "Logging out..." : "Logout"}
+                                </span>
                               </button>
                             </div>
                           </>
@@ -273,8 +324,18 @@ export default function Header() {
                                   onClick={handleRefreshGuest}
                                   className="w-full flex items-center justify-center px-4 py-2.5 bg-gradient-to-r from-pink-500 to-pink-600 text-white rounded-xl hover:from-pink-600 hover:to-pink-700 transition-all duration-300 font-medium shadow-lg hover:shadow-xl transform hover:scale-105"
                                 >
-                                  <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582M20 20v-5h-.581M5.635 19A9 9 0 1 1 19 5.635" />
+                                  <svg
+                                    className="w-4 h-4 mr-2"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    strokeWidth={2}
+                                    viewBox="0 0 24 24"
+                                  >
+                                    <path
+                                      strokeLinecap="round"
+                                      strokeLinejoin="round"
+                                      d="M4 4v5h.582M20 20v-5h-.581M5.635 19A9 9 0 1 1 19 5.635"
+                                    />
                                   </svg>
                                   Refresh Turn
                                 </button>
@@ -285,14 +346,22 @@ export default function Header() {
                                     </svg>
                                     Upgrade Account
                                   </h4>
-                                  <form onSubmit={handleUpgradeGuest} className="space-y-3">
+                                  <form
+                                    onSubmit={handleUpgradeGuest}
+                                    className="space-y-3"
+                                  >
                                     <div className="space-y-2">
                                       <input
                                         type="email"
                                         placeholder="Email address"
                                         className="w-full px-4 py-2.5 bg-slate-600/50 border border-pink-500/20 rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-transparent transition-all duration-300 text-white placeholder-pink-300"
                                         value={upgradeForm.email}
-                                        onChange={e => setUpgradeForm(f => ({ ...f, email: e.target.value }))}
+                                        onChange={(e) =>
+                                          setUpgradeForm((f) => ({
+                                            ...f,
+                                            email: e.target.value,
+                                          }))
+                                        }
                                         required
                                       />
                                       <input
@@ -300,7 +369,12 @@ export default function Header() {
                                         placeholder="Password"
                                         className="w-full px-4 py-2.5 bg-slate-600/50 border border-pink-500/20 rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-transparent transition-all duration-300 text-white placeholder-pink-300"
                                         value={upgradeForm.password}
-                                        onChange={e => setUpgradeForm(f => ({ ...f, password: e.target.value }))}
+                                        onChange={(e) =>
+                                          setUpgradeForm((f) => ({
+                                            ...f,
+                                            password: e.target.value,
+                                          }))
+                                        }
                                         required
                                       />
                                       <input
@@ -308,7 +382,12 @@ export default function Header() {
                                         placeholder="Full name"
                                         className="w-full px-4 py-2.5 bg-slate-600/50 border border-pink-500/20 rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-transparent transition-all duration-300 text-white placeholder-pink-300"
                                         value={upgradeForm.name}
-                                        onChange={e => setUpgradeForm(f => ({ ...f, name: e.target.value }))}
+                                        onChange={(e) =>
+                                          setUpgradeForm((f) => ({
+                                            ...f,
+                                            name: e.target.value,
+                                          }))
+                                        }
                                         required
                                       />
                                     </div>
@@ -319,14 +398,29 @@ export default function Header() {
                                     >
                                       {upgradeLoading ? (
                                         <div className="flex items-center justify-center">
-                                          <svg className="w-4 h-4 mr-2 animate-spin" fill="none" viewBox="0 0 24 24">
-                                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                          <svg
+                                            className="w-4 h-4 mr-2 animate-spin"
+                                            fill="none"
+                                            viewBox="0 0 24 24"
+                                          >
+                                            <circle
+                                              className="opacity-25"
+                                              cx="12"
+                                              cy="12"
+                                              r="10"
+                                              stroke="currentColor"
+                                              strokeWidth="4"
+                                            ></circle>
+                                            <path
+                                              className="opacity-75"
+                                              fill="currentColor"
+                                              d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                                            ></path>
                                           </svg>
                                           Upgrading...
                                         </div>
                                       ) : (
-                                        'Create Account'
+                                        "Create Account"
                                       )}
                                     </button>
                                     {upgradeError && (
@@ -354,8 +448,22 @@ export default function Header() {
                 className="lg:hidden p-2 text-pink-100 hover:text-white hover:bg-pink-500/20 rounded-lg transition-all duration-300"
                 onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
               >
-                <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={isMobileMenuOpen ? "M6 18L18 6M6 6l12 12" : "M4 6h16M4 12h16m-7 6h7"} />
+                <svg
+                  className="w-6 h-6"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d={
+                      isMobileMenuOpen
+                        ? "M6 18L18 6M6 6l12 12"
+                        : "M4 6h16M4 12h16m-7 6h7"
+                    }
+                  />
                 </svg>
               </button>
             </div>
@@ -366,23 +474,52 @@ export default function Header() {
             <div className="lg:hidden py-4 border-t border-pink-500/20 animate-in slide-in-from-top-2 duration-200">
               <nav className="space-y-2">
                 {[
-                  { href: "/", label: "Dashboard", icon: "M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2H5a2 2 0 00-2 2z" },
-                  { href: "/matches", label: "Matches", icon: "M9 12l2 2 4-4M21 12a9 9 0 11-18 0 9 9 0 0118 0z" },
-                  { href: "/players", label: "Players", icon: "M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m13.5-9a2.5 2.5 0 11-5 0 2.5 2.5 0 015 0z" },
-                  { href: "/statistics", label: "Statistics", icon: "M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" }
+                  {
+                    href: "/",
+                    label: "Dashboard",
+                    icon: "M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2H5a2 2 0 00-2 2z",
+                  },
+                  {
+                    href: "/matches",
+                    label: "Matches",
+                    icon: "M9 12l2 2 4-4M21 12a9 9 0 11-18 0 9 9 0 0118 0z",
+                  },
+                  {
+                    href: "/players",
+                    label: "Players",
+                    icon: "M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m13.5-9a2.5 2.5 0 11-5 0 2.5 2.5 0 015 0z",
+                  },
+                  {
+                    href: "/statistics",
+                    label: "Statistics",
+                    icon: "M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z",
+                  },
                 ].map((item) => (
-                  <Link 
+                  <Link
                     key={item.href}
                     href={item.href} 
                     className="flex items-center space-x-3 px-4 py-3 text-pink-100 hover:text-white hover:bg-pink-500/20 rounded-lg transition-all duration-300 backdrop-blur-sm"
                     onClick={() => setIsMobileMenuOpen(false)}
                   >
-                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={item.icon} />
+                    <svg
+                      className="w-5 h-5"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d={item.icon}
+                      />
                     </svg>
                     <span className="font-medium">{item.label}</span>
                   </Link>
                 ))}
+                <div className="px-4">
+                  <VIPZoneModal />
+                </div>
               </nav>
             </div>
           )}
