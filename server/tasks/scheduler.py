@@ -18,6 +18,5 @@ def setup_scheduler():
     
     try:
         scheduler.start()
-        api_logger.info("Scheduler started successfully")
     except Exception as e:
         api_logger.error(f"Error starting scheduler: {str(e)}") 

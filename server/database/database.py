@@ -3,6 +3,12 @@ from config.settings import settings
 import os
 from utils.logger import api_logger
 import asyncio
+import certifi
+from pymongo import MongoClient
+from pymongo.server_api import ServerApi
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # Determine if running in Vercel environment
 IS_VERCEL = os.getenv('VERCEL') is not None
@@ -31,17 +37,19 @@ class Database:
                 if self._db is None:
                     self._client = AsyncIOMotorClient(
                         MONGODB_URL,
+                        server_api=ServerApi('1'),
+                        tls=True,
+                        tlsCAFile=certifi.where(),
+                        tlsAllowInvalidCertificates=False,
+                        connectTimeoutMS=30000,
+                        socketTimeoutMS=30000,
                         maxPoolSize=50,
                         minPoolSize=10,
-                        maxIdleTimeMS=60000,
-                        waitQueueTimeoutMS=10000,
-                        retryWrites=True,
-                        retryReads=True,
-                        serverSelectionTimeoutMS=30000,
-                        connectTimeoutMS=20000,
-                        socketTimeoutMS=20000,
-                        heartbeatFrequencyMS=10000
+                        maxIdleTimeMS=45000,
+                        waitQueueTimeoutMS=10000
                     )
+                    await self._client.admin.command('ping')
+                    print("Successfully connected to MongoDB!")
                     self._db = self._client[DATABASE_NAME]
         return self._db
 
@@ -133,3 +141,37 @@ async def get_vip_codes_collection():
     """Get VIP codes collection."""
     db = await get_database()
     return db.vip_codes 
+
+async def get_pro_codes_collection():
+    """Get PRO codes collection"""
+    db = await get_database()
+    return db.pro_codes
+
+async def get_nfts_collection():
+    """Get NFTs collection"""
+    db = await get_database()
+    return db.nfts
+
+async def setup_database():
+    """Setup database collections and indexes"""
+    try:
+        # Import models
+        from models.user import User
+        from models.invite_codes.vip_codes import VIPInviteCode
+        from models.nft import NFT
+
+        # Setup collections
+        users_collection = await get_users_collection()
+        vip_codes_collection = await get_vip_codes_collection()
+        pro_codes_collection = await get_pro_codes_collection()
+        nfts_collection = await get_nfts_collection()
+
+        # Setup indexes
+        await User.setup_collection(users_collection)
+        await VIPInviteCode.setup_collection(vip_codes_collection)
+        await VIPInviteCode.setup_collection(pro_codes_collection)
+        await NFT.setup_collection(nfts_collection)
+
+    except Exception as e:
+        api_logger.error(f"Error setting up database: {str(e)}")
+        raise e 

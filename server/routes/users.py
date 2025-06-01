@@ -912,26 +912,3 @@ async def upgrade_to_pro(request: Request):
     )
 
     return {"success": True, "message": "Successfully upgraded to PRO!"}
-
-@router.post("/users/increment-nft-minted")
-async def increment_nft_minted(request: Request):
-    """Tăng số lượng NFT đã mint cho user hiện tại"""
-    user = getattr(request.state, "user", None)
-    if not user:
-        raise HTTPException(status_code=401, detail="Not authenticated")
-    users_collection = await get_users_collection()
-    user_id = user.get("_id")
-    if not user_id:
-        raise HTTPException(status_code=400, detail="Invalid user data in token")
-    # Lấy số hiện tại
-    user_db = await users_collection.find_one({"_id": ObjectId(user_id)})
-    if not user_db:
-        raise HTTPException(status_code=404, detail="User not found")
-    current_count = user_db.get("nft_minted", 0)
-    new_count = current_count + 1
-    await users_collection.update_one({"_id": ObjectId(user_id)}, {"$set": {"nft_minted": new_count}})
-    return {"nft_minted": new_count}
-
-
-class InviteCodeRequest(BaseModel):
-    invite_code: str

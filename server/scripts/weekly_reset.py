@@ -146,7 +146,6 @@ async def distribute_rewards(db, current_week):
         # VIP
         vip_users = await db.users.find({"is_vip": True}).to_list(length=None)
         await reward_top_10(db, vip_users, "VIP", current_week, now)
-        api_logger.info(f"[WeeklyReward] Successfully distributed rewards for week {current_week}")
         return True
     except Exception as e:
         api_logger.error(f"[WeeklyReward] Error distributing rewards: {str(e)}")
@@ -213,7 +212,6 @@ async def reset_week(ignore_time_check=False, force_week=None):
     try:
         # Kiểm tra quyền reset
         if not await validate_reset_permission(ignore_time_check=ignore_time_check):
-            api_logger.info("[WeeklyReset] Not authorized to reset at this time")
             return False
 
         db = await get_database()
@@ -227,11 +225,8 @@ async def reset_week(ignore_time_check=False, force_week=None):
         
         # Kiểm tra đã reset chưa
         if await check_already_reset(current_week):
-            api_logger.info(f"[WeeklyReset] Week {current_week} already reset")
             return False
-            
-        api_logger.info(f"[WeeklyReset] Starting reset for week {current_week}")
-        
+
         # 1. Lưu leaderboard tuần cho từng bảng TRƯỚC KHI RESET
         for board, query in {
             "BASIC": {"is_pro": False, "is_vip": False},
@@ -300,7 +295,6 @@ async def reset_week(ignore_time_check=False, force_week=None):
         
         # Trao thưởng mỗi 4 tuần
         if week_number % 4 == 0:
-            api_logger.info(f"[WeeklyReward] Week {current_week} is reward week")
             await distribute_rewards(db, current_week)
         
         # Nếu là tuần cuối tháng thì tổng hợp và lưu leaderboard tháng
@@ -308,15 +302,13 @@ async def reset_week(ignore_time_check=False, force_week=None):
         last_date = now.replace(day=last_day)
         last_week_of_month = f"{now.year}-{last_date.isocalendar()[1]:02d}"
         if current_week == last_week_of_month:
-            api_logger.info(f"[MonthlyLeaderboard] Saving monthly leaderboard for {now.year}-{now.month}")
             await save_monthly_leaderboard_for_all_boards(db, now)
         
         # Cập nhật level cho tất cả người chơi
         users = await db.users.find({}).to_list(length=None)
         for user in users:
             await update_user_levels(str(user["_id"]), db)
-            
-        api_logger.info(f"[WeeklyReset] Successfully completed reset for week {current_week}")
+
         return True
         
     except Exception as e:

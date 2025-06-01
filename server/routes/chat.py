@@ -98,8 +98,6 @@ async def get_chat_history(request: Request, limit: int = 50):
                 "from": msg["from"]
             })
         
-        api_logger.info(f"[Chat] Fetched {len(formatted_messages)} messages with user info from DB.")
-        
         return {
             "success": True,
             "data": {

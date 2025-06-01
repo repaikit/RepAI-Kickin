@@ -11,7 +11,6 @@ export default function LoginRoute() {
     const params = new URLSearchParams(window.location.search);
     const token = params.get('token');
     if (token) {
-      console.log('Received token from Google auth:', token);
       localStorage.setItem('access_token', token);
       checkAuth().then(() => {
         router.push('/');

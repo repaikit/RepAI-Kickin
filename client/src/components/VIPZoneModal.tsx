@@ -18,12 +18,12 @@ const VIPZoneModal = () => {
   const handleInviteCodeSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     // TODO: Implement invite code validation
-    console.log("Invite code submitted:", inviteCode);
+
   };
 
   const handleUpgradeClick = () => {
     // TODO: Implement upgrade flow
-    console.log("Upgrade to VIP clicked");
+
   };
 
   return (

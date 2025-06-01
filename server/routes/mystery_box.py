@@ -166,7 +166,6 @@ async def open_box(request: Request, box_request: BoxOpenRequest):
         else:  # remaining_matches
             # Log before update
             before_user = await db.users.find_one({"_id": user["_id"]})
-            api_logger.info(f"[MysteryBox] Before update: remaining_matches={before_user.get('remaining_matches')}, shots={shots}, box_type={box_type}")
             update_data = {
                 "$inc": {"remaining_matches": shots},
                 "$set": {
@@ -179,7 +178,6 @@ async def open_box(request: Request, box_request: BoxOpenRequest):
             await db.users.update_one({"_id": user["_id"]}, update_data)
             # Log after update
             after_user = await db.users.find_one({"_id": user["_id"]})
-            api_logger.info(f"[MysteryBox] After update: remaining_matches={after_user.get('remaining_matches')}, shots={shots}, box_type={box_type}")
             history_entry = {
                 "reward_type": "remaining_matches",
                 "amount": shots,

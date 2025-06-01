@@ -88,7 +88,6 @@ export default function WaitingRoom() {
     sendUserUpdate
   } = useWebSocket({
     onUserList: (message) => {
-      console.log('WaitingRoom: Received user list:', message);
       if (!message.users || !Array.isArray(message.users)) {
         console.error('WaitingRoom: Invalid user list format:', message);
         return;
@@ -96,7 +95,7 @@ export default function WaitingRoom() {
       const uniqueUsers = message.users.filter((user, index, self) =>
         index === self.findIndex((u) => u.id === user.id)
       );
-      console.log('WaitingRoom: Setting users:', uniqueUsers);
+
       setOnlineUsers(uniqueUsers);
       setUsers(uniqueUsers.map(u => ({
         id: u.id,
@@ -108,7 +107,6 @@ export default function WaitingRoom() {
       setIsLoading(false);
     },
     onUserJoined: (message) => {
-      console.log('WaitingRoom: User joined:', message);
       const newUser = message.user;
       setOnlineUsers(prev => {
         // Check if user already exists
@@ -132,12 +130,10 @@ export default function WaitingRoom() {
       });
     },
     onUserLeft: (message) => {
-      console.log('WaitingRoom: User left:', message);
       setOnlineUsers(prev => prev.filter(u => u.id !== message.user_id));
       setUsers(prev => prev.filter(u => u.id !== message.user_id));
     },
     onUserUpdated: (message) => {
-      console.log('WaitingRoom: User updated:', message);
       setOnlineUsers(prev => prev.map(u => u.id === message.user_id ? message.user : u));
     },
     onChallengeInvite: (message) => {
@@ -161,14 +157,12 @@ export default function WaitingRoom() {
       setIsLoading(false);
     },
     onConnect: () => {
-      console.log('WaitingRoom: WebSocket connected');
       setIsConnected(true);
       setError(null);
       // Request user list when connected
       sendMessage({ type: 'get_user_list' });
     },
     onDisconnect: () => {
-      console.log('WaitingRoom: WebSocket disconnected');
       setIsLoading(true);
       setIsConnected(false);
     }
@@ -178,7 +172,6 @@ export default function WaitingRoom() {
   useEffect(() => {
     const interval = setInterval(() => {
       if (isConnected) {
-        console.log('WaitingRoom: Requesting user list...');
         sendMessage({ type: 'get_user_list' });
       }
     }, 30000); // Request every 30 seconds
