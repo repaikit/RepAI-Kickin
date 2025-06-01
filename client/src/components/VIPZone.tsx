@@ -63,7 +63,7 @@ const VIPZone = () => {
 
   const handleUpgradeClick = () => {
     // TODO: Implement upgrade flow
-    console.log("Upgrade to VIP clicked");
+
   };
 
   if (user?.is_vip) {

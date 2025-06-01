@@ -110,11 +110,8 @@ class WebSocketService {
       this.MAX_RECONNECT_DELAY
     );
 
-    console.log(`WebSocketService: Attempting to reconnect in ${delay}ms (attempt ${this.reconnectAttempts + 1}/${this.maxReconnectAttempts})`);
-
     this.reconnectTimeout = setTimeout(() => {
       this.reconnectAttempts++;
-      console.log('WebSocketService: Executing reconnect attempt', this.reconnectAttempts);
       this.connect();
     }, delay);
   }
@@ -143,12 +140,10 @@ class WebSocketService {
 
   public connect() {
     if (this.isConnecting || this.ws?.readyState === WebSocket.OPEN) {
-      console.log('WebSocketService: Already connected or connecting');
       return;
     }
 
     this.isConnecting = true;
-    console.log('WebSocketService: Starting connection...');
 
     const accessToken = localStorage.getItem('access_token');
     if (!accessToken) {
@@ -159,35 +154,25 @@ class WebSocketService {
     }
 
     const wsUrl = `${API_ENDPOINTS.ws.waitingRoom}?access_token=${accessToken}`;
-    console.log('WebSocketService: Connecting to', wsUrl);
     
     try {
       this.ws = new WebSocket(wsUrl);
 
       this.ws.onopen = () => {
-        console.log('WebSocketService: Connection opened successfully');
         this.isConnecting = false;
         this.reconnectAttempts = 0;
         this.startHeartbeat();
         this.callbacks.onConnect.forEach(handler => handler());
-        
-        // Request user list after connection
-        console.log('WebSocketService: Requesting initial user list');
+
         this.sendMessage({ type: 'get_user_list' });
       };
 
       this.ws.onclose = (event) => {
-        console.log('WebSocketService: Connection closed:', {
-          code: event.code,
-          reason: event.reason,
-          wasClean: event.wasClean
-        });
         this.isConnecting = false;
         this.stopHeartbeat();
         this.callbacks.onDisconnect.forEach(handler => handler());
         
         if (event.code !== 1000 && this.reconnectAttempts < this.maxReconnectAttempts) {
-          console.log('WebSocketService: Attempting to reconnect...');
           this.reconnect();
         }
       };
@@ -200,31 +185,21 @@ class WebSocketService {
 
       this.ws.onmessage = (event) => {
         try {
-          console.log('WebSocketService: Raw message received:', event.data);
           const message = JSON.parse(event.data);
-          console.log('WebSocketService: Parsed message:', message);
 
           switch (message.type) {
             case 'pong':
-              console.log('WebSocketService: Received pong');
               break;
             case 'leaderboard_update':
-              console.log('WebSocketService: Handling leaderboard_update', message);
               if (!message.leaderboard || !Array.isArray(message.leaderboard)) {
                 console.error('WebSocketService: Invalid leaderboard_update message format', message);
                 return;
               }
-              console.log('WebSocketService: Leaderboard data received:', {
-                count: message.leaderboard.length,
-                data: message.leaderboard
-              });
               this.callbacks.onLeaderboardUpdate.forEach(callback => {
-                console.log('WebSocketService: Calling onLeaderboardUpdate callback');
                 callback(message);
               });
               break;
             case 'user_list':
-              console.log('WebSocketService: Handling user_list', message);
               if (!message.users || !Array.isArray(message.users)) {
                 console.error('WebSocketService: Invalid user_list message format', message);
                 return;
@@ -232,7 +207,6 @@ class WebSocketService {
               this.callbacks.onUserList.forEach(callback => callback(message));
               break;
             case 'user_joined':
-              console.log('WebSocketService: Handling user_joined', message);
               if (!message.user) {
                 console.error('WebSocketService: Invalid user_joined message format', message);
                 return;
@@ -240,7 +214,6 @@ class WebSocketService {
               this.callbacks.onUserJoined.forEach(callback => callback(message));
               break;
             case 'user_left':
-              console.log('WebSocketService: Handling user_left', message);
               if (!message.user_id) {
                 console.error('WebSocketService: Invalid user_left message format', message);
                 return;
@@ -248,7 +221,6 @@ class WebSocketService {
               this.callbacks.onUserLeft.forEach(callback => callback(message));
               break;
             case 'user_updated':
-              console.log('WebSocketService: Handling user_updated', message);
               if (!message.user_id || !message.user) {
                 console.error('WebSocketService: Invalid user_updated message format', message);
                 return;
@@ -256,7 +228,6 @@ class WebSocketService {
               this.callbacks.onUserUpdated.forEach(callback => callback(message));
               break;
             case 'challenge_invite':
-              console.log('WebSocketService: Handling challenge_invite', message);
               if (!message.from || !message.from_name) {
                 console.error('WebSocketService: Invalid challenge_invite message format', message);
                 return;
@@ -264,7 +235,6 @@ class WebSocketService {
               this.callbacks.onChallengeInvite.forEach(callback => callback(message));
               break;
             case 'challenge_result':
-              console.log('WebSocketService: Handling challenge_result', message);
               if (!message.match_stats) {
                 console.error('WebSocketService: Invalid challenge_result message format', message);
                 return;
@@ -272,11 +242,10 @@ class WebSocketService {
               this.callbacks.onChallengeResult.forEach(callback => callback(message));
               break;
             case 'chat_message':
-              console.log('WebSocketService: Handling chat_message', message);
               this.callbacks.onChatMessage.forEach(callback => callback(message));
               break;
             default:
-              console.log('WebSocketService: Unknown message type:', message.type, message);
+
           }
         } catch (error) {
           console.error('WebSocketService: Error parsing message:', error, 'Raw data:', event.data);
@@ -319,7 +288,6 @@ class WebSocketService {
     }
 
     try {
-      console.log('WebSocketService: Sending message:', message);
       this.ws.send(JSON.stringify(message));
     } catch (error) {
       console.error('WebSocketService: Error sending message:', error);
@@ -329,50 +297,33 @@ class WebSocketService {
 
   private handleMessage(event: MessageEvent) {
     try {
-      console.log('WebSocketService: Raw message received:', event.data);
       const message = JSON.parse(event.data);
-      console.log('WebSocketService: Parsed message:', message);
 
       switch (message.type) {
         case 'pong':
-          console.log('WebSocketService: Received pong');
           break;
 
         case 'leaderboard_update':
-          console.log('WebSocketService: Handling leaderboard_update', message);
           if (!message.leaderboard || !Array.isArray(message.leaderboard)) {
             console.error('WebSocketService: Invalid leaderboard_update message format', message);
             return;
           }
-          console.log('WebSocketService: Leaderboard data received:', {
-            count: message.leaderboard.length,
-            data: message.leaderboard
-          });
-          console.log('WebSocketService: Number of onLeaderboardUpdate callbacks:', this.callbacks.onLeaderboardUpdate.size);
           this.callbacks.onLeaderboardUpdate.forEach(callback => {
-            console.log('WebSocketService: Calling onLeaderboardUpdate callback with data:', message);
             callback(message);
           });
           break;
 
         case 'user_list':
-          console.log('WebSocketService: Handling user_list', message);
           if (!message.users || !Array.isArray(message.users)) {
             console.error('WebSocketService: Invalid user_list message format', message);
             return;
           }
-          console.log('WebSocketService: User list received:', {
-            count: message.users.length,
-            users: message.users
-          });
           this.callbacks.onUserList.forEach(callback => {
-            console.log('WebSocketService: Calling onUserList callback');
             callback(message);
           });
           break;
 
         case 'user_joined':
-          console.log('WebSocketService: Handling user_joined', message);
           if (!message.user) {
             console.error('WebSocketService: Invalid user_joined message format', message);
             return;
@@ -381,7 +332,6 @@ class WebSocketService {
           break;
 
         case 'user_left':
-          console.log('WebSocketService: Handling user_left', message);
           if (!message.user_id) {
             console.error('WebSocketService: Invalid user_left message format', message);
             return;
@@ -390,7 +340,6 @@ class WebSocketService {
           break;
 
         case 'user_updated':
-          console.log('WebSocketService: Handling user_updated', message);
           if (!message.user_id || !message.user) {
             console.error('WebSocketService: Invalid user_updated message format', message);
             return;
@@ -399,7 +348,6 @@ class WebSocketService {
           break;
 
         case 'challenge_invite':
-          console.log('WebSocketService: Handling challenge_invite', message);
           if (!message.from || !message.from_name) {
             console.error('WebSocketService: Invalid challenge_invite message format', message);
             return;
@@ -408,7 +356,6 @@ class WebSocketService {
           break;
 
         case 'challenge_result':
-          console.log('WebSocketService: Handling challenge_result', message);
           if (!message.match_stats) {
             console.error('WebSocketService: Invalid challenge_result message format', message);
             return;
@@ -417,12 +364,11 @@ class WebSocketService {
           break;
 
         case 'chat_message':
-          console.log('WebSocketService: Handling chat_message', message);
           this.callbacks.onChatMessage.forEach(callback => callback(message));
           break;
 
         default:
-          console.log('WebSocketService: Unknown message type:', message.type);
+ 
       }
     } catch (error) {
       console.error('WebSocketService: Error handling message:', error);

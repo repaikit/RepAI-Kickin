@@ -1,91 +1,67 @@
 from fastapi import Request, Response
 from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.types import ASGIApp
-from cachetools import TTLCache
+from starlette.responses import StreamingResponse
 import json
-from typing import Optional, Callable, Set
-import hashlib
-from config.settings import settings
+from typing import Dict, Any, Optional
+import time
 from utils.logger import api_logger
 
 class InMemoryCacheMiddleware(BaseHTTPMiddleware):
-    def __init__(
-        self,
-        app: ASGIApp,
-        maxsize: int = 1000,  # Maximum number of items in cache
-        ttl: int = 300,  # Time to live in seconds
-        excluded_paths: Optional[Set[str]] = None
-    ):
+    def __init__(self, app, maxsize: int = 1000, ttl: int = 300, excluded_paths: set = None):
         super().__init__(app)
-        self.cache = TTLCache(maxsize=maxsize, ttl=ttl)
+        self.cache: Dict[str, Dict[str, Any]] = {}
+        self.maxsize = maxsize
+        self.ttl = ttl
         self.excluded_paths = excluded_paths or set()
 
-    async def dispatch(self, request: Request, call_next: Callable) -> Response:
+    async def dispatch(self, request: Request, call_next):
         # Skip caching for excluded paths
         if request.url.path in self.excluded_paths:
             return await call_next(request)
 
-        # Skip caching for non-GET requests
-        if request.method != "GET":
-            return await call_next(request)
-
         # Generate cache key
-        cache_key = self._generate_cache_key(request)
+        cache_key = f"{request.method}:{request.url.path}:{request.query_params}"
 
-        # Try to get from cache
-        try:
-            cached_response = self.cache.get(cache_key)
-            if cached_response:
+        # Check cache
+        if cache_key in self.cache:
+            cached_data = self.cache[cache_key]
+            if time.time() - cached_data['timestamp'] < self.ttl:
                 return Response(
-                    content=cached_response,
-                    media_type="application/json",
-                    headers={"X-Cache": "HIT"}
+                    content=cached_data['content'],
+                    media_type=cached_data['media_type'],
+                    status_code=cached_data['status_code']
                 )
-        except Exception as e:
-            api_logger.error(f"Cache error: {str(e)}")
-            # Continue without cache if there's an error
-            pass
 
-        # Get fresh response
+        # Get response
         response = await call_next(request)
 
-        # Cache the response if it's successful
-        if response.status_code == 200:
+        # Only cache successful GET requests
+        if request.method == "GET" and response.status_code == 200:
             try:
-                # Get TTL from response headers or use default
-                ttl = int(response.headers.get("Cache-Control", f"max-age={self.cache.ttl}").split("=")[1])
-                
+                # Handle StreamingResponse
+                if isinstance(response, StreamingResponse):
+                    body = b""
+                    async for chunk in response.body_iterator:
+                        body += chunk
+                    content = body.decode()
+                    media_type = response.media_type
+                else:
+                    content = response.body.decode()
+                    media_type = response.media_type
+
                 # Store in cache
-                self.cache[cache_key] = response.body
-                response.headers["X-Cache"] = "MISS"
+                if len(self.cache) >= self.maxsize:
+                    # Remove oldest entry
+                    oldest_key = min(self.cache.keys(), key=lambda k: self.cache[k]['timestamp'])
+                    del self.cache[oldest_key]
+
+                self.cache[cache_key] = {
+                    'content': content,
+                    'media_type': media_type,
+                    'status_code': response.status_code,
+                    'timestamp': time.time()
+                }
             except Exception as e:
                 api_logger.error(f"Cache error: {str(e)}")
-                # Continue without caching if there's an error
-                pass
 
-        return response
-
-    def _generate_cache_key(self, request: Request) -> str:
-        """Generate a unique cache key for the request."""
-        # Combine path and query parameters
-        key_parts = [request.url.path]
-        
-        # Add query parameters if they exist
-        if request.query_params:
-            # Sort query params to ensure consistent key generation
-            sorted_params = sorted(request.query_params.items())
-            key_parts.extend([f"{k}={v}" for k, v in sorted_params])
-        
-        # Add headers that might affect the response
-        headers_to_include = ["accept-language", "authorization"]
-        for header in headers_to_include:
-            if header in request.headers:
-                key_parts.append(f"{header}={request.headers[header]}")
-        
-        # Generate hash
-        key_string = "|".join(key_parts)
-        return f"cache:{hashlib.md5(key_string.encode()).hexdigest()}"
-
-    def clear_cache(self):
-        """Clear all cached items."""
-        self.cache.clear() 
+        return response 

@@ -5,6 +5,7 @@ from datetime import datetime, timedelta
 from typing import Dict, Optional, List, Any
 from fastapi import WebSocket
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
+from pymongo.server_api import ServerApi
 from config.settings import settings
 from utils.logger import api_logger
 from utils.time_utils import get_vietnam_time, to_vietnam_time
@@ -176,9 +177,13 @@ class DatabaseManager:
             cls._instance = super(DatabaseManager, cls).__new__(cls)
             cls._instance.client = AsyncIOMotorClient(
                 settings.MONGODB_URL,
+                server_api=ServerApi('1'),
+                connectTimeoutMS=30000,
+                socketTimeoutMS=30000,
                 maxPoolSize=50,
                 minPoolSize=10,
-                maxIdleTimeMS=30000
+                maxIdleTimeMS=45000,
+                waitQueueTimeoutMS=10000
             )
             cls._instance.db = cls._instance.client[settings.DATABASE_NAME]
         return cls._instance

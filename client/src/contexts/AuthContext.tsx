@@ -102,7 +102,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
         return;
       }
-
+  
       const response = await fetch(API_ENDPOINTS.users.me, {
         method: 'GET',
         headers: {
@@ -111,7 +111,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           'Authorization': `Bearer ${token}`
         }
       });
-
+  
       if (!response.ok) {
         if (response.status === 401) {
           localStorage.removeItem('access_token');
@@ -122,14 +122,31 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
         throw new Error('Failed to fetch user data');
       }
-
+  
       const userData = await response.json();
       setUser(userData);
-      
-      // If user is authenticated and tries to access public routes, redirect to home
-      if (publicRoutes.includes(currentPath)) {
-        router.replace('/');
+
+      // Kiểm tra role và điều hướng
+      if (userData.role === 'admin') {
+        // Nếu là admin và đang ở trang gốc "/" hoặc trang login/register
+        if (currentPath === '/' || publicRoutes.includes(currentPath)) {
+          router.replace('/admin');
+          return;
+        }
+        // Admin có thể truy cập tất cả các trang
+        return;
+      } else {
+        // Nếu không phải admin và đang cố truy cập trang admin
+        if (currentPath.startsWith('/admin')) {
+          router.replace('/');
+          return;
+        }
+        // Nếu đang ở public route nhưng đã login thì đưa về trang chủ
+        if (publicRoutes.includes(currentPath)) {
+          router.replace('/');
+        }
       }
+  
     } catch (error) {
       console.error('Auth check error:', error);
       setUser(null);
@@ -140,6 +157,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setLoading(false);
     }
   };
+  
 
   const logout = () => {
     localStorage.removeItem('access_token');

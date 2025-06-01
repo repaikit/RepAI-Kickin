@@ -33,6 +33,46 @@ export const API_ENDPOINTS = {
     getStatus: `${API_BASE_URL}/api/tasks/claim-matches-status`,
     claimMatches: `${API_BASE_URL}/api/tasks/claim-matches`,
   },
+
+  // Admin APIs - Protected by both token and admin role
+  admin: {
+    users: {
+      list: `${API_BASE_URL}/api/admin/users`,
+      get: (userId: string) => `${API_BASE_URL}/api/admin/users/${userId}`,
+      update: (userId: string) => `${API_BASE_URL}/api/admin/users/${userId}`,
+      delete: (userId: string) => `${API_BASE_URL}/api/admin/users/${userId}`,
+      activate: (userId: string) => `${API_BASE_URL}/api/admin/users/${userId}/activate`,
+      deactivate: (userId: string) => `${API_BASE_URL}/api/admin/users/${userId}/deactivate`,
+      makeAdmin: (userId: string) => `${API_BASE_URL}/api/admin/users/${userId}/make-admin`,
+      removeAdmin: (userId: string) => `${API_BASE_URL}/api/admin/users/${userId}/remove-admin`,
+    },
+    codes: {
+      list: `${API_BASE_URL}/api/admin/codes`,
+      generate: `${API_BASE_URL}/api/admin/codes/generate`,
+      delete: (codeId: string) => `${API_BASE_URL}/api/admin/codes/${codeId}`,
+    },
+    nfts: {
+      list: `${API_BASE_URL}/api/admin/nfts`,
+      get: (nftId: string) => `${API_BASE_URL}/api/admin/nfts/${nftId}`,
+      create: `${API_BASE_URL}/api/admin/nfts`,
+      update: (nftId: string) => `${API_BASE_URL}/api/admin/nfts/${nftId}`,
+      delete: (nftId: string) => `${API_BASE_URL}/api/admin/nfts/${nftId}`,
+      activate: (nftId: string) => `${API_BASE_URL}/api/admin/nfts/${nftId}/activate`,
+      deactivate: (nftId: string) => `${API_BASE_URL}/api/admin/nfts/${nftId}/deactivate`,
+      collections: {
+        list: `${API_BASE_URL}/api/admin/nfts/collections`,
+        create: `${API_BASE_URL}/api/admin/nfts/collection`,
+        update: (collectionId: string) => `${API_BASE_URL}/api/admin/nfts/collection/${collectionId}`,
+        delete: (collectionId: string) => `${API_BASE_URL}/api/admin/nfts/collection/${collectionId}`,
+      },
+    },
+    dashboardStats: `${API_BASE_URL}/api/admin/dashboard-stats`,
+  },
+  codes: {
+    verify: `${API_BASE_URL}/api/verify-code`,
+    redeem: `${API_BASE_URL}/api/redeem-code`,
+  },
+
   // User APIs
   users: {
     me: `${API_BASE_URL}/api/me`,
@@ -137,7 +177,7 @@ export const API_ENDPOINTS = {
   },
 };
 
-// Default fetch options
+// Default fetch options with token
 export const defaultFetchOptions = {
   credentials: "include" as RequestCredentials,
   headers: {
@@ -145,4 +185,13 @@ export const defaultFetchOptions = {
     Accept: "application/json",
   },
   mode: "cors" as RequestMode,
+};
+
+// Admin fetch options - includes token and admin role check
+export const adminFetchOptions = {
+  ...defaultFetchOptions,
+  headers: {
+    ...defaultFetchOptions.headers,
+    // Token will be added dynamically in the components
+  },
 };

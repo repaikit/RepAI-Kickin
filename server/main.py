@@ -12,7 +12,7 @@ from fastapi.responses import JSONResponse, Response
 from contextlib import asynccontextmanager
 
 # Import routers using absolute imports
-from routes import users, skills, ws_handlers, mystery_box, bot, chat, cache, leaderboard, GoogleAuthenticate, nft, x, invite_codes_vip
+from routes import users, skills, ws_handlers, mystery_box, bot, chat, cache, leaderboard, GoogleAuthenticate, nft, x, invite_codes_vip, admin
 from middleware.database import database_middleware, DatabaseMiddleware
 from middleware.rate_limit import RateLimitMiddleware
 from middleware.cache import InMemoryCacheMiddleware
@@ -54,16 +54,21 @@ async def startup_event():
 async def lifespan(app: FastAPI):
     # Startup
     try:
+        api_logger.info("Initializing database connection...")
         await init_db()
+        api_logger.info("Database connection successful")
         init_metrics()
         setup_scheduler()
+        api_logger.info("Application startup completed")
     except Exception as e:
         api_logger.error(f"Failed to initialize: {str(e)}")
         raise
     yield
     # Shutdown
     try:
+        api_logger.info("Closing database connection...")
         await close_db()
+        api_logger.info("Database connection closed")
     except Exception as e:
         api_logger.error(f"Error closing database connection: {str(e)}")
 
@@ -127,11 +132,11 @@ app.include_router(leaderboard.router, prefix="/api", tags=["leaderboard"])
 app.include_router(GoogleAuthenticate.router, prefix="/api", tags=["GoogleAuthenticate"])
 app.include_router(nft.router, prefix="/api", tags=["nft"])
 # Include goalkeeper bot routes
-app.include_router(bot_goalkeeper_router,prefix="/api",tags=["bot_goalkeeper"]
- )
+app.include_router(bot_goalkeeper_router,prefix="/api",tags=["bot_goalkeeper"])
 app.include_router(x.router, prefix="/api/x", tags=["x"])
 app.include_router(invite_codes_vip.router, prefix="/api/vip", tags=["vip"])
-
+# Include admin routes
+app.include_router(admin.router, prefix="/api/admin", tags=["admin"])
 
 @app.middleware("http")
 async def metrics_middleware(request: Request, call_next):

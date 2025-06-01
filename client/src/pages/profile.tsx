@@ -493,7 +493,7 @@ useEffect(() => {
     if (user?.evm_address) {
       fetchNFTs(user.evm_address);
     } else {
-      console.log("No EVM address found for user:", user);
+      
     }
   }, [user?.evm_address]);
 

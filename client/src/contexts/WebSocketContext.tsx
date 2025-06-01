@@ -52,10 +52,6 @@ export const WebSocketProvider = ({ children }: { children: React.ReactNode }) =
         console.error('WebSocketContext: Invalid leaderboard data', message);
         return;
       }
-      console.log('WebSocketContext: Setting new leaderboard data:', {
-        count: message.leaderboard.length,
-        data: message.leaderboard
-      });
       const newLeaderboard = Array.isArray(message.leaderboard) ? [...message.leaderboard] : [];
       setLeaderboard(newLeaderboard);
     };
@@ -65,10 +61,6 @@ export const WebSocketProvider = ({ children }: { children: React.ReactNode }) =
         console.error('WebSocketContext: Invalid user list data', message);
         return;
       }
-      console.log('WebSocketContext: Setting new user list:', {
-        count: message.users.length,
-        users: message.users
-      });
       setUsers(message.users);
     };
 

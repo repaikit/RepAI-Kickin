@@ -18,7 +18,6 @@ export function useWallet(user?: any, handleUpdateProfile?: (data: { wallet: str
         if (handleUpdateProfile && data?.accounts && data.accounts[0]) {
           handleUpdateProfile({ wallet: data.accounts[0] });
         }
-        console.log('Connected successfully');
       },
       onError: (error: Error) => {
         console.error('Connection error:', error);
@@ -127,7 +126,7 @@ export function useWallet(user?: any, handleUpdateProfile?: (data: { wallet: str
 
       // Special handling for Safe Wallet
       if (isSafeWallet) {
-        console.log('Using Safe Wallet for minting');
+
       }
       
       // Execute mint

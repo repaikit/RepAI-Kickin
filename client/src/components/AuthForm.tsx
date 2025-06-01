@@ -53,7 +53,6 @@ export default function AuthForm({ mode, onSuccess, onError }: AuthFormProps) {
       });
 
       const data = await response.json();
-      console.log("Authentication response:", data);
       
       if (!response.ok) {
         throw new Error(data.detail || 'Authentication failed');

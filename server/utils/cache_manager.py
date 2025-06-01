@@ -3,6 +3,7 @@ from typing import Any, Callable, Optional
 import time
 from functools import wraps
 from fastapi import Response
+from fastapi.responses import StreamingResponse
 import json
 from datetime import datetime, timedelta
 from utils.logger import api_logger
@@ -57,12 +58,13 @@ class CacheManager:
                 "status_code": response.status_code
             }
 
-            # For regular responses, include body
-            if hasattr(response, "body"):
-                response_data["body"] = response.body
-            else:
-                # For streaming responses, mark as streaming
+            # Check if response is streaming
+            if isinstance(response, StreamingResponse):
                 response_data["is_streaming"] = True
+            else:
+                # For regular responses, include body
+                if hasattr(response, "body"):
+                    response_data["body"] = response.body
 
             # Cache the response data
             self.set(cache_key, response_data, ttl)
