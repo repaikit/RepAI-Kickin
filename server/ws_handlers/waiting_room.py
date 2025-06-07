@@ -3,11 +3,10 @@ from typing import Dict, List, Optional
 import json
 from datetime import datetime, timedelta
 import asyncio
-from database.database import get_database, get_chat_messages_collection, get_users_collection
+from database.database import get_users_table
 from utils.logger import api_logger
 import httpx
 from config.settings import settings
-from bson import ObjectId
 from jose import jwt, JWTError
 import os
 from .challenge_handler import challenge_manager
@@ -21,8 +20,6 @@ ALGORITHM = "HS256"
 
 class JSONEncoder(json.JSONEncoder):
     def default(self, obj):
-        if isinstance(obj, ObjectId):
-            return str(obj)
         if isinstance(obj, datetime):
             return to_vietnam_time(obj).isoformat()
         return super().default(obj)
@@ -51,7 +48,7 @@ class WaitingRoomManager:
             
             # Store user data with minimal required fields
             self.online_users[user_id] = {
-                "id": str(user_data["_id"]),
+                "id": user_data["id"],
                 "name": user_data.get("name") or "Guest Player",
                 "user_type": user_data.get("user_type") or "guest",
                 "avatar": user_data.get("avatar") or "",
@@ -157,48 +154,46 @@ class WaitingRoomManager:
         async with self._user_list_lock:
             try:
                 print("[WaitingRoom] Starting user list broadcast")
-                db = await get_database()
+                users_table = await get_users_table()
                 online_users = []
                 
-                # Optimize database query with projection
-                projection = {
-                    "name": 1, "user_type": 1, "avatar": 1, "role": 1,
-                    "is_active": 1, "is_verified": 1, "trend": 1,
-                    "level": 1, "total_point": 1, "kicker_skills": 1,
-                    "goalkeeper_skills": 1, "total_kicked": 1,
-                    "kicked_win": 1, "total_keep": 1, "keep_win": 1,
-                    "is_pro": 1,
-                    "extra_skill_win": 1, "remaining_matches": 1
-                }
+                # Get all active user IDs
+                user_ids = list(self.active_connections.keys())
                 
-                for user_id in list(self.active_connections.keys()):
-                    print(f"[WaitingRoom] Fetching data for user {user_id}")
-                    user = await db.users.find_one(
-                        {"_id": ObjectId(user_id)},
-                        projection=projection
-                    )
-                    if user and user.get("remaining_matches", 0) > 0:
-                        online_users.append({
-                            "id": str(user["_id"]),
-                            "name": user.get("name", "Anonymous"),
-                            "user_type": user.get("user_type", "guest"),
-                            "avatar": user.get("avatar", ""),
-                            "role": user.get("role", "user"),
-                            "is_active": user.get("is_active", True),
-                            "is_verified": user.get("is_verified", False),
-                            "trend": user.get("trend", "neutral"),
-                            "level": user.get("level", 1),
-                            "total_point": user.get("total_point", 0),
-                            "kicker_skills": user.get("kicker_skills", []),
-                            "goalkeeper_skills": user.get("goalkeeper_skills", []),
-                            "total_kicked": user.get("total_kicked", 0),
-                            "kicked_win": user.get("kicked_win", 0),
-                            "total_keep": user.get("total_keep", 0),
-                            "keep_win": user.get("keep_win", 0),
-                            "is_pro": user.get("is_pro", False),
-                            "connected_at": get_vietnam_time().isoformat(),
-                            "remaining_matches": user.get("remaining_matches", 0)
-                        })
+                # Fetch user data in a single query
+                response = await users_table.select(
+                    "id", "name", "user_type", "avatar", "role",
+                    "is_active", "is_verified", "trend", "level",
+                    "total_point", "kicker_skills", "goalkeeper_skills",
+                    "total_kicked", "kicked_win", "total_keep",
+                    "keep_win", "is_pro", "extra_skill_win",
+                    "remaining_matches"
+                ).in_("id", user_ids).execute()
+                
+                if response.data:
+                    for user in response.data:
+                        if user.get("remaining_matches", 0) > 0:
+                            online_users.append({
+                                "id": user["id"],
+                                "name": user.get("name", "Anonymous"),
+                                "user_type": user.get("user_type", "guest"),
+                                "avatar": user.get("avatar", ""),
+                                "role": user.get("role", "user"),
+                                "is_active": user.get("is_active", True),
+                                "is_verified": user.get("is_verified", False),
+                                "trend": user.get("trend", "neutral"),
+                                "level": user.get("level", 1),
+                                "total_point": user.get("total_point", 0),
+                                "kicker_skills": user.get("kicker_skills", []),
+                                "goalkeeper_skills": user.get("goalkeeper_skills", []),
+                                "total_kicked": user.get("total_kicked", 0),
+                                "kicked_win": user.get("kicked_win", 0),
+                                "total_keep": user.get("total_keep", 0),
+                                "keep_win": user.get("keep_win", 0),
+                                "is_pro": user.get("is_pro", False),
+                                "connected_at": get_vietnam_time().isoformat(),
+                                "remaining_matches": user.get("remaining_matches", 0)
+                            })
 
                 message = {
                     "type": "user_list",
@@ -248,328 +243,218 @@ class WaitingRoomManager:
                     
             except Exception as e:
                 api_logger.error(f"Error in cleanup loop: {str(e)}")
-                await asyncio.sleep(5)
 
     async def _leaderboard_update_loop(self):
-        """Periodic leaderboard update task"""
+        """Periodic leaderboard update"""
         while True:
             try:
                 await asyncio.sleep(self._leaderboard_interval)
                 await self._broadcast_leaderboard()
             except Exception as e:
                 api_logger.error(f"Error in leaderboard update loop: {str(e)}")
-                await asyncio.sleep(5)  # Wait before retrying
+                await asyncio.sleep(5)
 
     async def _broadcast_leaderboard(self):
-        """Fetch and broadcast leaderboard data"""
+        """Broadcast leaderboard data"""
         try:
-            db = await get_database()
-            leaderboard_users = await db.users.find(
-                {"user_type": "user"}
-            ).sort("total_point", -1).limit(5).to_list(length=5)
-            leaderboard_data = [
-                {
-                    "id": str(u["_id"]),
-                    "name": u.get("name", "Anonymous"),
-                    "avatar": u.get("avatar", ""),
-                    "level": u.get("level", 1),
-                    "total_kicked": u.get("total_kicked", 0),
-                    "kicked_win": u.get("kicked_win", 0),
-                    "total_keep": u.get("total_keep", 0),
-                    "keep_win": u.get("keep_win", 0),
-                    "total_point": u.get("total_point", 0),
-                    "bonus_point": u.get("bonus_point", 0.0),
-                    "is_pro": u.get("is_pro", False),
-                    "is_vip": u.get("is_vip", False),
-                    "extra_point": u.get("extra_point", 0),
-                }
-                for u in leaderboard_users
-            ]
-
-            await self.broadcast({
-                "type": "leaderboard_update",
-                "leaderboard": leaderboard_data
-            })
+            users_table = await get_users_table()
+            response = await users_table.select(
+                "id", "name", "user_type", "avatar", "total_point",
+                "level", "kicker_skills", "goalkeeper_skills",
+                "total_kicked", "kicked_win", "total_keep",
+                "keep_win", "is_pro"
+            ).order("total_point", desc=True).limit(10).execute()
+            
+            if response.data:
+                leaderboard_data = [{
+                    "id": user["id"],
+                    "name": user.get("name", "Anonymous"),
+                    "user_type": user.get("user_type", "guest"),
+                    "avatar": user.get("avatar", ""),
+                    "total_point": user.get("total_point", 0),
+                    "level": user.get("level", 1),
+                    "kicker_skills": user.get("kicker_skills", []),
+                    "goalkeeper_skills": user.get("goalkeeper_skills", []),
+                    "total_kicked": user.get("total_kicked", 0),
+                    "kicked_win": user.get("kicked_win", 0),
+                    "total_keep": user.get("total_keep", 0),
+                    "keep_win": user.get("keep_win", 0),
+                    "is_pro": user.get("is_pro", False)
+                } for user in response.data]
+                
+                await self.broadcast({
+                    "type": "leaderboard",
+                    "data": leaderboard_data
+                })
         except Exception as e:
             api_logger.error(f"Error broadcasting leaderboard: {str(e)}")
 
     async def cleanup(self):
-        """Cleanup all resources"""
-        if self._ping_task:
-            self._ping_task.cancel()
-            try:
-                await self._ping_task
-            except asyncio.CancelledError:
-                pass
-        
-        if self._cleanup_task:
-            self._cleanup_task.cancel()
-            try:
-                await self._cleanup_task
-            except asyncio.CancelledError:
-                pass
-
-        if self._leaderboard_task:
-            self._leaderboard_task.cancel()
-            try:
-                await self._leaderboard_task
-            except asyncio.CancelledError:
-                pass
-        
-        # Close all connections
-        for user_id in list(self.active_connections.keys()):
-            await self.disconnect(user_id)
+        """Cleanup all connections and tasks"""
+        try:
+            # Cancel all tasks
+            if self._ping_task:
+                self._ping_task.cancel()
+            if self._cleanup_task:
+                self._cleanup_task.cancel()
+            if self._leaderboard_task:
+                self._leaderboard_task.cancel()
+            
+            # Close all connections
+            for user_id in list(self.active_connections.keys()):
+                await self.disconnect(user_id)
+                
+            # Clear all data
+            self.active_connections.clear()
+            self.online_users.clear()
+            
+        except Exception as e:
+            api_logger.error(f"Error in cleanup: {str(e)}")
 
     async def handle_message(self, websocket: WebSocket, user_id: str, message: dict):
         """Handle incoming WebSocket messages"""
-        message_type = message.get("type")
-        
-        if message_type == "chat_message":
-            try:
-                # Handle chat message
-                chat_message = message.get("message", "").strip()
-                if not chat_message:
-                    await websocket.send_json({
-                        "type": "error",
-                        "message": "Message cannot be empty"
-                    })
+        try:
+            message_type = message.get("type")
+            
+            if message_type == "ping":
+                await websocket.send_json({
+                    "type": "pong",
+                    "timestamp": get_vietnam_time().isoformat()
+                })
+                
+            elif message_type == "chat":
+                content = message.get("content", "").strip()
+                if not content:
                     return
-
-                # Validate message length
-                if len(chat_message) > 1000:  # Maximum message length
-                    await websocket.send_json({
-                        "type": "error",
-                        "message": "Message is too long (maximum 1000 characters)"
-                    })
-                    return
-
-                # Kiểm tra nội dung nhạy cảm
-                is_sensitive, reason = contains_sensitive_content(chat_message)
-                if is_sensitive:
-                    # Lọc nội dung nhạy cảm
-                    filtered_message = filter_sensitive_content(chat_message)
-                    chat_message = filtered_message
                     
-                    # Ghi log việc phát hiện nội dung nhạy cảm
-                    api_logger.warning(f"Sensitive content detected from user {user_id}: {reason}")
-
-                # Get sender info (from online_users for current info)
-                sender_info = self.online_users.get(user_id, {})
-                if not sender_info:
-                    await websocket.send_json({
+                # Check for sensitive content
+                if contains_sensitive_content(content):
+                    filtered_content = filter_sensitive_content(content)
+                    await self.send_personal_message({
                         "type": "error",
-                        "message": "User information not found"
-                    })
+                        "message": "Your message contains sensitive content and has been filtered."
+                    }, user_id)
+                    content = filtered_content
+                
+                # Get user data
+                user_data = self.online_users.get(user_id)
+                if not user_data:
                     return
-
-                # Create message object to SAVE TO DATABASE with Vietnam timezone
-                vietnam_time = get_vietnam_time()
-                # Ensure the timestamp is stored with Vietnam timezone offset
-                vietnam_time = vietnam_time.astimezone(VIETNAM_TZ)
                 
-                # Convert to dict with explicit timezone info for MongoDB
-                message_dict = {
-                    "from_id": user_id,
-                    "message": chat_message,
-                    "timestamp": vietnam_time.isoformat(),  # string ISO 8601, giữ nguyên +07:00
-                    "timezone": "Asia/Ho_Chi_Minh",
-                    "utc_offset": "+07:00"  # Explicitly store UTC offset
-                }
+                # Broadcast chat message
+                await self.broadcast({
+                    "type": "chat",
+                    "user": {
+                        "id": user_data["id"],
+                        "name": user_data["name"],
+                        "avatar": user_data["avatar"],
+                        "user_type": user_data["user_type"]
+                    },
+                    "content": content,
+                    "timestamp": get_vietnam_time().isoformat()
+                })
                 
-                print(f"[WaitingRoom] Message dict before save: {message_dict}")
-                
-                # Save to database with timeout and retry
-                max_retries = 3
-                retry_count = 0
-                while retry_count < max_retries:
-                    try:
-                        chat_messages = await get_chat_messages_collection()
-                        # Use update_one with upsert to ensure proper timezone handling
-                        result = await asyncio.wait_for(
-                            chat_messages.update_one(
-                                {"_id": ObjectId()},  # Generate new ObjectId
-                                {"$set": message_dict},
-                                upsert=True
-                            ),
-                            timeout=5.0
-                        )
-                        print(f"[WaitingRoom] Save result: {result.raw_result}")
-                        break
-                    except asyncio.TimeoutError:
-                        retry_count += 1
-                        if retry_count == max_retries:
-                            print(f"[WaitingRoom] Database operation timed out after {max_retries} retries for user {user_id}")
-                            await websocket.send_json({
-                                "type": "error",
-                                "message": "Failed to save message. Please try again."
-                            })
-                            return
-                        await asyncio.sleep(1)  # Wait before retry
-                    except Exception as db_error:
-                        print(f"[WaitingRoom] Database error for user {user_id}: {str(db_error)}")
-                        await websocket.send_json({
-                            "type": "error",
-                            "message": "Failed to save message. Please try again."
-                        })
-                        return
-                
-                # Create message object to BROADCAST
-                message_obj_broadcast = {
-                    "type": "chat_message",
-                    "from_id": user_id,
-                    "message": chat_message,
-                    "timestamp": vietnam_time.isoformat(),
-                    "timezone": "Asia/Ho_Chi_Minh",
-                    "from": {
-                        "id": user_id,
-                        "name": sender_info.get("name", "Anonymous"),
-                        "avatar": sender_info.get("avatar", ""),
-                        "user_type": sender_info.get("user_type", "user"),
-                        "role": sender_info.get("role", "user"),
-                        "is_active": sender_info.get("is_active", True),
-                        "is_verified": sender_info.get("is_verified", False),
-                        "trend": sender_info.get("trend", "neutral"),
-                        "level": sender_info.get("level", 1),
-                        "is_pro": sender_info.get("is_pro", False),
-                        "position": sender_info.get("position", "both"),
-                        "total_point": sender_info.get("total_point", 0),
-                        "bonus_point": sender_info.get("bonus_point", 0),
-                        "total_kicked": sender_info.get("total_kicked", 0),
-                        "kicked_win": sender_info.get("kicked_win", 0),
-                        "total_keep": sender_info.get("total_keep", 0),
-                        "keep_win": sender_info.get("keep_win", 0),
-                        "legend_level": sender_info.get("legend_level", 0),
-                        "vip_level": sender_info.get("vip_level", "NONE")
-                    }
-                }
-                
-                # Broadcast chat message to all users
-                await self.broadcast(message_obj_broadcast)
-
-            except Exception as e:
-                print(f"[WaitingRoom] Error handling chat message from {user_id}: {str(e)}")
-                try:
-                    await websocket.send_json({
+            elif message_type == "challenge":
+                target_id = message.get("target_id")
+                if not target_id or target_id not in self.active_connections:
+                    await self.send_personal_message({
                         "type": "error",
-                        "message": "Failed to send message. Please try again."
-                    })
-                except:
-                    pass
-        
-        elif message_type == "challenge_request":
-            to_id = message.get("to")
-            if to_id:
-                await challenge_manager.handle_challenge_request(websocket, user_id, to_id, self.active_connections)
-            else:
-                print(f"[WaitingRoom] challenge_request missing 'to' field: {message}")
-        
-        elif message_type == "challenge_accept":
-            to_id = message.get("to")
-            if to_id:
-                await challenge_manager.handle_challenge_response(websocket, user_id, to_id, True, self.active_connections)
-        
-        elif message_type == "challenge_decline":
-            to_id = message.get("to")
-            if to_id:
-                await challenge_manager.handle_challenge_response(websocket, user_id, to_id, False, self.active_connections)
-        
-        elif message_type == "user_updated":
-            # Update user info in online_users
-            if user_id in self.online_users:
-                self.online_users[user_id].update(message.get("user", {}))
-                # Broadcast updated user list to all clients
-                await self.broadcast_user_list()
-        
-        elif message_type == "get_user_list":
-            users = self.get_online_users()
-            await websocket.send_json({"type": "user_list", "users": users})
-        
-        elif message_type == "ping":
-            await websocket.send_json({"type": "pong"})
-
-manager = WaitingRoomManager()
+                        "message": "Invalid target user"
+                    }, user_id)
+                    return
+                
+                # Handle challenge through challenge manager
+                await challenge_manager.handle_challenge(user_id, target_id)
+                
+        except Exception as e:
+            api_logger.error(f"Error handling message: {str(e)}")
+            try:
+                await websocket.send_json({
+                    "type": "error",
+                    "message": "Internal server error"
+                })
+            except:
+                pass
 
 async def validate_user(websocket: WebSocket) -> dict:
-    """Validate user with optimized token handling"""
+    """Validate user token and return user data"""
     try:
-        access_token = websocket.query_params.get("access_token") or websocket.headers.get("authorization", "").replace("Bearer ", "")
-        
-        if not access_token:
-            api_logger.error("No access token provided")
-            raise HTTPException(status_code=401, detail="No access token provided")
-
-        try:
-            data = jwt.decode(access_token, SECRET_KEY, algorithms=[ALGORITHM])
-            user_id = data.get("_id")
-            exp = data.get("exp")
+        # Get token from query parameters
+        token = websocket.query_params.get("token")
+        if not token:
+            await websocket.close(code=4000, reason="No token provided")
+            return None
             
+        # Verify token
+        try:
+            payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+            user_id = payload.get("sub")
             if not user_id:
-                api_logger.error("No user_id in token")
-                raise HTTPException(status_code=401, detail="Invalid token")
-
-            if exp and get_vietnam_time().timestamp() > exp:
-                api_logger.error("Token expired")
-                raise HTTPException(status_code=401, detail="Token expired")
-
-        except JWTError as e:
-            api_logger.error(f"JWT decode error: {str(e)}")
-            raise HTTPException(status_code=401, detail="Invalid token")
-
-        db = await get_database()
-        user_data = await db.users.find_one({"_id": ObjectId(user_id)})
+                await websocket.close(code=4000, reason="Invalid token")
+                return None
+        except JWTError:
+            await websocket.close(code=4000, reason="Invalid token")
+            return None
+            
+        # Get user data
+        users_table = await get_users_table()
+        response = await users_table.select("*").eq("id", user_id).execute()
         
-        if not user_data:
-            api_logger.error(f"User not found with id: {user_id}")
-            raise HTTPException(status_code=401, detail="User not found")
-
+        if not response.data:
+            await websocket.close(code=4000, reason="User not found")
+            return None
+            
+        user_data = response.data[0]
+        if not user_data.get("is_active", True):
+            await websocket.close(code=4000, reason="User is inactive")
+            return None
+            
         return user_data
+        
     except Exception as e:
         api_logger.error(f"Error validating user: {str(e)}")
-        raise HTTPException(status_code=401, detail="User validation failed")
+        await websocket.close(code=4000, reason="Internal server error")
+        return None
 
 async def websocket_endpoint(websocket: WebSocket):
-    """Main WebSocket endpoint with optimized connection handling"""
+    """Main WebSocket endpoint handler"""
+    user_data = None
     try:
+        # Validate user
         user_data = await validate_user(websocket)
-        user_id = str(user_data["_id"])
+        if not user_data:
+            return
+            
+        # Connect to waiting room
+        await manager.connect(websocket, user_data["id"], user_data)
         
-        await manager.connect(websocket, user_id, user_data)
-        
-        # Send user info
-        await manager.send_personal_message({
-            "type": "me",
-            "user": manager.online_users[user_id]
-        }, user_id)
-        
-        # Broadcast user joined
-        await manager.broadcast({
-            "type": "user_joined",
-            "user": manager.online_users[user_id]
-        }, user_id)
-        
-        # Handle messages
+        # Main message loop
         while True:
             try:
                 data = await websocket.receive_text()
                 message = json.loads(data)
-                await manager.handle_message(websocket, user_id, message)
+                await manager.handle_message(websocket, user_data["id"], message)
             except WebSocketDisconnect:
                 break
             except json.JSONDecodeError:
-                api_logger.error(f"Invalid JSON from user {user_id}")
-                continue
+                await websocket.send_json({
+                    "type": "error",
+                    "message": "Invalid message format"
+                })
             except Exception as e:
-                api_logger.error(f"Error handling message from {user_id}: {str(e)}")
-                break
+                api_logger.error(f"Error processing message: {str(e)}")
+                await websocket.send_json({
+                    "type": "error",
+                    "message": "Internal server error"
+                })
                 
+    except WebSocketDisconnect:
+        pass
     except Exception as e:
-        api_logger.error(f"Error in websocket connection: {str(e)}")
+        api_logger.error(f"WebSocket error: {str(e)}")
     finally:
-        if 'user_id' in locals():
-            await manager.disconnect(user_id)
-            await manager.broadcast_user_list()
-            await manager.broadcast({
-                "type": "user_left",
-                "user_id": user_id,
-                "timestamp": get_vietnam_time().isoformat()
-            })
+        if user_data:
+            await manager.disconnect(user_data["id"])
+
+# Create global manager instance
+manager = WaitingRoomManager()

@@ -4,7 +4,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import asyncio
 from utils.time_utils import get_vietnam_time, to_vietnam_time
-from database.database import get_database, get_skills_collection
+from database.database import get_users_table, get_skills_table, get_bots_table
 from utils.logger import api_logger
 import random
 
@@ -18,31 +18,30 @@ with open('logs/daily_reset.log', 'a') as f:
 async def reset_bot_skills():
     """Reset bot skills with new random skills"""
     try:
-        db = await get_database()
-        skills_collection = await get_skills_collection()
+        skills_table = await get_skills_table()
+        bots_table = await get_bots_table()
         
         # Get all available skills
-        kicker_skills = await skills_collection.find({"type": "kicker"}).to_list(length=None)
-        goalkeeper_skills = await skills_collection.find({"type": "goalkeeper"}).to_list(length=None)
+        response = await skills_table.select("*").eq("type", "kicker").execute()
+        kicker_skills = response.data
+        response = await skills_table.select("*").eq("type", "goalkeeper").execute()
+        goalkeeper_skills = response.data
         
         # Random 10 skills for each type
         selected_kicker_skills = random.sample([s["name"] for s in kicker_skills], min(10, len(kicker_skills)))
         selected_goalkeeper_skills = random.sample([s["name"] for s in goalkeeper_skills], min(10, len(goalkeeper_skills)))
         
         # Update bot skills
-        bot_collection = db.bots
-        await bot_collection.update_one(
-            {"username": "bot"},
-            {
-                "$set": {
-                    "kicker_skills": selected_kicker_skills,
-                    "goalkeeper_skills": selected_goalkeeper_skills,
-                    "last_skill_update": get_vietnam_time()
-                }
-            },
-            upsert=True
-        )
+        response = await bots_table.upsert({
+            "username": "bot",
+            "kicker_skills": selected_kicker_skills,
+            "goalkeeper_skills": selected_goalkeeper_skills,
+            "last_skill_update": get_vietnam_time().isoformat()
+        }).execute()
         
+        if not response.data:
+            raise Exception("Failed to update bot skills")
+            
         return True
         
     except Exception as e:
@@ -52,16 +51,19 @@ async def reset_bot_skills():
 async def reset_daily_matches():
     """Reset remaining matches for all users to 5"""
     try:
-        db = await get_database()
+        users_table = await get_users_table()
         now = get_vietnam_time()
         current_date = now.strftime('%Y-%m-%d')
         
         # Reset remaining matches to 5 and daily_tasks to empty for all users
-        result = await db.users.update_many(
-            {},
-            {"$set": {"remaining_matches": 5, "daily_tasks": {}}}
-        )
+        response = await users_table.update({
+            "remaining_matches": 5,
+            "daily_tasks": {}
+        }).execute()
         
+        if not response.data:
+            raise Exception("Failed to reset user matches")
+            
         # Reset bot skills
         await reset_bot_skills()
 

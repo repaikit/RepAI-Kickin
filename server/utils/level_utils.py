@@ -37,31 +37,36 @@ def get_vip_level(vip_amount):
             level = name
     return level
 
-async def update_user_levels(user_id: str, db):
-    user = await db.users.find_one({"_id": user_id if hasattr(user_id, 'binary') else user_id})
+async def update_user_levels(user, update_data=None):
+    """Cập nhật level cho user dựa trên điểm số"""
     if not user:
         return None
+        
     total_point_for_level = get_total_point_for_level(user)
     current_level = user.get("level", 1)
     new_level = get_basic_level(total_point_for_level)
     can_level_up = new_level > current_level
     is_pro = new_level >= 100
+    
     if is_pro:
         new_level = 100
         legend_level = get_legend_level(total_point_for_level)
     else:
         legend_level = 0
+        
     vip_amount = user.get("vip_amount", 0)
     vip_level = get_vip_level(vip_amount)
-    await db.users.update_one(
-        {"_id": user["_id"]},
-        {"$set": {
-            "level": new_level,
-            "is_pro": is_pro,
-            "legend_level": legend_level,
-            "vip_level": vip_level
-        }}
-    )
+    
+    if update_data is None:
+        update_data = {}
+        
+    update_data.update({
+        "level": new_level,
+        "is_pro": is_pro,
+        "legend_level": legend_level,
+        "vip_level": vip_level
+    })
+    
     return {
         "level": new_level,
         "is_pro": is_pro,

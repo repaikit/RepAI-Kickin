@@ -9,7 +9,7 @@ router = APIRouter()
 
 @router.get("/goalkeeper/me", response_model=BotGoalkeeperModel)
 async def read_bot(current_user: dict = Depends(get_current_user)):
-    return await get_or_create_bot_for_user(str(current_user.get('_id')))
+    return await get_or_create_bot_for_user(str(current_user.get('id')))
 
 # @router.post("/feed", response_model=BotGoalkeeperModel)
 # async def feed_my_bot(current_user: dict = Depends(get_current_user)):

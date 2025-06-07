@@ -3,7 +3,7 @@ from typing import Optional, List
 from models.user import User, UserUpdate
 from models.invite_codes.vip_codes import VIPInviteCode
 from models.nft import NFT
-from database.database import get_users_collection, get_vip_codes_collection, get_pro_codes_collection, get_nfts_collection
+from database.database import get_users_table, get_vip_codes_table, get_pro_codes_table, get_nfts_table
 from datetime import datetime
 from bson import ObjectId
 from utils.logger import api_logger
@@ -41,42 +41,38 @@ async def require_admin(request: Request):
 async def get_users(filter: UserFilter = Depends()):
     """Lấy danh sách users với các bộ lọc"""
     try:
-        users_collection = await get_users_collection()
+        users_table = await get_users_table()
         
         # Xây dựng query filter
-        query = {}
+        query = users_table.select('*')
+        
         if filter.user_type and filter.user_type != "all":
-            query["user_type"] = filter.user_type
+            query = query.eq('user_type', filter.user_type)
         if filter.role and filter.role != "all":
-            query["role"] = filter.role
+            query = query.eq('role', filter.role)
         if filter.is_active is not None:
-            query["is_active"] = filter.is_active
+            query = query.eq('is_active', filter.is_active)
             
         # Tìm kiếm theo tên, email hoặc wallet
         if filter.search:
-            search_query = {
-                "$or": [
-                    {"name": {"$regex": filter.search, "$options": "i"}},
-                    {"email": {"$regex": filter.search, "$options": "i"}},
-                    {"evm_address": {"$regex": filter.search, "$options": "i"}},
-                    {"sol_address": {"$regex": filter.search, "$options": "i"}},
-                    {"sui_address": {"$regex": filter.search, "$options": "i"}}
-                ]
-            }
-            query.update(search_query)
+            query = query.or_(
+                f"name.ilike.%{filter.search}%," +
+                f"email.ilike.%{filter.search}%," +
+                f"evm_address.ilike.%{filter.search}%," +
+                f"sol_address.ilike.%{filter.search}%," +
+                f"sui_address.ilike.%{filter.search}%"
+            )
             
-        # Tính toán skip và limit cho phân trang
-        skip = (filter.page - 1) * filter.limit
+        # Tính toán offset và limit cho phân trang
+        offset = (filter.page - 1) * filter.limit
         
         # Lấy tổng số users
-        total = await users_collection.count_documents(query)
+        count_response = query.execute()
+        total = len(count_response.data)
         
-        # Lấy danh sách users
-        users = await users_collection.find(query).skip(skip).limit(filter.limit).to_list(length=None)
-        
-        # Chuyển đổi ObjectId thành string
-        for user in users:
-            user["_id"] = str(user["_id"])
+        # Lấy danh sách users với phân trang
+        response = query.range(offset, offset + filter.limit - 1).execute()
+        users = response.data
             
         return {
             "users": users,
@@ -94,13 +90,13 @@ async def get_users(filter: UserFilter = Depends()):
 async def get_user(user_id: str):
     """Lấy thông tin chi tiết của một user"""
     try:
-        users_collection = await get_users_collection()
-        user = await users_collection.find_one({"_id": ObjectId(user_id)})
+        users_table = await get_users_table()
+        response = await users_table.select('*').eq('id', user_id).execute()
+        user = response.data[0] if response.data else None
         
         if not user:
             raise HTTPException(status_code=404, detail="User not found")
             
-        user["_id"] = str(user["_id"])
         return user
         
     except HTTPException as he:
@@ -113,10 +109,11 @@ async def get_user(user_id: str):
 async def update_user(user_id: str, updates: UserUpdate):
     """Cập nhật thông tin của một user"""
     try:
-        users_collection = await get_users_collection()
+        users_table = await get_users_table()
         
         # Kiểm tra user tồn tại
-        user = await users_collection.find_one({"_id": ObjectId(user_id)})
+        response = await users_table.select('*').eq('id', user_id).execute()
+        user = response.data[0] if response.data else None
         if not user:
             raise HTTPException(status_code=404, detail="User not found")
             
@@ -127,17 +124,14 @@ async def update_user(user_id: str, updates: UserUpdate):
         update_data["updated_at"] = get_vietnam_time().isoformat()
         
         # Cập nhật user
-        result = await users_collection.update_one(
-            {"_id": ObjectId(user_id)},
-            {"$set": update_data}
-        )
+        result = await users_table.update(update_data).eq('id', user_id).execute()
         
-        if result.modified_count == 0:
+        if result.data['count'] == 0:
             raise HTTPException(status_code=400, detail="No changes made")
             
         # Lấy thông tin user sau khi cập nhật
-        updated_user = await users_collection.find_one({"_id": ObjectId(user_id)})
-        updated_user["_id"] = str(updated_user["_id"])
+        updated_user = await users_table.select('*').eq('id', user_id).execute()
+        updated_user = updated_user.data[0] if updated_user.data else None
         
         return updated_user
         
@@ -151,17 +145,18 @@ async def update_user(user_id: str, updates: UserUpdate):
 async def delete_user(user_id: str):
     """Xóa một user"""
     try:
-        users_collection = await get_users_collection()
+        users_table = await get_users_table()
         
         # Kiểm tra user tồn tại
-        user = await users_collection.find_one({"_id": ObjectId(user_id)})
+        response = await users_table.select('*').eq('id', user_id).execute()
+        user = response.data[0] if response.data else None
         if not user:
             raise HTTPException(status_code=404, detail="User not found")
             
         # Xóa user
-        result = await users_collection.delete_one({"_id": ObjectId(user_id)})
+        result = await users_table.delete().eq('id', user_id).execute()
         
-        if result.deleted_count == 0:
+        if result.data['count'] == 0:
             raise HTTPException(status_code=400, detail="Failed to delete user")
             
         return {"message": "User deleted successfully"}
@@ -176,25 +171,21 @@ async def delete_user(user_id: str):
 async def activate_user(user_id: str):
     """Kích hoạt một user"""
     try:
-        users_collection = await get_users_collection()
+        users_table = await get_users_table()
         
         # Kiểm tra user tồn tại
-        user = await users_collection.find_one({"_id": ObjectId(user_id)})
+        response = await users_table.select('*').eq('id', user_id).execute()
+        user = response.data[0] if response.data else None
         if not user:
             raise HTTPException(status_code=404, detail="User not found")
             
         # Cập nhật trạng thái active
-        result = await users_collection.update_one(
-            {"_id": ObjectId(user_id)},
-            {
-                "$set": {
-                    "is_active": True,
-                    "updated_at": get_vietnam_time().isoformat()
-                }
-            }
-        )
+        result = await users_table.update({
+            "is_active": True,
+            "updated_at": get_vietnam_time().isoformat()
+        }).eq('id', user_id).execute()
         
-        if result.modified_count == 0:
+        if result.data['count'] == 0:
             raise HTTPException(status_code=400, detail="Failed to activate user")
             
         return {"message": "User activated successfully"}
@@ -209,25 +200,21 @@ async def activate_user(user_id: str):
 async def deactivate_user(user_id: str):
     """Vô hiệu hóa một user"""
     try:
-        users_collection = await get_users_collection()
+        users_table = await get_users_table()
         
         # Kiểm tra user tồn tại
-        user = await users_collection.find_one({"_id": ObjectId(user_id)})
+        response = await users_table.select('*').eq('id', user_id).execute()
+        user = response.data[0] if response.data else None
         if not user:
             raise HTTPException(status_code=404, detail="User not found")
             
         # Cập nhật trạng thái active
-        result = await users_collection.update_one(
-            {"_id": ObjectId(user_id)},
-            {
-                "$set": {
-                    "is_active": False,
-                    "updated_at": get_vietnam_time().isoformat()
-                }
-            }
-        )
+        result = await users_table.update({
+            "is_active": False,
+            "updated_at": get_vietnam_time().isoformat()
+        }).eq('id', user_id).execute()
         
-        if result.modified_count == 0:
+        if result.data['count'] == 0:
             raise HTTPException(status_code=400, detail="Failed to deactivate user")
             
         return {"message": "User deactivated successfully"}
@@ -242,25 +229,21 @@ async def deactivate_user(user_id: str):
 async def make_admin(user_id: str):
     """Cấp quyền admin cho một user"""
     try:
-        users_collection = await get_users_collection()
+        users_table = await get_users_table()
         
         # Kiểm tra user tồn tại
-        user = await users_collection.find_one({"_id": ObjectId(user_id)})
+        response = await users_table.select('*').eq('id', user_id).execute()
+        user = response.data[0] if response.data else None
         if not user:
             raise HTTPException(status_code=404, detail="User not found")
             
         # Cập nhật role thành admin
-        result = await users_collection.update_one(
-            {"_id": ObjectId(user_id)},
-            {
-                "$set": {
-                    "role": "admin",
-                    "updated_at": get_vietnam_time().isoformat()
-                }
-            }
-        )
+        result = await users_table.update({
+            "role": "admin",
+            "updated_at": get_vietnam_time().isoformat()
+        }).eq('id', user_id).execute()
         
-        if result.modified_count == 0:
+        if result.data['count'] == 0:
             raise HTTPException(status_code=400, detail="Failed to make user admin")
             
         return {"message": "User is now an admin"}
@@ -275,25 +258,21 @@ async def make_admin(user_id: str):
 async def remove_admin(user_id: str):
     """Xóa quyền admin của một user"""
     try:
-        users_collection = await get_users_collection()
+        users_table = await get_users_table()
         
         # Kiểm tra user tồn tại
-        user = await users_collection.find_one({"_id": ObjectId(user_id)})
+        response = await users_table.select('*').eq('id', user_id).execute()
+        user = response.data[0] if response.data else None
         if not user:
             raise HTTPException(status_code=404, detail="User not found")
             
         # Cập nhật role thành user
-        result = await users_collection.update_one(
-            {"_id": ObjectId(user_id)},
-            {
-                "$set": {
-                    "role": "user",
-                    "updated_at": get_vietnam_time().isoformat()
-                }
-            }
-        )
+        result = await users_table.update({
+            "role": "user",
+            "updated_at": get_vietnam_time().isoformat()
+        }).eq('id', user_id).execute()
         
-        if result.modified_count == 0:
+        if result.data['count'] == 0:
             raise HTTPException(status_code=400, detail="Failed to remove admin role")
             
         return {"message": "Admin role removed successfully"}
@@ -320,25 +299,22 @@ async def list_codes(
         raise HTTPException(status_code=403, detail="No permission")
 
     try:
-        collection = get_vip_codes_collection() if code_type.upper() == "VIP" else get_pro_codes_collection()
-        codes_collection = await collection
+        collection = get_vip_codes_table() if code_type.upper() == "VIP" else get_pro_codes_table()
+        codes_table = await collection
 
         # Build query
-        query = {}
+        query = codes_table.select('*')
         if status and status != "all":
-            query["status"] = status
+            query = query.eq('status', status)
 
         # Calculate pagination
         skip = (page - 1) * limit
-        total = await codes_collection.count_documents(query)
+        total = await query.execute()
         
         # Get codes
-        codes = await codes_collection.find(query).skip(skip).limit(limit).to_list(length=None)
+        response = await query.range(skip, skip + limit - 1).execute()
+        codes = response.data
         
-        # Convert ObjectId to string
-        for code in codes:
-            code["_id"] = str(code["_id"])
-            
         return {
             "codes": codes,
             "total": total,
@@ -365,8 +341,8 @@ async def generate_codes(
         raise HTTPException(status_code=403, detail="No permission")
 
     try:
-        collection = get_vip_codes_collection() if code_type.upper() == "VIP" else get_pro_codes_collection()
-        codes_collection = await collection
+        collection = get_vip_codes_table() if code_type.upper() == "VIP" else get_pro_codes_table()
+        codes_table = await collection
         
         codes = []
         code_prefix = prefix or code_type.upper()
@@ -374,7 +350,7 @@ async def generate_codes(
         for _ in range(count):
             code = generate_code(prefix=code_prefix)
             code_doc = VIPInviteCode(code=code)
-            await codes_collection.insert_one(code_doc.to_dict())
+            await codes_table.insert(code_doc.to_dict()).execute()
             codes.append(code)
         
         return codes
@@ -396,11 +372,11 @@ async def delete_code(
         raise HTTPException(status_code=403, detail="No permission")
 
     try:
-        collection = get_vip_codes_collection() if code_type.upper() == "VIP" else get_pro_codes_collection()
-        codes_collection = await collection
+        collection = get_vip_codes_table() if code_type.upper() == "VIP" else get_pro_codes_table()
+        codes_table = await collection
         
-        result = await codes_collection.delete_one({"_id": ObjectId(code_id)})
-        if result.deleted_count == 0:
+        result = await codes_table.delete().eq('id', code_id).execute()
+        if result.data['count'] == 0:
             raise HTTPException(status_code=404, detail="Code not found")
             
         return {"message": "Code deleted successfully"}
@@ -427,26 +403,23 @@ async def list_nfts(
         raise HTTPException(status_code=403, detail="No permission")
 
     try:
-        nfts_collection = await get_nfts_collection()
+        nfts_table = await get_nfts_table()
 
         # Build query
-        query = {}
+        query = nfts_table.select('*')
         if wallet_address:
-            query["wallet_address"] = wallet_address
+            query = query.eq('wallet_address', wallet_address)
         if status and status != "all":
-            query["status"] = status
+            query = query.eq('status', status)
 
         # Calculate pagination
         skip = (page - 1) * limit
-        total = await nfts_collection.count_documents(query)
+        total = await query.execute()
         
         # Get NFTs
-        nfts = await nfts_collection.find(query).skip(skip).limit(limit).to_list(length=None)
+        response = await query.range(skip, skip + limit - 1).execute()
+        nfts = response.data
         
-        # Convert ObjectId to string
-        for nft in nfts:
-            nft["_id"] = str(nft["_id"])
-            
         return {
             "nfts": nfts,
             "total": total,
@@ -471,13 +444,13 @@ async def get_nft(
         raise HTTPException(status_code=403, detail="No permission")
 
     try:
-        nfts_collection = await get_nfts_collection()
-        nft = await nfts_collection.find_one({"_id": ObjectId(nft_id)})
+        nfts_table = await get_nfts_table()
+        response = await nfts_table.select('*').eq('id', nft_id).execute()
+        nft = response.data[0] if response.data else None
         
         if not nft:
             raise HTTPException(status_code=404, detail="NFT not found")
             
-        nft["_id"] = str(nft["_id"])
         return nft
         
     except HTTPException as he:
@@ -493,18 +466,18 @@ async def create_nft(
 ):
     """Create a new NFT"""
     try:
-        nfts_collection = await get_nfts_collection()
+        nfts_table = await get_nfts_table()
         
         # Add creation timestamp
         nft_data["created_at"] = get_vietnam_time().isoformat()
         nft_data["updated_at"] = nft_data["created_at"]
         
         # Insert NFT
-        result = await nfts_collection.insert_one(nft_data)
+        result = await nfts_table.insert(nft_data).execute()
         
         # Get created NFT
-        created_nft = await nfts_collection.find_one({"_id": result.inserted_id})
-        created_nft["_id"] = str(created_nft["_id"])
+        response = await nfts_table.select('*').eq('id', result.data['id']).execute()
+        created_nft = response.data[0] if response.data else None
         
         return created_nft
         
@@ -520,10 +493,11 @@ async def update_nft(
 ):
     """Update NFT details"""
     try:
-        nfts_collection = await get_nfts_collection()
+        nfts_table = await get_nfts_table()
         
         # Check if NFT exists
-        nft = await nfts_collection.find_one({"_id": ObjectId(nft_id)})
+        response = await nfts_table.select('*').eq('id', nft_id).execute()
+        nft = response.data[0] if response.data else None
         if not nft:
             raise HTTPException(status_code=404, detail="NFT not found")
         
@@ -531,17 +505,14 @@ async def update_nft(
         nft_data["updated_at"] = get_vietnam_time().isoformat()
         
         # Update NFT
-        result = await nfts_collection.update_one(
-            {"_id": ObjectId(nft_id)},
-            {"$set": nft_data}
-        )
+        result = await nfts_table.update(nft_data).eq('id', nft_id).execute()
         
-        if result.modified_count == 0:
+        if result.data['count'] == 0:
             raise HTTPException(status_code=400, detail="No changes made")
             
         # Get updated NFT
-        updated_nft = await nfts_collection.find_one({"_id": ObjectId(nft_id)})
-        updated_nft["_id"] = str(updated_nft["_id"])
+        response = await nfts_table.select('*').eq('id', nft_id).execute()
+        updated_nft = response.data[0] if response.data else None
         
         return updated_nft
         
@@ -558,17 +529,18 @@ async def delete_nft(
 ):
     """Delete an NFT"""
     try:
-        nfts_collection = await get_nfts_collection()
+        nfts_table = await get_nfts_table()
         
         # Check if NFT exists
-        nft = await nfts_collection.find_one({"_id": ObjectId(nft_id)})
+        response = await nfts_table.select('*').eq('id', nft_id).execute()
+        nft = response.data[0] if response.data else None
         if not nft:
             raise HTTPException(status_code=404, detail="NFT not found")
             
         # Delete NFT
-        result = await nfts_collection.delete_one({"_id": ObjectId(nft_id)})
+        result = await nfts_table.delete().eq('id', nft_id).execute()
         
-        if result.deleted_count == 0:
+        if result.data['count'] == 0:
             raise HTTPException(status_code=400, detail="Failed to delete NFT")
             
         return {"message": "NFT deleted successfully"}
@@ -586,25 +558,21 @@ async def activate_nft(
 ):
     """Activate an NFT"""
     try:
-        nfts_collection = await get_nfts_collection()
+        nfts_table = await get_nfts_table()
         
         # Check if NFT exists
-        nft = await nfts_collection.find_one({"_id": ObjectId(nft_id)})
+        response = await nfts_table.select('*').eq('id', nft_id).execute()
+        nft = response.data[0] if response.data else None
         if not nft:
             raise HTTPException(status_code=404, detail="NFT not found")
             
         # Update NFT status
-        result = await nfts_collection.update_one(
-            {"_id": ObjectId(nft_id)},
-            {
-                "$set": {
-                    "status": "active",
-                    "updated_at": get_vietnam_time().isoformat()
-                }
-            }
-        )
+        result = await nfts_table.update({
+            "status": "active",
+            "updated_at": get_vietnam_time().isoformat()
+        }).eq('id', nft_id).execute()
         
-        if result.modified_count == 0:
+        if result.data['count'] == 0:
             raise HTTPException(status_code=400, detail="Failed to activate NFT")
             
         return {"message": "NFT activated successfully"}
@@ -622,25 +590,21 @@ async def deactivate_nft(
 ):
     """Deactivate an NFT"""
     try:
-        nfts_collection = await get_nfts_collection()
+        nfts_table = await get_nfts_table()
         
         # Check if NFT exists
-        nft = await nfts_collection.find_one({"_id": ObjectId(nft_id)})
+        response = await nfts_table.select('*').eq('id', nft_id).execute()
+        nft = response.data[0] if response.data else None
         if not nft:
             raise HTTPException(status_code=404, detail="NFT not found")
             
         # Update NFT status
-        result = await nfts_collection.update_one(
-            {"_id": ObjectId(nft_id)},
-            {
-                "$set": {
-                    "status": "inactive",
-                    "updated_at": get_vietnam_time().isoformat()
-                }
-            }
-        )
+        result = await nfts_table.update({
+            "status": "inactive",
+            "updated_at": get_vietnam_time().isoformat()
+        }).eq('id', nft_id).execute()
         
-        if result.modified_count == 0:
+        if result.data['count'] == 0:
             raise HTTPException(status_code=400, detail="Failed to deactivate NFT")
             
         return {"message": "NFT deactivated successfully"}
@@ -658,7 +622,7 @@ async def create_nft_collection(
 ):
     """Create a new NFT collection"""
     try:
-        nfts_collection = await get_nfts_collection()
+        nfts_table = await get_nfts_table()
         
         # Validate required fields
         required_fields = ["name", "contract_address", "chain", "description", "image_url"]
@@ -677,11 +641,11 @@ async def create_nft_collection(
         })
 
         # Insert collection
-        result = await nfts_collection.insert_one(collection_data)
+        result = await nfts_table.insert(collection_data).execute()
         
         # Get created collection
-        created_collection = await nfts_collection.find_one({"_id": result.inserted_id})
-        created_collection["_id"] = str(created_collection["_id"])
+        response = await nfts_table.select('*').eq('id', result.data['id']).execute()
+        created_collection = response.data[0] if response.data else None
         
         return created_collection
         
@@ -707,28 +671,25 @@ async def list_nft_collections(
         raise HTTPException(status_code=403, detail="No permission")
 
     try:
-        nfts_collection = await get_nfts_collection()
+        nfts_table = await get_nfts_table()
 
         # Build query
-        query = {"type": "collection"}
+        query = nfts_table.select('*').eq('type', 'collection')
         if owner_address:
-            query["owner_address"] = owner_address
+            query = query.eq('owner_address', owner_address)
         if chain:
-            query["chain"] = chain
+            query = query.eq('chain', chain)
         if status:
-            query["status"] = status
+            query = query.eq('status', status)
 
         # Calculate pagination
         skip = (page - 1) * limit
-        total = await nfts_collection.count_documents(query)
+        total = await query.execute()
         
         # Get collections
-        collections = await nfts_collection.find(query).skip(skip).limit(limit).to_list(length=None)
+        response = await query.range(skip, skip + limit - 1).execute()
+        collections = response.data
         
-        # Convert ObjectId to string
-        for collection in collections:
-            collection["_id"] = str(collection["_id"])
-            
         return {
             "collections": collections,
             "total": total,
@@ -749,13 +710,11 @@ async def update_nft_collection(
 ):
     """Update NFT collection details"""
     try:
-        nfts_collection = await get_nfts_collection()
+        nfts_table = await get_nfts_table()
         
         # Check if collection exists
-        collection = await nfts_collection.find_one({
-            "_id": ObjectId(collection_id),
-            "type": "collection"
-        })
+        response = await nfts_table.select('*').eq('id', collection_id).eq('type', 'collection').execute()
+        collection = response.data[0] if response.data else None
         if not collection:
             raise HTTPException(status_code=404, detail="Collection not found")
         
@@ -763,17 +722,14 @@ async def update_nft_collection(
         collection_data["updated_at"] = get_vietnam_time().isoformat()
         
         # Update collection
-        result = await nfts_collection.update_one(
-            {"_id": ObjectId(collection_id)},
-            {"$set": collection_data}
-        )
+        result = await nfts_table.update(collection_data).eq('id', collection_id).eq('type', 'collection').execute()
         
-        if result.modified_count == 0:
+        if result.data['count'] == 0:
             raise HTTPException(status_code=400, detail="No changes made")
             
         # Get updated collection
-        updated_collection = await nfts_collection.find_one({"_id": ObjectId(collection_id)})
-        updated_collection["_id"] = str(updated_collection["_id"])
+        response = await nfts_table.select('*').eq('id', collection_id).eq('type', 'collection').execute()
+        updated_collection = response.data[0] if response.data else None
         
         return updated_collection
         
@@ -790,25 +746,18 @@ async def delete_nft_collection(
 ):
     """Delete an NFT collection and all its NFTs"""
     try:
-        nfts_collection = await get_nfts_collection()
+        nfts_table = await get_nfts_table()
         
         # Check if collection exists
-        collection = await nfts_collection.find_one({
-            "_id": ObjectId(collection_id),
-            "type": "collection"
-        })
+        response = await nfts_table.select('*').eq('id', collection_id).eq('type', 'collection').execute()
+        collection = response.data[0] if response.data else None
         if not collection:
             raise HTTPException(status_code=404, detail="Collection not found")
             
         # Delete collection and all its NFTs
-        result = await nfts_collection.delete_many({
-            "$or": [
-                {"_id": ObjectId(collection_id)},
-                {"collection_id": collection_id}
-            ]
-        })
+        result = await nfts_table.delete().eq('id', collection_id).eq('type', 'collection').execute()
         
-        if result.deleted_count == 0:
+        if result.data['count'] == 0:
             raise HTTPException(status_code=400, detail="Failed to delete collection")
             
         return {"message": "Collection and its NFTs deleted successfully"}
@@ -827,16 +776,16 @@ async def dashboard_stats(request: Request):
     if not user or user.get('role') != 'admin':
         raise HTTPException(status_code=403, detail='Admin privileges required')
     try:
-        users_collection = await get_users_collection()
-        vip_codes_collection = await get_vip_codes_collection()
-        pro_codes_collection = await get_pro_codes_collection()
-        nfts_collection = await get_nfts_collection()
+        users_table = await get_users_table()
+        vip_codes_table = await get_vip_codes_table()
+        pro_codes_table = await get_pro_codes_table()
+        nfts_table = await get_nfts_table()
 
-        user_count = await users_collection.count_documents({})
-        vip_code_count = await vip_codes_collection.count_documents({})
-        pro_code_count = await pro_codes_collection.count_documents({})
+        user_count = await users_table.count().execute()
+        vip_code_count = await vip_codes_table.count().execute()
+        pro_code_count = await pro_codes_table.count().execute()
         code_count = vip_code_count + pro_code_count
-        nft_count = await nfts_collection.count_documents({})
+        nft_count = await nfts_table.count().execute()
 
         return {
             "userCount": user_count,

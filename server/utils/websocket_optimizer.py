@@ -4,8 +4,6 @@ import time
 from datetime import datetime, timedelta
 from typing import Dict, Optional, List, Any
 from fastapi import WebSocket
-from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
-from pymongo.server_api import ServerApi
 from config.settings import settings
 from utils.logger import api_logger
 from utils.time_utils import get_vietnam_time, to_vietnam_time
@@ -169,28 +167,6 @@ class WebSocketConnection:
         except Exception as e:
             api_logger.error(f"Error closing connection for user {self.user_id}: {str(e)}")
 
-class DatabaseManager:
-    _instance = None
-
-    def __new__(cls):
-        if cls._instance is None:
-            cls._instance = super(DatabaseManager, cls).__new__(cls)
-            cls._instance.client = AsyncIOMotorClient(
-                settings.MONGODB_URL,
-                server_api=ServerApi('1'),
-                connectTimeoutMS=30000,
-                socketTimeoutMS=30000,
-                maxPoolSize=50,
-                minPoolSize=10,
-                maxIdleTimeMS=45000,
-                waitQueueTimeoutMS=10000
-            )
-            cls._instance.db = cls._instance.client[settings.DATABASE_NAME]
-        return cls._instance
-
-    async def get_database(self) -> AsyncIOMotorDatabase:
-        return self.db
-
 class MessageHandler:
     def __init__(self):
         self.handlers = {}
@@ -248,73 +224,80 @@ class MessageHandler:
                     "type": "error",
                     "message": "Internal server error"
                 })
-            except:
+            except Exception:
                 pass
 
     async def _handle_chat_message(self, websocket: WebSocket, user_id: str, message: dict):
         """Handle chat messages with special processing"""
-        handler = self.handlers.get("chat_message")
-        if not handler:
-            api_logger.warning("No handler registered for chat messages")
-            return
+        try:
+            # Get handler and lock for chat messages
+            handler = self.handlers.get("chat")
+            handler_lock = self._handler_locks.get("chat")
 
-        # Validate message
-        chat_message = message.get("message", "").strip()
-        if not chat_message:
-            await websocket.send_json({
-                "type": "error",
-                "message": "Message cannot be empty"
-            })
-            return
+            if not handler:
+                api_logger.warning("No chat handler registered")
+                return
 
-        if len(chat_message) > 1000:
-            await websocket.send_json({
-                "type": "error",
-                "message": "Message is too long (maximum 1000 characters)"
-            })
-            return
+            # Process chat message with locking
+            if handler_lock:
+                async with handler_lock:
+                    await handler(websocket, user_id, message)
+            else:
+                await handler(websocket, user_id, message)
 
-        # Process chat message with handler
-        await handler(websocket, user_id, message)
+        except Exception as e:
+            api_logger.error(f"Error handling chat message: {str(e)}")
+            try:
+                await websocket.send_json({
+                    "type": "error",
+                    "message": "Error processing chat message"
+                })
+            except Exception:
+                pass
 
     async def cleanup(self):
-        """Cleanup resources"""
-        for lock in self._handler_locks.values():
-            if lock.locked():
-                lock.release()
+        """Clean up resources"""
+        for handler in self.handlers.values():
+            if hasattr(handler, 'cleanup'):
+                await handler.cleanup()
 
 class CacheManager:
     def __init__(self, ttl: int = 300):
-        self.cache = {}
-        self.ttl = ttl
-        self.locks = {}
+        self._cache = {}
+        self._ttl = {}
+        self._ttl_seconds = ttl
         self._cleanup_task = None
-        self._cleanup_interval = 60  # Run cleanup every 60 seconds
+        self._lock = asyncio.Lock()
 
     async def get(self, key: str):
-        """Get a value from cache with TTL check"""
-        if key in self.cache:
-            data, timestamp = self.cache[key]
-            if time.time() - timestamp < self.ttl:
-                return data
-            del self.cache[key]
+        """Get a value from cache"""
+        if key in self._cache:
+            if key in self._ttl and datetime.now() > self._ttl[key]:
+                del self._cache[key]
+                del self._ttl[key]
+                return None
+            return self._cache[key]
         return None
 
     async def set(self, key: str, value: any):
-        """Set a value in cache with timestamp"""
-        self.cache[key] = (value, time.time())
+        """Set a value in cache"""
+        self._cache[key] = value
+        if self._ttl_seconds > 0:
+            self._ttl[key] = datetime.now() + timedelta(seconds=self._ttl_seconds)
         self._ensure_cleanup_task()
 
     async def delete(self, key: str):
         """Delete a value from cache"""
-        if key in self.cache:
-            del self.cache[key]
+        if key in self._cache:
+            del self._cache[key]
+        if key in self._ttl:
+            del self._ttl[key]
 
     def get_lock(self, key: str) -> asyncio.Lock:
-        """Get or create a lock for a key"""
-        if key not in self.locks:
-            self.locks[key] = asyncio.Lock()
-        return self.locks[key]
+        """Get a lock for a specific key"""
+        if key not in self._locks:
+            self._locks[key] = asyncio.Lock()
+        return self._locks[key]
 
     def _ensure_cleanup_task(self):
         """Ensure cleanup task is running"""
@@ -325,37 +308,26 @@ class CacheManager:
         """Periodically clean up expired cache entries"""
         while True:
             try:
-                await asyncio.sleep(self._cleanup_interval)
-                current_time = time.time()
+                await asyncio.sleep(60)  # Check every minute
+                now = datetime.now()
                 expired_keys = [
-                    key for key, (_, timestamp) in self.cache.items()
-                    if current_time - timestamp >= self.ttl
+                    key for key, expiry in self._ttl.items()
+                    if expiry < now
                 ]
                 for key in expired_keys:
-                    del self.cache[key]
+                    del self._cache[key]
+                    del self._ttl[key]
             except Exception as e:
                 api_logger.error(f"Error in cache cleanup: {str(e)}")
+                await asyncio.sleep(5)  # Wait before retrying
 
     async def cleanup(self):
-        """Cleanup all resources"""
+        """Clean up all resources"""
         if self._cleanup_task:
             self._cleanup_task.cancel()
             try:
                 await self._cleanup_task
             except asyncio.CancelledError:
                 pass
-            self._cleanup_task = None
-
-        # Clear all locks
-        for lock in self.locks.values():
-            if lock.locked():
-                lock.release()
-        self.locks.clear()
-
-        # Clear cache
-        self.cache.clear()
-
-# Create global instances with optimized settings
-db_manager = DatabaseManager()
-message_handler = MessageHandler()
-cache_manager = CacheManager(ttl=300)  # 5 minutes TTL 
+        self._cache.clear()
+        self._ttl.clear() 

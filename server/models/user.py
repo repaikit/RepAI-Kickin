@@ -1,16 +1,7 @@
 from typing import Optional, List, Any, Dict, Annotated, Union
-from pydantic import BaseModel, Field, BeforeValidator, EmailStr
+from pydantic import BaseModel, Field, EmailStr
 from datetime import datetime
-from bson import ObjectId
-from pydantic.json_schema import JsonSchemaValue
 from utils.time_utils import get_vietnam_time, VIETNAM_TZ
-
-def validate_object_id(v: str) -> ObjectId:
-    if not ObjectId.is_valid(v):
-        raise ValueError("Invalid ObjectId")
-    return ObjectId(v)
-
-PyObjectId = Annotated[ObjectId, BeforeValidator(validate_object_id)]
 
 class UserBase(BaseModel):
     user_type: str = "guest"  # guest, user, admin
@@ -34,10 +25,10 @@ class UserBase(BaseModel):
     total_point: int = 0  # Điểm tuần hiện tại
     bonus_point: float = 0.0
     match_history: List[Any] = []
-    created_at: str = Field(default_factory=lambda: get_vietnam_time().isoformat())
-    updated_at: str = Field(default_factory=lambda: get_vietnam_time().isoformat())
-    last_activity: str = Field(default_factory=lambda: get_vietnam_time().isoformat())
-    last_login: Optional[str] = None
+    created_at: datetime = Field(default_factory=lambda: get_vietnam_time())
+    updated_at: datetime = Field(default_factory=lambda: get_vietnam_time())
+    last_activity: datetime = Field(default_factory=lambda: get_vietnam_time())
+    last_login: Optional[datetime] = None
     # Leaderboard fields
     total_kicked: int = 0
     kicked_win: int = 0
@@ -54,9 +45,9 @@ class UserBase(BaseModel):
     # --- Thay thế các trường điểm tuần và lịch sử điểm tuần riêng biệt bằng trường chung ---
     week_history: List[dict] = []  # Lịch sử điểm tuần, mỗi entry: {"week": ..., "point": ..., "total_point": ..., "reset_at": ...}
     # --- Thêm các trường mới ---
-    last_box_open: Optional[str] = None
+    last_box_open: Optional[datetime] = None
     mystery_box_history: List[dict] = []
-    last_claim_matches: Optional[str] = None
+    last_claim_matches: Optional[datetime] = None
     # --- Thêm trường daily_tasks ---
     daily_tasks: Dict[str, Dict[str, bool]] = Field(default_factory=dict)  # {"task_id": {"completed": bool, "claimed": bool}}
     evm_mnemonic: Optional[str] = None
@@ -79,17 +70,14 @@ class UserBase(BaseModel):
     x_username: Optional[str] = None 
     x_access_token: Optional[str] = None 
     x_refresh_token: Optional[str] = None 
-    x_token_expires_at: Optional[Union[int, datetime]] = None 
+    x_token_expires_at: Optional[datetime] = None 
     x_main_account_id: Optional[str] = None 
     x_connected_at: Optional[datetime] = None 
     x_auth_state: Optional[str] = None
     used_invite_codes: List[str] = []
 
     class Config:
-        json_encoders = {
-            ObjectId: str
-        }
-        populate_by_name = True
+        from_attributes = True
 
 class UserCreate(UserBase):
     pass
@@ -114,8 +102,8 @@ class UserUpdate(BaseModel):
     total_point: Optional[int] = None
     bonus_point: Optional[float] = None
     match_history: Optional[List[Any]] = None
-    updated_at: str = Field(default_factory=lambda: get_vietnam_time().isoformat())
-    last_login: Optional[str] = None
+    updated_at: datetime = Field(default_factory=lambda: get_vietnam_time())
+    last_login: Optional[datetime] = None
     # Leaderboard fields
     total_kicked: Optional[int] = None
     kicked_win: Optional[int] = None
@@ -124,10 +112,9 @@ class UserUpdate(BaseModel):
     is_pro: Optional[bool] = None
     extra_point: Optional[int] = None
     level: Optional[int] = None
-    last_box_open: Optional[str] = None
+    last_box_open: Optional[datetime] = None
     mystery_box_history: Optional[List[dict]] = None
-    last_claim_matches: Optional[str] = None
-    # weekly_logins: Optional[Dict[str, Dict[str, int]]] = None
+    last_claim_matches: Optional[datetime] = None
     # NFT minted count
     nft_minted: Optional[int] = None
     # X fields
@@ -136,7 +123,7 @@ class UserUpdate(BaseModel):
     x_username: Optional[str] = None 
     x_access_token: Optional[str] = None 
     x_refresh_token: Optional[str] = None 
-    x_token_expires_at: Optional[Union[int, datetime]] = None 
+    x_token_expires_at: Optional[datetime] = None 
     x_main_account_id: Optional[str] = None 
     x_connected_at: Optional[datetime] = None 
     x_auth_state: Optional[str] = None
@@ -144,18 +131,11 @@ class UserUpdate(BaseModel):
     class Config:
         extra = "forbid"
 
-class UserInDB(UserBase):
-    id: PyObjectId = Field(default_factory=PyObjectId, alias="_id")
+class User(UserBase):
+    id: str
 
     class Config:
-        json_encoders = {
-            ObjectId: str
-        }
-        populate_by_name = True
-        arbitrary_types_allowed = True
-
-class User(UserInDB):
-    pass
+        from_attributes = True
 
 class TokenResponse(BaseModel):
     access_token: str

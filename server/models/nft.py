@@ -1,11 +1,9 @@
 from datetime import datetime
 from typing import Optional, Dict, Any
 from pydantic import BaseModel, Field
-from bson import ObjectId
 
 class NFT(BaseModel):
     """NFT Model"""
-    _id: Optional[str] = None
     token_id: str = Field(..., description="Token ID of the NFT")
     contract_address: str = Field(..., description="Contract address of the NFT")
     chain: str = Field(..., description="Blockchain network (e.g., ETH, BSC, SOL)")
@@ -15,28 +13,23 @@ class NFT(BaseModel):
     owner_address: str = Field(..., description="Wallet address of the NFT owner")
     status: str = Field(default="active", description="Status of the NFT (active/inactive)")
     metadata: Optional[Dict[str, Any]] = Field(default={}, description="Additional metadata of the NFT")
-    created_at: str = Field(default_factory=lambda: datetime.utcnow().isoformat())
-    updated_at: str = Field(default_factory=lambda: datetime.utcnow().isoformat())
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+    class Config:
+        from_attributes = True
 
     def to_dict(self) -> dict:
         """Convert model to dictionary"""
-        data = self.model_dump(exclude_none=True)
-        if self._id:
-            data["_id"] = ObjectId(self._id)
-        return data
+        return self.model_dump(exclude_none=True)
 
     @classmethod
     def from_dict(cls, data: dict) -> "NFT":
         """Create model from dictionary"""
-        if "_id" in data:
-            data["_id"] = str(data["_id"])
         return cls(**data)
 
     @classmethod
-    async def setup_collection(cls, db):
-        """Setup collection indexes"""
-        await db.create_index("token_id", unique=True)
-        await db.create_index("contract_address")
-        await db.create_index("owner_address")
-        await db.create_index("status")
-        await db.create_index("chain") 
+    async def setup_table(cls, table):
+        """Setup table indexes"""
+        # Indexes are created in Supabase SQL
+        pass 

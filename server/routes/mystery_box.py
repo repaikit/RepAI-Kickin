@@ -2,9 +2,8 @@ from fastapi import APIRouter, HTTPException, Request, Depends
 from typing import Optional
 from datetime import datetime, timedelta
 from pydantic import BaseModel
-from database.database import get_database
+from database.database import get_users_table, get_skills_table
 from utils.logger import api_logger
-from bson import ObjectId
 import random
 from utils.time_utils import get_vietnam_time, to_vietnam_time, format_vietnam_time
 from ws_handlers.waiting_room import manager as waiting_room_manager
@@ -33,11 +32,8 @@ async def get_box_status(request: Request):
     if not user:
         raise HTTPException(status_code=401, detail="Not authorized")
     
-    db = await get_database()
-    
     # Get user's last box open time
     last_regular_open = user.get("last_regular_box_open")
-    # last_level_up_open = user.get("last_level_up_box_open")  # No longer needed for cooldown
     
     # Get current time in Vietnam timezone
     now = get_vietnam_time()
@@ -87,7 +83,8 @@ async def open_box(request: Request, box_request: BoxOpenRequest):
     if not user:
         raise HTTPException(status_code=401, detail="Not authorized")
     
-    db = await get_database()
+    users_table = await get_users_table()
+    skills_table = await get_skills_table()
     now = get_vietnam_time()
     
     # Check if user can open box
@@ -121,7 +118,8 @@ async def open_box(request: Request, box_request: BoxOpenRequest):
         
         if reward_type == "skill":
             skill_type = random.choice(["kicker", "goalkeeper"])
-            skills = await db.skills.find({"type": skill_type}).to_list(length=None)
+            response = await skills_table.select('*').eq('type', skill_type).execute()
+            skills = response.data
             if not skills:
                 raise HTTPException(status_code=500, detail=f"No {skill_type} skills available")
             
@@ -139,20 +137,27 @@ async def open_box(request: Request, box_request: BoxOpenRequest):
             if not available_skills:
                 raise HTTPException(status_code=500, detail="No suitable skills available for your level")
             reward = random.choice(available_skills)
+            
             # Update user's skills
             update_data = {
-                "$set": {
-                    "last_regular_box_open" if box_type == "regular" else "last_level_up_box_open": format_vietnam_time(now),
-                    "next_regular_box_open" if box_type == "regular" else "next_level_up_box_open": format_vietnam_time(now + timedelta(hours=5))
-                }
+                "last_regular_box_open" if box_type == "regular" else "last_level_up_box_open": format_vietnam_time(now),
+                "next_regular_box_open" if box_type == "regular" else "next_level_up_box_open": format_vietnam_time(now + timedelta(hours=5))
             }
             if box_type == "level_up":
-                update_data["$set"]["can_open_level_up_box"] = False
+                update_data["can_open_level_up_box"] = False
+                
+            # Add skill to user's skills
             if skill_type == "kicker":
-                update_data["$push"] = {"kicker_skills": reward["name"]}
+                kicker_skills = user.get("kicker_skills", [])
+                kicker_skills.append(reward["name"])
+                update_data["kicker_skills"] = kicker_skills
             else:
-                update_data["$push"] = {"goalkeeper_skills": reward["name"]}
-            await db.users.update_one({"_id": user["_id"]}, update_data)
+                goalkeeper_skills = user.get("goalkeeper_skills", [])
+                goalkeeper_skills.append(reward["name"])
+                update_data["goalkeeper_skills"] = goalkeeper_skills
+                
+            await users_table.update(update_data).eq('id', user["id"]).execute()
+            
             # Add to mystery box history
             history_entry = {
                 "reward_type": "skill",
@@ -164,20 +169,17 @@ async def open_box(request: Request, box_request: BoxOpenRequest):
                 "shots": shots
             }
         else:  # remaining_matches
-            # Log before update
-            before_user = await db.users.find_one({"_id": user["_id"]})
+            # Update user's remaining matches and box open time
             update_data = {
-                "$inc": {"remaining_matches": shots},
-                "$set": {
-                    "last_regular_box_open" if box_type == "regular" else "last_level_up_box_open": format_vietnam_time(now),
-                    "next_regular_box_open" if box_type == "regular" else "next_level_up_box_open": format_vietnam_time(now + timedelta(hours=5))
-                }
+                "remaining_matches": user.get("remaining_matches", 0) + shots,
+                "last_regular_box_open" if box_type == "regular" else "last_level_up_box_open": format_vietnam_time(now),
+                "next_regular_box_open" if box_type == "regular" else "next_level_up_box_open": format_vietnam_time(now + timedelta(hours=5))
             }
             if box_type == "level_up":
-                update_data["$set"]["can_open_level_up_box"] = False
-            await db.users.update_one({"_id": user["_id"]}, update_data)
-            # Log after update
-            after_user = await db.users.find_one({"_id": user["_id"]})
+                update_data["can_open_level_up_box"] = False
+                
+            await users_table.update(update_data).eq('id', user["id"]).execute()
+            
             history_entry = {
                 "reward_type": "remaining_matches",
                 "amount": shots,
@@ -185,18 +187,22 @@ async def open_box(request: Request, box_request: BoxOpenRequest):
                 "box_type": box_type,
                 "shots": shots
             }
+            
         # Add to history
-        await db.users.update_one(
-            {"_id": user["_id"]},
-            {"$push": {"mystery_box_history": history_entry}}
-        )
+        mystery_box_history = user.get("mystery_box_history", [])
+        mystery_box_history.append(history_entry)
+        await users_table.update({"mystery_box_history": mystery_box_history}).eq('id', user["id"]).execute()
+        
+        # Get updated user data
+        response = await users_table.select('*').eq('id', user["id"]).execute()
+        updated_user = response.data[0] if response.data else None
+        
         # Broadcast user update
-        updated_user = await db.users.find_one({"_id": user["_id"]})
-        if waiting_room_manager:
+        if waiting_room_manager and updated_user:
             await waiting_room_manager.broadcast({
                 "type": "user_updated",
                 "user": {
-                    "id": str(updated_user["_id"]),
+                    "id": updated_user["id"],
                     "name": updated_user.get("name", "Anonymous"),
                     "avatar": updated_user.get("avatar", ""),
                     "user_type": updated_user.get("user_type", "guest"),
@@ -208,6 +214,7 @@ async def open_box(request: Request, box_request: BoxOpenRequest):
                     "can_open_level_up_box": updated_user.get("can_open_level_up_box", False)
                 }
             })
+            
         return {
             "success": True,
             "data": {
@@ -250,21 +257,6 @@ async def get_box_history(request: Request, limit: int = 10, skip: int = 0):
                 "skip": skip
             }
         }
-        
     except Exception as e:
-        api_logger.error(f"[MysteryBox] Error getting history: {str(e)}")
-        raise HTTPException(status_code=500, detail="Internal server error")
-
-    # Get current time in Vietnam timezone
-    now = get_vietnam_time()
-
-    # Update last open time
-    await db.users.update_one(
-        {"_id": user["_id"]},
-        {
-            "$set": {
-                "last_mystery_box_open": now.isoformat(),
-                "opened_at": now.isoformat()
-            }
-        }
-    ) 
+        api_logger.error(f"Error getting mystery box history: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e)) 

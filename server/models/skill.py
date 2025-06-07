@@ -1,16 +1,7 @@
-from typing import Optional, Annotated
-from pydantic import BaseModel, Field, BeforeValidator
+from typing import Optional
+from pydantic import BaseModel, Field
 from datetime import datetime
-from bson import ObjectId
-from pydantic.json_schema import JsonSchemaValue
 import enum
-
-def validate_object_id(v: str) -> ObjectId:
-    if not ObjectId.is_valid(v):
-        raise ValueError("Invalid ObjectId")
-    return ObjectId(v)
-
-PyObjectId = Annotated[ObjectId, BeforeValidator(validate_object_id)]
 
 class SkillType(str, enum.Enum):
     KICKER = "kicker"
@@ -21,12 +12,11 @@ class SkillBase(BaseModel):
     type: str  # Changed back to string to match database
     description: str
     point: int
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
 
     class Config:
-        json_encoders = {
-            ObjectId: str
-        }
-        populate_by_name = True
+        from_attributes = True
 
 class SkillCreate(SkillBase):
     pass
@@ -36,16 +26,10 @@ class SkillUpdate(BaseModel):
     type: Optional[str] = None  # Changed back to string
     description: Optional[str] = None
     point: Optional[int] = None
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
 
-class SkillInDB(SkillBase):
-    id: PyObjectId = Field(default_factory=PyObjectId, alias="_id")
+class Skill(SkillBase):
+    id: str
 
     class Config:
-        json_encoders = {
-            ObjectId: str
-        }
-        populate_by_name = True
-        arbitrary_types_allowed = True
-
-class Skill(SkillInDB):
-    pass 
+        from_attributes = True 

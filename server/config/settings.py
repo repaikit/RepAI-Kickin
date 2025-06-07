@@ -23,9 +23,9 @@ class Settings(BaseSettings):
         "https://kickin.repai.vn/"
     ]
     
-    # Database settings
-    MONGODB_URL: str = os.getenv("MONGODB_URL", "mongodb+srv://localhost:27017")
-    DATABASE_NAME: str = os.getenv("DATABASE_NAME", "repai_kickin")
+    # Supabase settings
+    SUPABASE_URL: str = os.getenv("SUPABASE_URL", "")
+    SUPABASE_KEY: str = os.getenv("SUPABASE_KEY", "")
     
     # Rate limiting
     RATE_LIMIT_PER_MINUTE: int = int(os.getenv("RATE_LIMIT_PER_MINUTE", "60"))

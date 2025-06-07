@@ -1,5 +1,5 @@
 from fastapi import APIRouter, HTTPException
-from database.database import get_database, get_skills_collection
+from database.database import get_skills_table, get_bots_table
 from utils.logger import api_logger
 from typing import Dict, List
 import traceback
@@ -11,12 +11,15 @@ router = APIRouter()
 async def get_or_create_bot():
     """Get or create bot with random skills"""
     try:
-        db = await get_database()
-        skills_collection = await get_skills_collection()
+        skills_table = await get_skills_table()
+        bots_table = await get_bots_table()
         
         # Get all available skills
-        kicker_skills = await skills_collection.find({"type": "kicker"}).to_list(length=None)
-        goalkeeper_skills = await skills_collection.find({"type": "goalkeeper"}).to_list(length=None)
+        kicker_response = await skills_table.select('*').eq('type', 'kicker').execute()
+        goalkeeper_response = await skills_table.select('*').eq('type', 'goalkeeper').execute()
+        
+        kicker_skills = kicker_response.data
+        goalkeeper_skills = goalkeeper_response.data
         
         # Random 10 skills for each type
         selected_kicker_skills = random.sample([s["name"] for s in kicker_skills], min(10, len(kicker_skills)))
@@ -30,14 +33,13 @@ async def get_or_create_bot():
             "goalkeeper_skills": selected_goalkeeper_skills,
             "remaining_matches": 5,
             "daily_tasks": {},
-            "created_at": datetime.utcnow(),
-            "last_skill_update": datetime.utcnow()
+            "created_at": datetime.utcnow().isoformat(),
+            "last_skill_update": datetime.utcnow().isoformat()
         }
         
-        # Store bot in a separate collection
-        bot_collection = db.bots
-        await bot_collection.delete_many({})  # Clear existing bot
-        result = await bot_collection.insert_one(bot_data)
+        # Store bot in bots table
+        await bots_table.delete().eq('username', 'bot').execute()  # Clear existing bot
+        result = await bots_table.insert(bot_data).execute()
         
         return bot_data
         
@@ -50,17 +52,18 @@ async def get_or_create_bot():
 async def get_bot_skills():
     """Get current bot skills"""
     try:
-        db = await get_database()
+        bots_table = await get_bots_table()
         
-        # Get bot from bots collection
-        bot = await db.bots.find_one({"username": "bot"})
+        # Get bot from bots table
+        response = await bots_table.select('*').eq('username', 'bot').execute()
+        bot = response.data[0] if response.data else None
+        
         if not bot:
             bot = await get_or_create_bot()
             
         # Get skills
         kicker_skills = bot.get("kicker_skills", [])
         goalkeeper_skills = bot.get("goalkeeper_skills", [])
-        
         
         return {
             "kicker_skills": kicker_skills,

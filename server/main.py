@@ -13,12 +13,11 @@ from contextlib import asynccontextmanager
 
 # Import routers using absolute imports
 from routes import users, skills, ws_handlers, mystery_box, bot, chat, cache, leaderboard, GoogleAuthenticate, nft, x, invite_codes_vip, admin
-from middleware.database import database_middleware, DatabaseMiddleware
 from middleware.rate_limit import RateLimitMiddleware
 from middleware.cache import InMemoryCacheMiddleware
 from middleware.jwt_auth import JWTAuthMiddleware
 from utils.logger import api_logger, setup_logger
-from database.database import init_db, close_db, Database, get_database
+from database.database import init_supabase, close_supabase
 from config.settings import settings
 from routes.task_claim_matches import router as task_claim_matches_router
 from routes.daily_tasks import router as daily_tasks_router
@@ -54,9 +53,9 @@ async def startup_event():
 async def lifespan(app: FastAPI):
     # Startup
     try:
-        api_logger.info("Initializing database connection...")
-        await init_db()
-        api_logger.info("Database connection successful")
+        api_logger.info("Initializing Supabase connection...")
+        await init_supabase()
+        api_logger.info("Supabase connection successful")
         init_metrics()
         setup_scheduler()
         api_logger.info("Application startup completed")
@@ -66,11 +65,11 @@ async def lifespan(app: FastAPI):
     yield
     # Shutdown
     try:
-        api_logger.info("Closing database connection...")
-        await close_db()
-        api_logger.info("Database connection closed")
+        api_logger.info("Closing Supabase connection...")
+        await close_supabase()
+        api_logger.info("Supabase connection closed")
     except Exception as e:
-        api_logger.error(f"Error closing database connection: {str(e)}")
+        api_logger.error(f"Error closing Supabase connection: {str(e)}")
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -89,9 +88,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Add database middleware
-app.add_middleware(DatabaseMiddleware)
-
 # Add rate limiting middleware
 app.add_middleware(RateLimitMiddleware)
 
@@ -108,15 +104,6 @@ app.add_middleware(JWTAuthMiddleware)
 
 # Setup logging
 setup_logger()
-
-# Database dependency
-async def get_db():
-    db = await get_database()
-    try:
-        yield db
-    finally:
-        # No need to close here as middleware handles it
-        pass
 
 # Include routers
 app.include_router(users.router, prefix="/api", tags=["users"])
@@ -194,11 +181,11 @@ async def health_check():
 
 @app.on_event("startup")
 async def startup_event():
-    await init_db()
+    await init_supabase()
 
 @app.on_event("shutdown")
 async def shutdown_event():
-    await close_db()
+    await close_supabase()
 
 if __name__ == "__main__":
     import uvicorn

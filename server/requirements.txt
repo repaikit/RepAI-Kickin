@@ -8,8 +8,8 @@ python-dotenv>=0.19.0
 email-validator>=2.0.0
 
 # Database
-motor==3.1.1
-pymongo==4.5.0
+supabase>=2.3.0
+postgrest>=0.13.0
 nest-asyncio==1.5.8
 
 # Authentication
@@ -55,10 +55,6 @@ mnemonic>=0.21
 eth-account>=0.13.7
 bip-utils>=2.9.3
 
-fastapi
-uvicorn
-python-dotenv
-httpx
-
 requests>=2.32.3
 tweepy
+sqlalchemy

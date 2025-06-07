@@ -6,6 +6,7 @@ from typing import List, Optional
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 from dotenv import load_dotenv
+from utils.logger import api_logger
 
 # Load environment variables
 load_dotenv()
@@ -13,10 +14,6 @@ MORALIS_API_KEY = os.getenv("MORALIS_API_KEY")
 
 if not MORALIS_API_KEY:
     raise RuntimeError("❌ MORALIS_API_KEY not found in environment variables!")
-
-# Logging setup
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
 
 # Initialize router
 router = APIRouter()
@@ -46,11 +43,11 @@ def fetch_nfts(address: str, max_nfts: int = 300) -> dict:
 
     while True:
         full_url = url + (f"&cursor={cursor}" if cursor else "")
-        logger.info(f"🔄 Fetching page {page} for address {address}...")
+        api_logger.info(f"🔄 Fetching page {page} for address {address}...")
 
         response = requests.get(full_url, headers=headers)
         if response.status_code != 200:
-            logger.error(f"❌ API Error {response.status_code}: {response.text}")
+            api_logger.error(f"❌ API Error {response.status_code}: {response.text}")
             raise HTTPException(status_code=response.status_code, detail=response.text)
 
         data = response.json()
@@ -81,4 +78,8 @@ async def get_nfts(
     address: str = Query(..., description="Wallet address to fetch NFTs for"),
     max_nfts: int = Query(300, gt=0, le=1000, description="Maximum number of NFTs to fetch (1–1000)")
 ):
-    return fetch_nfts(address, max_nfts)
+    try:
+        return fetch_nfts(address, max_nfts)
+    except Exception as e:
+        api_logger.error(f"Error fetching NFTs: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))

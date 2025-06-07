@@ -1,54 +1,55 @@
 from datetime import datetime, timedelta
 import random
-from motor.motor_asyncio import AsyncIOMotorClient
-from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from fastapi import HTTPException
 from models.bot_goalkeeper import BotGoalkeeperModel
-from database.database import get_database, get_skills_collection
-from bson import ObjectId
-
-# Initialize MongoDB client (configure URI elsewhere)
-client = AsyncIOMotorClient()
+from database.database import get_database, get_skills_table
+from supabase import Client
 
 # Core logic
 async def get_or_create_bot_for_user(user_id: str) -> BotGoalkeeperModel:
-    db = await get_database()
-    bot_coll = db.bot_goalkeepers
+    client: Client = await get_database()
+    bot_table = client.table('bot_goalkeepers')
     
-    
-    skills_collection = await get_skills_collection()
-    goalkeeper_skills = await skills_collection.find({"type": "goalkeeper"}).to_list(length=None)
+    # Get goalkeeper skills
+    skills_table = await get_skills_table()
+    response = await skills_table.select('*').eq('type', 'goalkeeper').execute()
+    goalkeeper_skills = response.data
     selected_goalkeeper_skills = random.sample([s["name"] for s in goalkeeper_skills], min(10, len(goalkeeper_skills)))
 
-    # Tìm bot theo user_id
-    bot_doc = await bot_coll.find_one({"user_id": user_id})
-    if bot_doc:
-        print(f"Bot found for user {user_id}: {bot_doc}")
-        return BotGoalkeeperModel(**bot_doc)
-    # Lấy user_name từ bảng users (nếu cần)
-    user_doc = await db.users.find_one({"_id": ObjectId(user_id)})
-    user_name = user_doc.get("name", "") if user_doc else ""
-    if not user_doc:
+    # Find bot by user_id
+    response = await bot_table.select('*').eq('user_id', user_id).execute()
+    bot_data = response.data[0] if response.data else None
+    
+    if bot_data:
+        print(f"Bot found for user {user_id}: {bot_data}")
+        return BotGoalkeeperModel(**bot_data)
+
+    # Get user name from users table
+    response = await client.table('users').select('name,user_type').eq('id', user_id).execute()
+    user_data = response.data[0] if response.data else None
+    
+    if not user_data:
         user_name = "unknown"
     else:
-        if user_doc.get("user_type") == "guest":
+        if user_data.get("user_type") == "guest":
             user_name = "guest_" + user_id[-4:]
         else:
-            user_name = user_doc.get("name", "user_" + user_id[-4:])
+            user_name = user_data.get("name", "user_" + user_id[-4:])
 
     bot_data = {
-        "user_id": (user_id),
+        "user_id": user_id,
         "user_name": "bot_goalkeeper_" + user_name,
         "skill": selected_goalkeeper_skills,
         "energy": 100.0,
         "feed_quota": 5,
-        "last_skill_increase": datetime.utcnow(),
-        "last_energy_deduction": datetime.utcnow(),
-        "last_reset": datetime.utcnow(),
-        "created_at": datetime.utcnow(),
+        "last_skill_increase": datetime.utcnow().isoformat(),
+        "last_energy_deduction": datetime.utcnow().isoformat(),
+        "last_reset": datetime.utcnow().isoformat(),
+        "created_at": datetime.utcnow().isoformat(),
     }
-    result = await bot_coll.insert_one(bot_data)
-    bot_data["_id"] = result.inserted_id
+    
+    response = await bot_table.insert(bot_data).execute()
+    bot_data["id"] = response.data[0]["id"]
     print(f"Created new bot for user {user_id}: {bot_data}")
     return BotGoalkeeperModel(**bot_data)
 
@@ -60,35 +61,37 @@ async def get_or_create_bot_for_user(user_id: str) -> BotGoalkeeperModel:
 #     bot.energy = min(bot.energy + 50.0, 100.0)
 #     bot.feed_quota -= 1
 #     bot.last_energy_deduction = datetime.utcnow()
-#     await bot_coll.update_one({"_id": bot.id}, {"$set": {"energy": bot.energy, "feed_quota": bot.feed_quota, "last_energy_deduction": bot.last_energy_deduction}})
+#     await bot_table.update({"energy": bot.energy, "feed_quota": bot.feed_quota, "last_energy_deduction": bot.last_energy_deduction}).eq("id", bot.id).execute()
 #     return bot
 
 # async def _hourly_update():
 #     now = datetime.utcnow()
-#     async for doc in bot_coll.find({}):
-#         bot = BotGoalkeeperModel(**doc)
+#     response = await bot_table.select('*').execute()
+#     for bot_data in response.data:
+#         bot = BotGoalkeeperModel(**bot_data)
 #         # Deduct energy 10% per hour
-#         elapsed = now - bot.last_energy_deduction
+#         elapsed = now - datetime.fromisoformat(bot.last_energy_deduction)
 #         hours = int(elapsed.total_seconds() // 3600)
 #         if hours <= 0:
 #             continue
 #         new_energy = max(bot.energy - 10.0 * hours, 0.0)
-#         update = {"energy": new_energy, "last_energy_deduction": now}
+#         update = {"energy": new_energy, "last_energy_deduction": now.isoformat()}
 #         # Auto increase skill if energy > 50%
 #         if new_energy > 50.0:
 #             incr_times = hours
 #             update['skill'] = bot.skill + incr_times
-#             update['last_skill_increase'] = now
-#         await bot_coll.update_one({"_id": bot.id}, {"$set": update})
+#             update['last_skill_increase'] = now.isoformat()
+#         await bot_table.update(update).eq("id", bot.id).execute()
 
 # async def _reset_bots():
 #     now = datetime.utcnow()
-#     cursor = bot_coll.find({})
-#     async for doc in cursor:
-#         bot = BotGoalkeeperModel(**doc)
-#         user = await user_coll.find_one({"_id": bot.user_id})
-#         plan = user.get('plan', 'BASIC').upper()
-#         since_reset = now - bot.last_reset
+#     response = await bot_table.select('*').execute()
+#     for bot_data in response.data:
+#         bot = BotGoalkeeperModel(**bot_data)
+#         user_response = await client.table('users').select('plan').eq('id', bot.user_id).execute()
+#         user = user_response.data[0] if user_response.data else None
+#         plan = user.get('plan', 'BASIC').upper() if user else 'BASIC'
+#         since_reset = now - datetime.fromisoformat(bot.last_reset)
 #         reset_needed = False
 #         if plan == 'BASIC' and since_reset >= timedelta(weeks=1):
 #             reset_needed = True
@@ -97,12 +100,12 @@ async def get_or_create_bot_for_user(user_id: str) -> BotGoalkeeperModel:
 #         elif plan == 'VIP':
 #             reset_needed = False
 #         if reset_needed:
-#             await bot_coll.update_one({"_id": bot.id}, {"$set": {
+#             await bot_table.update({
 #                 "skill": 10,
 #                 "energy": 100.0,
 #                 "feed_quota": 5,
-#                 "last_reset": now
-#             }})
+#                 "last_reset": now.isoformat()
+#             }).eq("id", bot.id).execute()
 
 # # Scheduler setup
 # scheduler = AsyncIOScheduler()

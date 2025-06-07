@@ -1,9 +1,9 @@
 from fastapi import Request, HTTPException
 from jose import jwt, JWTError
-from database.database import get_users_collection
+from database.database import get_users_table
 from starlette.middleware.base import BaseHTTPMiddleware
 import os
-from bson import ObjectId
+import logging
 
 SECRET_KEY = os.getenv("JWT_KEY", "your-very-secret-key")
 ALGORITHM = "HS256"
@@ -57,6 +57,8 @@ ADMIN_ROUTES = [
     "/api/admin/nfts/collection/",  # Cho các route có tham số
 ]
 
+api_logger = logging.getLogger(__name__)
+
 class JWTAuthMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         # Bỏ qua xác thực cho request OPTIONS (preflight CORS)
@@ -75,22 +77,35 @@ class JWTAuthMiddleware(BaseHTTPMiddleware):
         token = auth_header.replace("Bearer ", "")
         try:
             data = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-            users_collection = await get_users_collection()
-            # Convert _id to ObjectId for MongoDB query
-            user = await users_collection.find_one({"_id": ObjectId(data["_id"])})
+            api_logger.info(f"Decoded token data: {data}")
+            
+            if "sub" not in data:
+                raise HTTPException(status_code=401, detail="Invalid token format: missing 'sub' claim")
+                
+            user_id = data["sub"]
+            api_logger.info(f"Looking up user with ID: {user_id}")
+            
+            users_table = await get_users_table()
+            response = users_table.select('*').eq('id', user_id).execute()
+            user = response.data[0] if response.data else None
+            
             if not user:
-                raise HTTPException(status_code=401, detail="Not authorized to access this resource")
+                api_logger.error(f"User not found for ID: {user_id}")
+                raise HTTPException(status_code=401, detail="User not found")
 
             # Kiểm tra quyền admin cho các route admin
             if any(request.url.path.startswith(route) for route in ADMIN_ROUTES):
                 if user.get("role") != "admin":
+                    api_logger.error(f"User {user_id} attempted to access admin route without admin privileges")
                     raise HTTPException(status_code=403, detail="Admin privileges required")
 
             request.state.user = user
             request.state.token = token
-        except JWTError:
+        except JWTError as e:
+            api_logger.error(f"JWT decode error: {str(e)}")
             raise HTTPException(status_code=401, detail="Invalid token")
         except Exception as e:
+            api_logger.error(f"Unexpected error in JWT middleware: {str(e)}")
             raise HTTPException(status_code=401, detail=str(e))
 
         response = await call_next(request)

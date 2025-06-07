@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException, Request, Body
 from datetime import datetime, timedelta
-from database.database import get_database
+from database.database import get_users_table
 from pydantic import BaseModel
 import logging
 import traceback
@@ -25,7 +25,7 @@ async def get_daily_tasks(request: Request):
     if not user:
         raise HTTPException(status_code=401, detail="Not authorized")
     
-    db = await get_database()
+    users_table = await get_users_table()
     user_tasks = user.get("daily_tasks", {})
 
     # Get current time in Vietnam timezone
@@ -72,7 +72,7 @@ async def get_daily_tasks(request: Request):
     # Đếm số trận, số trận thắng, v.v.
     total_matches = matches_today
     win_matches = sum(
-        1 for m in user.get("match_history", []) if m.get("winner_id") == str(user["_id"])
+        1 for m in user.get("match_history", []) if m.get("winner_id") == str(user["id"])
     )
 
     # Xác định trạng thái từng nhiệm vụ và cập nhật vào daily_tasks
@@ -105,10 +105,7 @@ async def get_daily_tasks(request: Request):
     
     # Cập nhật daily_tasks nếu có thay đổi
     if updates:
-        await db.users.update_one(
-            {"_id": user["_id"]},
-            {"$set": updates}
-        )
+        await users_table.update(updates).eq('id', user["id"]).execute()
     
     return {"success": True, "data": tasks}
 
@@ -118,7 +115,7 @@ async def claim_daily_task(request: Request, task_request: TaskClaimRequest):
     if not user:
         raise HTTPException(status_code=401, detail="Not authorized")
     
-    db = await get_database()
+    users_table = await get_users_table()
     user_tasks = user.get("daily_tasks", {})
     
     if task_request.task_id not in [t["id"] for t in DAILY_TASKS]:
@@ -134,21 +131,20 @@ async def claim_daily_task(request: Request, task_request: TaskClaimRequest):
     reward = next(t["reward"] for t in DAILY_TASKS if t["id"] == task_request.task_id)
     
     # Cập nhật remaining_matches và đánh dấu task đã claim
-    await db.users.update_one(
-        {"_id": user["_id"]},
-        {
-            "$inc": {"remaining_matches": reward},  # Thêm matches vào remaining_matches
-            "$set": {f"daily_tasks.{task_request.task_id}.claimed": True}
-        }
-    )
+    await users_table.update({
+        "remaining_matches": user.get("remaining_matches", 0) + reward,
+        f"daily_tasks.{task_request.task_id}.claimed": True
+    }).eq('id', user["id"]).execute()
     
     # Broadcast user update
-    updated_user = await db.users.find_one({"_id": user["_id"]})
-    if waiting_room_manager:
+    response = await users_table.select('*').eq('id', user["id"]).execute()
+    updated_user = response.data[0] if response.data else None
+    
+    if waiting_room_manager and updated_user:
         await waiting_room_manager.broadcast({
             "type": "user_updated",
             "user": {
-                "id": str(updated_user["_id"]),
+                "id": updated_user["id"],
                 "name": updated_user.get("name", "Anonymous"),
                 "avatar": updated_user.get("avatar", ""),
                 "user_type": updated_user.get("user_type", "guest"),

@@ -6,11 +6,9 @@ from fastapi import WebSocket, WebSocketDisconnect, APIRouter, Depends
 from typing import Dict
 import json
 from datetime import datetime
-from database.database import get_database
-from bson import ObjectId
+from database.database import get_users_table, get_skills_table
 from utils.logger import api_logger
 import random
-from database.database import get_skills_collection
 from utils.time_utils import get_vietnam_time, to_vietnam_time, VIETNAM_TZ
 from fastapi.responses import JSONResponse
 from utils.level_utils import get_total_point_for_level, get_basic_level, get_legend_level, get_vip_level, update_user_levels
@@ -28,75 +26,6 @@ VIP_LEVELS = [
     ("DIAMOND", 500)
 ]
 
-def get_basic_level(total_win):
-    for i, milestone in enumerate(LEVEL_MILESTONES_BASIC):
-        if total_win < milestone:
-            return i
-    return len(LEVEL_MILESTONES_BASIC)
-
-def get_legend_level(total_win):
-    if total_win < LEVEL_MILESTONES_BASIC[99]:
-        return 0
-    legend = (total_win - LEVEL_MILESTONES_BASIC[99]) // LEGEND_STEP + 1
-    return min(legend, LEGEND_MAX)
-
-def get_vip_level(vip_amount):
-    level = "NONE"
-    for name, amount in VIP_LEVELS:
-        if vip_amount >= amount:
-            level = name
-    return level
-
-def get_total_point_for_level(user):
-    """Calculate total points for level up based on user type"""
-    if user.get("is_vip", False):
-        return user.get("total_point", 0)
-    else:
-        week_history_point = sum(w.get("point", 0) for w in user.get("week_history", []))
-        return week_history_point + user.get("total_point", 0)
-
-async def update_user_levels(user_id: str, db):
-    """Update user's level, legend level, and VIP level based on their stats"""
-    user = await db.users.find_one({"_id": ObjectId(user_id)})
-    if not user:
-        return None
-
-    # Tính tổng điểm thực sự để lên level
-    total_point_for_level = get_total_point_for_level(user)
-    current_level = user.get("level", 1)
-    new_level = get_basic_level(total_point_for_level)
-    
-    # Kiểm tra xem có đủ điểm lên level không
-    can_level_up = new_level > current_level
-    
-    is_pro = new_level >= 100
-    if is_pro:
-        new_level = 100
-        legend_level = get_legend_level(total_point_for_level)
-    else:
-        legend_level = 0
-    vip_amount = user.get("vip_amount", 0)
-    vip_level = get_vip_level(vip_amount)
-
-    await db.users.update_one(
-        {"_id": ObjectId(user_id)},
-        {"$set": {
-            "level": new_level,
-            "is_pro": is_pro,
-            "legend_level": legend_level,
-            "vip_level": vip_level
-        }}
-    )
-
-    return {
-        "level": new_level,
-        "is_pro": is_pro,
-        "legend_level": legend_level,
-        "vip_level": vip_level,
-        "total_point_for_level": total_point_for_level,
-        "can_level_up": can_level_up
-    }
-
 class ChallengeManager:
     def __init__(self):
         self.pending_challenges: Dict[str, Dict] = {}  # Store pending challenges
@@ -106,15 +35,19 @@ class ChallengeManager:
         print(f"[Challenge] Request from {from_id} to {to_id}. to_id in active_connections: {to_id in active_connections}")
         print(f"[Challenge] active_connections keys: {list(active_connections.keys())}")
         print(f"[Challenge] from_id: {from_id}, to_id: {to_id}, type(from_id): {type(from_id)}, type(to_id): {type(to_id)}")
-        db = await get_database()
-        from_user = await db.users.find_one({"_id": ObjectId(from_id)})
+        
+        users_table = await get_users_table()
+        response = await users_table.select("*").eq("id", from_id).execute()
+        from_user = response.data[0] if response.data else None
         
         # Check if this is a bot challenge
         if to_id == "bot":
             await self.handle_bot_challenge(websocket, from_id, active_connections)
             return
             
-        to_user = await db.users.find_one({"_id": ObjectId(to_id)})
+        response = await users_table.select("*").eq("id", to_id).execute()
+        to_user = response.data[0] if response.data else None
+        
         if from_user.get("remaining_matches", 0) <= 0 or to_user.get("remaining_matches", 0) <= 0:
             await websocket.send_json({
                 "type": "error",
@@ -172,9 +105,13 @@ class ChallengeManager:
         if challenge["to_id"] != from_id:
             return
 
-        db = await get_database()
-        from_user = await db.users.find_one({"_id": ObjectId(from_id)})
-        to_user = await db.users.find_one({"_id": ObjectId(to_id)})
+        users_table = await get_users_table()
+        response = await users_table.select("*").eq("id", from_id).execute()
+        from_user = response.data[0] if response.data else None
+        
+        response = await users_table.select("*").eq("id", to_id).execute()
+        to_user = response.data[0] if response.data else None
+        
         if from_user.get("remaining_matches", 0) <= 0 or to_user.get("remaining_matches", 0) <= 0:
             await websocket.send_json({
                 "type": "error",
@@ -190,8 +127,11 @@ class ChallengeManager:
             goalkeeper_id = to_id if roles[0] == "kicker" else from_id
 
             # Randomly select one skill from each player's corresponding skill list
-            kicker = await db.users.find_one({"_id": ObjectId(kicker_id)})
-            goalkeeper = await db.users.find_one({"_id": ObjectId(goalkeeper_id)})
+            response = await users_table.select("*").eq("id", kicker_id).execute()
+            kicker = response.data[0] if response.data else None
+            
+            response = await users_table.select("*").eq("id", goalkeeper_id).execute()
+            goalkeeper = response.data[0] if response.data else None
 
             kicker_skills = kicker.get("kicker_skills", [])
             goalkeeper_skills = goalkeeper.get("goalkeeper_skills", [])
@@ -203,8 +143,9 @@ class ChallengeManager:
             selected_goalkeeper_skill = random.choice(goalkeeper_skills)
 
             # Get kicker skill details from skills collection to check counter
-            skills_collection = await get_skills_collection()
-            kicker_skill_details = await skills_collection.find_one({"name": selected_kicker_skill})
+            skills_table = await get_skills_table()
+            response = await skills_table.select("*").eq("name", selected_kicker_skill).execute()
+            kicker_skill_details = response.data[0] if response.data else None
             
             # Determine winner based on skill counter
             winner_id = None
@@ -216,13 +157,16 @@ class ChallengeManager:
                 winner_id = kicker_id
 
             # Update match statistics and points
-            winner = await db.users.find_one({"_id": ObjectId(winner_id)})
+            response = await users_table.select("*").eq("id", winner_id).execute()
+            winner = response.data[0] if response.data else None
+            
             loser_id = goalkeeper_id if winner_id == kicker_id else kicker_id
-            loser = await db.users.find_one({"_id": ObjectId(loser_id)})
+            response = await users_table.select("*").eq("id", loser_id).execute()
+            loser = response.data[0] if response.data else None
 
             # Create match history record
             match_history = {
-                "match_id": str(ObjectId()),  # Generate new ObjectId for match
+                "match_id": str(datetime.now().timestamp()),  # Generate unique match ID
                 "timestamp": get_vietnam_time().isoformat(),  # Format as ISO string
                 "kicker_id": kicker_id,
                 "goalkeeper_id": goalkeeper_id,
@@ -235,309 +179,294 @@ class ChallengeManager:
             }
 
             # Update winner's stats and check for level up
-            update_fields = {
-                "$push": {"match_history": match_history}
+            update_data = {
+                "match_history": winner.get("match_history", []) + [match_history]
             }
+            
             if winner_id == kicker_id:
-                update_fields["$inc"] = {
-                    "kicked_win": 1, 
-                    "total_kicked": 1, 
-                    "total_point": 1, 
-                    "remaining_matches": -1,
-                    "available_skill_points": 1  # Add 1 skill point for winning
-                }
+                update_data.update({
+                    "kicked_win": winner.get("kicked_win", 0) + 1,
+                    "total_kicked": winner.get("total_kicked", 0) + 1,
+                    "total_point": winner.get("total_point", 0) + 1,
+                    "remaining_matches": winner.get("remaining_matches", 0) - 1,
+                    "available_skill_points": winner.get("available_skill_points", 0) + 1
+                })
             else:
-                update_fields["$inc"] = {
-                    "keep_win": 1, 
-                    "total_keep": 1, 
-                    "total_point": 1, 
-                    "remaining_matches": -1,
-                    "available_skill_points": 1  # Add 1 skill point for winning
-                }
-            await db.users.update_one({"_id": ObjectId(winner_id)}, update_fields)
+                update_data.update({
+                    "keep_win": winner.get("keep_win", 0) + 1,
+                    "total_keep": winner.get("total_keep", 0) + 1,
+                    "total_point": winner.get("total_point", 0) + 1,
+                    "remaining_matches": winner.get("remaining_matches", 0) - 1,
+                    "available_skill_points": winner.get("available_skill_points", 0) + 1
+                })
 
             # Update loser's stats
-            loser_update_fields = {"$push": {"match_history": match_history}}
-            if winner_id == kicker_id:
-                loser_update_fields["$inc"] = {"total_keep": 1, "remaining_matches": -1}
+            loser_update_data = {
+                "match_history": loser.get("match_history", []) + [match_history],
+                "remaining_matches": loser.get("remaining_matches", 0) - 1
+            }
+            
+            if loser_id == kicker_id:
+                loser_update_data["total_kicked"] = loser.get("total_kicked", 0) + 1
             else:
-                loser_update_fields["$inc"] = {"total_kicked": 1, "remaining_matches": -1}
-            await db.users.update_one({"_id": ObjectId(loser_id)}, loser_update_fields)
+                loser_update_data["total_keep"] = loser.get("total_keep", 0) + 1
 
-            # Update levels for winner
-            new_levels = await update_user_levels(winner_id, db)
-            if new_levels:
-                level_up = new_levels["level"] > winner.get("level", 1)
-                new_skills = []
-                if level_up and not new_levels["is_pro"]:
-                    # Add new skills based on role
-                    if winner_id == kicker_id:
-                        new_skills = [f"kicker_skill_level_{new_levels['level']}"]
-                    else:
-                        new_skills = [f"goalkeeper_skill_level_{new_levels['level']}"]
-                    await db.users.update_one(
-                        {"_id": ObjectId(winner_id)},
-                        {"$push": {
-                            "kicker_skills" if winner_id == kicker_id else "goalkeeper_skills": {
-                                "$each": new_skills
-                            }
-                        }}
-                    )
+            # Update users in database
+            await users_table.update(update_data).eq("id", winner_id).execute()
+            await users_table.update(loser_update_data).eq("id", loser_id).execute()
 
-            # Get updated user data
-            updated_winner = await db.users.find_one({"_id": ObjectId(winner_id)})
-            updated_loser = await db.users.find_one({"_id": ObjectId(loser_id)})
+            # Check for level up
+            winner_level_info = await update_user_levels(winner, update_data)
+            loser_level_info = await update_user_levels(loser, loser_update_data)
 
-            # Prepare match result message
-            result_message = {
-                "type": "challenge_result",
+            # Notify both users about the match result
+            match_result = {
+                "type": "match_result",
                 "kicker_id": kicker_id,
                 "goalkeeper_id": goalkeeper_id,
                 "kicker_skill": selected_kicker_skill,
                 "goalkeeper_skill": selected_goalkeeper_skill,
                 "winner_id": winner_id,
-                "match_stats": {
-                    "winner": {
-                        "id": str(updated_winner["_id"]),
-                        "name": updated_winner.get("name", "Anonymous"),
-                        "role": "kicker" if winner_id == kicker_id else "goalkeeper",
-                        "total_point": updated_winner.get("total_point", 0),
-                        "remaining_matches": updated_winner.get("remaining_matches", 0),
-                        "is_pro": updated_winner.get("is_pro", False),
-                        "legend_level": updated_winner.get("legend_level", 0),
-                        "level": updated_winner.get("level", 1),
-                        "level_up": level_up,
-                        "new_skills": new_skills if level_up and not new_levels["is_pro"] else [],
-                        "can_level_up": new_levels.get("can_level_up", False),
-                        "total_point_for_level": new_levels.get("total_point_for_level", 0),
-                        "available_skill_points": updated_winner.get("available_skill_points", 0)  # Add available skill points
-                    },
-                    "loser": {
-                        "id": str(updated_loser["_id"]),
-                        "name": updated_loser.get("name", "Anonymous"),
-                        "role": "goalkeeper" if winner_id == kicker_id else "kicker",
-                        "total_point": updated_loser.get("total_point", 0),
-                        "remaining_matches": updated_loser.get("remaining_matches", 0),
-                        "is_pro": updated_loser.get("is_pro", False),
-                        "legend_level": updated_loser.get("legend_level", 0),
-                        "level": updated_loser.get("level", 1),
-                        "available_skill_points": updated_loser.get("available_skill_points", 0)  # Add available skill points
-                    }
-                }
+                "winner_role": "kicker" if winner_id == kicker_id else "goalkeeper",
+                "loser_id": loser_id,
+                "loser_role": "goalkeeper" if winner_id == kicker_id else "kicker",
+                "timestamp": get_vietnam_time().isoformat(),
+                "timezone": "Asia/Ho_Chi_Minh"
             }
 
-            # Send result to both players
-            await self.send_message(active_connections, kicker_id, result_message)
-            await self.send_message(active_connections, goalkeeper_id, result_message)
+            # Add level up information if applicable
+            if winner_level_info and winner_level_info.get("can_level_up"):
+                match_result["winner_level_up"] = winner_level_info
+            if loser_level_info and loser_level_info.get("can_level_up"):
+                match_result["loser_level_up"] = loser_level_info
 
-            # Update user levels first
-            total_win = updated_winner.get("kicked_win", 0) + updated_winner.get("keep_win", 0)
-            new_level = get_basic_level(total_win)
-            is_pro = new_level >= 100
-            if is_pro:
-                new_level = 100
-                legend_level = get_legend_level(total_win)
-            else:
-                legend_level = 0
-            vip_amount = updated_winner.get("vip_amount", 0)
-            vip_level = get_vip_level(vip_amount)
+            # Send match result to both users
+            if winner_id in active_connections:
+                await active_connections[winner_id].send_json(match_result)
+            if loser_id in active_connections:
+                await active_connections[loser_id].send_json(match_result)
 
-            # Update all user data in database
-            await db.users.update_one(
-                {"_id": ObjectId(winner_id)},
-                {"$set": {
-                    "level": new_level,
-                    "is_pro": is_pro,
-                    "legend_level": legend_level,
-                    "vip_level": vip_level
-                }}
-            )
-
-            # Wait a bit longer to ensure database updates are complete
-            import time as _time
-            await asyncio.sleep(0.5)
-
-            # Now fetch fresh data for leaderboard
-            from ws_handlers.waiting_room import manager
-            leaderboard_users = await db.users.find().sort("total_point", -1).limit(5).to_list(length=5)
-            leaderboard_data = [
-                {
-                    "id": str(u["_id"]),
-                    "name": u.get("name", "Anonymous"),
-                    "avatar": u.get("avatar", ""),
-                    "level": u.get("level", 1),
-                    "total_kicked": u.get("total_kicked", 0),
-                    "kicked_win": u.get("kicked_win", 0),
-                    "total_keep": u.get("total_keep", 0),
-                    "keep_win": u.get("keep_win", 0),
-                    "total_point": u.get("total_point", 0),
-                    "bonus_point": u.get("bonus_point", 0.0),
-                    "is_pro": u.get("is_pro", False),
-                    "is_vip": u.get("is_vip", False),
-                    "extra_point": u.get("extra_point", 0),
-                }
-                for u in leaderboard_users
-            ]
-            await manager.broadcast({
-                "type": "leaderboard_update",
-                "leaderboard": leaderboard_data
-            })
-
-            await manager.broadcast_user_list()
-
-        else:
-            # Notify the challenger that the challenge was declined
-            decline_message = {
-                "type": "challenge_declined",
-                "from_id": from_id,
-                "to_id": to_id
-            }
-            await self.send_message(active_connections, to_id, decline_message)
-
-        # Clean up the challenge
-        del self.pending_challenges[challenge_key]
+        # Remove the challenge from pending challenges
+        if challenge_key in self.pending_challenges:
+            del self.pending_challenges[challenge_key]
 
     def cleanup_user_challenges(self, user_id: str):
-        """Remove any pending challenges involving a user"""
-        self.pending_challenges = {
-            k: v for k, v in self.pending_challenges.items()
-            if v['from_id'] != user_id and v['to_id'] != user_id
-        }
+        """Remove all pending challenges involving a user"""
+        challenges_to_remove = []
+        for challenge_id, challenge in self.pending_challenges.items():
+            if challenge["from_id"] == user_id or challenge["to_id"] == user_id:
+                challenges_to_remove.append(challenge_id)
+        
+        for challenge_id in challenges_to_remove:
+            del self.pending_challenges[challenge_id]
 
     async def send_message(self, active_connections: Dict[str, WebSocket], user_id: str, message: dict):
-        """Send a message to a user via their WebSocket connection"""
+        """Send a message to a specific user"""
         if user_id in active_connections:
-            try:
-                await active_connections[user_id].send_json(message)
-            except Exception as e:
-                api_logger.error(f"Error sending message to {user_id}: {str(e)}")
+            await active_connections[user_id].send_json(message)
 
     def calculate_reward(self, user):
-        total_point = user.get('total_point', 0)
-        if user.get('is_vip'):
-            return (total_point // 30) * 20
-        elif user.get('is_pro'):
-            return (total_point // 20) * 10
-        else:
-            return (total_point // 10) * 1
+        """Calculate reward based on user's stats"""
+        total_matches = user.get("total_kicked", 0) + user.get("total_keep", 0)
+        win_rate = (user.get("kicked_win", 0) + user.get("keep_win", 0)) / total_matches if total_matches > 0 else 0
+        return {
+            "total_matches": total_matches,
+            "win_rate": win_rate,
+            "reward_multiplier": min(1.5, 1 + win_rate)
+        }
 
     async def handle_bot_challenge(self, websocket: WebSocket, from_id: str, active_connections: Dict[str, WebSocket]):
-        """Handle a challenge against the bot"""
-        try:
-            db = await get_database()
-            from_user = await db.users.find_one({"_id": ObjectId(from_id)})
-            bot = await db.bots.find_one({"username": "bot"})
-            
-            if not bot:
-                await websocket.send_json({
-                    "type": "error",
-                    "message": "Bot is not available at the moment."
-                })
-                return
-
-            # Randomly assign roles
-            roles = ["kicker", "goalkeeper"]
-            random.shuffle(roles)
-            is_player_kicker = roles[0] == "kicker"
-            
-            # Get player's skills based on role
-            player_skills = from_user.get("kicker_skills" if is_player_kicker else "goalkeeper_skills", [])
-            bot_skills = bot.get("kicker_skills" if not is_player_kicker else "goalkeeper_skills", [])
-
-            if not player_skills or not bot_skills:
-                await websocket.send_json({
-                    "type": "error",
-                    "message": "Missing required skills for the match."
-                })
-                return
-
-            # Randomly select one skill from each
-            player_skill = random.choice(player_skills)
-            bot_skill = random.choice(bot_skills)
-
-            # Get skill details from skills collection to check counter
-            skills_collection = await get_skills_collection()
-            
-            # Determine winner based on skill counter
-            winner_id = None
-            if is_player_kicker:
-                # If player is kicker, check if bot's skill counters player's skill
-                player_skill_details = await skills_collection.find_one({"name": player_skill})
-                if player_skill_details and player_skill_details.get("counter") == bot_skill:
-                    winner_id = "bot"  # Bot wins if it has the counter skill
-                else:
-                    winner_id = from_id  # Player wins if bot doesn't have counter
-            else:
-                # If player is goalkeeper, check if player's skill counters bot's skill
-                bot_skill_details = await skills_collection.find_one({"name": bot_skill})
-                if bot_skill_details and bot_skill_details.get("counter") == player_skill:
-                    winner_id = from_id  # Player wins if they have the counter skill
-                else:
-                    winner_id = "bot"  # Bot wins if player doesn't have counter
-            
-            # Prepare match result message (without match history)
-            result_message = {
-                "type": "challenge_result",
-                "kicker_id": from_id if is_player_kicker else "bot",
-                "goalkeeper_id": "bot" if is_player_kicker else from_id,
-                "kicker_skill": player_skill if is_player_kicker else bot_skill,
-                "goalkeeper_skill": bot_skill if is_player_kicker else player_skill,
-                "winner_id": winner_id,
-                "match_stats": {
-                    "winner": {
-                        "id": str(winner_id),
-                        "name": from_user.get("name", "Anonymous") if winner_id == from_id else "Bot",
-                        "role": "kicker" if (winner_id == from_id and is_player_kicker) or (winner_id == "bot" and not is_player_kicker) else "goalkeeper",
-                    },
-                    "loser": {
-                        "id": "bot" if winner_id == from_id else str(from_id),
-                        "name": "Bot" if winner_id == from_id else from_user.get("name", "Anonymous"),
-                        "role": "goalkeeper" if (winner_id == from_id and is_player_kicker) or (winner_id == "bot" and not is_player_kicker) else "kicker",
-                    }
-                }
-            }
-
-            # Send result to player
-            await self.send_message(active_connections, from_id, result_message)
-            
-        except Exception as e:
-            api_logger.error(f"Error in bot challenge: {str(e)}")
+        """Handle challenge against bot"""
+        users_table = await get_users_table()
+        response = await users_table.select("*").eq("id", from_id).execute()
+        from_user = response.data[0] if response.data else None
+        
+        if from_user.get("remaining_matches", 0) <= 0:
             await websocket.send_json({
                 "type": "error",
-                "message": "An error occurred during the bot match."
+                "message": "You have no remaining matches."
             })
+            return
 
-# Create a singleton instance
-challenge_manager = ChallengeManager()
+        # Get bot's skills
+        skills_table = await get_skills_table()
+        response = await skills_table.select("*").eq("type", "goalkeeper").execute()
+        bot_skills = [skill["name"] for skill in response.data]
 
-# --- API cho user bấm nút Level Up ---
+        if not bot_skills:
+            await websocket.send_json({
+                "type": "error",
+                "message": "Bot has no skills available."
+            })
+            return
+
+        # Randomly select roles
+        roles = ["kicker", "goalkeeper"]
+        random.shuffle(roles)
+        is_player_kicker = roles[0] == "kicker"
+
+        # Get player's skills based on role
+        player_skills = from_user.get("kicker_skills" if is_player_kicker else "goalkeeper_skills", [])
+        if not player_skills:
+            await websocket.send_json({
+                "type": "error",
+                "message": "You have no skills available for this role."
+            })
+            return
+
+        # Select random skills
+        selected_player_skill = random.choice(player_skills)
+        selected_bot_skill = random.choice(bot_skills)
+
+        # Determine winner
+        if is_player_kicker:
+            # Check if bot's skill counters player's skill
+            response = await skills_table.select("*").eq("name", selected_player_skill).execute()
+            player_skill_details = response.data[0] if response.data else None
+            
+            if player_skill_details and player_skill_details.get("counter") == selected_bot_skill:
+                winner_id = "bot"
+            else:
+                winner_id = from_id
+        else:
+            # Check if player's skill counters bot's skill
+            response = await skills_table.select("*").eq("name", selected_bot_skill).execute()
+            bot_skill_details = response.data[0] if response.data else None
+            
+            if bot_skill_details and bot_skill_details.get("counter") == selected_player_skill:
+                winner_id = from_id
+            else:
+                winner_id = "bot"
+
+        # Create match history record
+        match_history = {
+            "match_id": str(datetime.now().timestamp()),
+            "timestamp": get_vietnam_time().isoformat(),
+            "kicker_id": from_id if is_player_kicker else "bot",
+            "goalkeeper_id": "bot" if is_player_kicker else from_id,
+            "kicker_skill": selected_player_skill if is_player_kicker else selected_bot_skill,
+            "goalkeeper_skill": selected_bot_skill if is_player_kicker else selected_player_skill,
+            "winner_id": winner_id,
+            "winner_role": "kicker" if (winner_id == from_id and is_player_kicker) or (winner_id == "bot" and not is_player_kicker) else "goalkeeper",
+            "loser_id": "bot" if winner_id == from_id else from_id,
+            "loser_role": "goalkeeper" if (winner_id == from_id and is_player_kicker) or (winner_id == "bot" and not is_player_kicker) else "kicker"
+        }
+
+        # Update player's stats if they won
+        if winner_id == from_id:
+            update_data = {
+                "match_history": from_user.get("match_history", []) + [match_history]
+            }
+            
+            if is_player_kicker:
+                update_data.update({
+                    "kicked_win": from_user.get("kicked_win", 0) + 1,
+                    "total_kicked": from_user.get("total_kicked", 0) + 1,
+                    "total_point": from_user.get("total_point", 0) + 1,
+                    "remaining_matches": from_user.get("remaining_matches", 0) - 1,
+                    "available_skill_points": from_user.get("available_skill_points", 0) + 1
+                })
+            else:
+                update_data.update({
+                    "keep_win": from_user.get("keep_win", 0) + 1,
+                    "total_keep": from_user.get("total_keep", 0) + 1,
+                    "total_point": from_user.get("total_point", 0) + 1,
+                    "remaining_matches": from_user.get("remaining_matches", 0) - 1,
+                    "available_skill_points": from_user.get("available_skill_points", 0) + 1
+                })
+
+            # Update user in database
+            await users_table.update(update_data).eq("id", from_id).execute()
+
+            # Check for level up
+            level_info = await update_user_levels(from_user, update_data)
+
+            # Send match result with level up info if applicable
+            match_result = {
+                "type": "match_result",
+                "kicker_id": from_id if is_player_kicker else "bot",
+                "goalkeeper_id": "bot" if is_player_kicker else from_id,
+                "kicker_skill": selected_player_skill if is_player_kicker else selected_bot_skill,
+                "goalkeeper_skill": selected_bot_skill if is_player_kicker else selected_player_skill,
+                "winner_id": from_id,
+                "winner_role": "kicker" if is_player_kicker else "goalkeeper",
+                "loser_id": "bot",
+                "loser_role": "goalkeeper" if is_player_kicker else "kicker",
+                "timestamp": get_vietnam_time().isoformat(),
+                "timezone": "Asia/Ho_Chi_Minh"
+            }
+
+            if level_info and level_info.get("can_level_up"):
+                match_result["winner_level_up"] = level_info
+
+            await websocket.send_json(match_result)
+        else:
+            # Update player's stats for loss
+            update_data = {
+                "match_history": from_user.get("match_history", []) + [match_history],
+                "remaining_matches": from_user.get("remaining_matches", 0) - 1
+            }
+            
+            if is_player_kicker:
+                update_data["total_kicked"] = from_user.get("total_kicked", 0) + 1
+            else:
+                update_data["total_keep"] = from_user.get("total_keep", 0) + 1
+
+            # Update user in database
+            await users_table.update(update_data).eq("id", from_id).execute()
+
+            # Check for level up
+            level_info = await update_user_levels(from_user, update_data)
+
+            # Send match result
+            match_result = {
+                "type": "match_result",
+                "kicker_id": from_id if is_player_kicker else "bot",
+                "goalkeeper_id": "bot" if is_player_kicker else from_id,
+                "kicker_skill": selected_player_skill if is_player_kicker else selected_bot_skill,
+                "goalkeeper_skill": selected_bot_skill if is_player_kicker else selected_player_skill,
+                "winner_id": "bot",
+                "winner_role": "kicker" if not is_player_kicker else "goalkeeper",
+                "loser_id": from_id,
+                "loser_role": "goalkeeper" if is_player_kicker else "kicker",
+                "timestamp": get_vietnam_time().isoformat(),
+                "timezone": "Asia/Ho_Chi_Minh"
+            }
+
+            if level_info and level_info.get("can_level_up"):
+                match_result["loser_level_up"] = level_info
+
+            await websocket.send_json(match_result)
+
+# Create router for level up endpoint
 router = APIRouter()
 
 @router.post("/user/level-up")
 async def level_up(user_id: str):
-    db = await get_database()
-    user = await db.users.find_one({"_id": ObjectId(user_id)})
+    """Force level up for a user"""
+    users_table = await get_users_table()
+    response = await users_table.select("*").eq("id", user_id).execute()
+    user = response.data[0] if response.data else None
+    
     if not user:
-        return JSONResponse(status_code=404, content={"error": "User not found"})
-    # Tính tổng điểm lên level realtime
-    total_point_for_level = get_total_point_for_level(user)
-    from ws_handlers.challenge_handler import get_basic_level, get_legend_level, get_vip_level
-    new_level = get_basic_level(total_point_for_level)
-    is_pro = new_level >= 100
-    if is_pro:
-        new_level = 100
-        legend_level = get_legend_level(total_point_for_level)
-    else:
-        legend_level = 0
-    vip_amount = user.get("vip_amount", 0)
-    vip_level = get_vip_level(vip_amount)
-    await db.users.update_one(
-        {"_id": ObjectId(user_id)},
-        {"$set": {
-            "level": new_level,
-            "is_pro": is_pro,
-            "legend_level": legend_level,
-            "vip_level": vip_level
-        }}
+        return JSONResponse(
+            status_code=404,
+            content={"message": "User not found"},
+        )
+
+    # Update user's level
+    level_info = await update_user_levels(user)
+    
+    if not level_info:
+        return JSONResponse(
+            status_code=400,
+            content={"message": "Failed to update user level"},
+        )
+
+    return JSONResponse(
+        status_code=200,
+        content=level_info,
     )
-    return {"level": new_level, "is_pro": is_pro, "legend_level": legend_level, "vip_level": vip_level, "total_point_for_level": total_point_for_level} 
+
+# Create a singleton instance
+challenge_manager = ChallengeManager() 
