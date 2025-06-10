@@ -167,8 +167,11 @@ export const API_ENDPOINTS = {
 
   goalkeeper_bot: {
     me: `${API_BASE_URL}/api/goalkeeper/me`,
-    getNFTs: (walletAddress: string) =>
-      `${API_BASE_URL}/api/nfts/${walletAddress}`,
+    feed:    `${API_BASE_URL}/api/goalkeeper/feed`,
+    point:   `${API_BASE_URL}/api/goalkeeper/point`,
+    reset:   `${API_BASE_URL}/api/goalkeeper/reset`,
+    update:  `${API_BASE_URL}/api/goalkeeper/update`,
+    catch:   `${API_BASE_URL}/api/goalkeeper/catch`,
   },
 
   vip: {
