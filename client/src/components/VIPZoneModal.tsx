@@ -29,13 +29,11 @@ const VIPZoneModal = () => {
   return (
     <Dialog>
       <DialogTrigger asChild>
-        <Button
-          variant="ghost"
-          className="flex items-center space-x-2 hover:bg-purple-50 hover:text-purple-600"
-        >
-          <GiCrownCoin className="w-5 h-5 text-yellow-500" />
-          <span>VIP Zone</span>
-        </Button>
+        <button className="group flex items-center space-x-2 px-3 py-2 rounded-lg text-pink-100 hover:text-white hover:bg-pink-500/20 transition-all duration-300 relative backdrop-blur-sm">
+          <GiCrownCoin className="w-4 h-4 transition-transform group-hover:scale-110 text-yellow-500" />
+          <span className="font-medium">VIP Zone</span>
+          <div className="absolute bottom-0 left-0 w-0 h-0.5 bg-gradient-to-r from-pink-400 to-rose-500 group-hover:w-full transition-all duration-300"></div>
+        </button>
       </DialogTrigger>
       <DialogContent className="sm:max-w-[425px]">
         <DialogHeader>
