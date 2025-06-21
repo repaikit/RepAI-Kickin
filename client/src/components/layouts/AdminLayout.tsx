@@ -1,19 +1,20 @@
-import { useAuth } from '@/contexts/AuthContext';
-import { useRouter } from 'next/router';
-import { useEffect } from 'react';
-import Header from '@/components/admin/Header';
+import { useAuth } from "@/contexts/AuthContext";
+import { useRouter } from "next/router";
+import { useEffect } from "react";
+import Header from "@/components/admin/Header";
 
 interface AdminLayoutProps {
   children: React.ReactNode;
 }
 
 export default function AdminLayout({ children }: AdminLayoutProps) {
-  const { isAdmin, isLoading } = useAuth();
+  const { user, isLoading } = useAuth();
   const router = useRouter();
+  const isAdmin = user?.role === "admin";
 
   useEffect(() => {
     if (!isLoading && !isAdmin) {
-      router.replace('/');
+      router.replace("/");
     }
   }, [isAdmin, isLoading, router]);
 
@@ -39,4 +40,4 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
       </div>
     </div>
   );
-} 
+}

@@ -1,15 +1,15 @@
-import { createContext, useContext, useEffect, useState } from 'react';
-import { API_ENDPOINTS, defaultFetchOptions } from '@/config/api';
-import { useRouter } from 'next/router';
+import { createContext, useContext, useEffect, useState } from "react";
+import { API_ENDPOINTS, defaultFetchOptions } from "@/config/api";
+import { useRouter } from "next/router";
 
 interface User {
-    _id: string;
+  _id: string;
   user_type: string;
   email?: string;
   wallet: string;
   name: string;
   avatar?: string;
-  auth_provider: 'email' | 'google' | 'guest';
+  auth_provider: "email" | "google" | "guest";
   session_id?: string;
   kicker_skills?: string[];
   goalkeeper_skills?: string[];
@@ -85,84 +85,80 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const router = useRouter();
-  const publicRoutes = ['/login', '/register', '/verify-email'];
+  const publicRoutes = ["/login", "/register", "/verify-email"];
   const isAuthenticated = !!user;
   const isLoading = loading;
 
   const checkAuth = async () => {
     try {
-      const token = localStorage.getItem('access_token');
+      const token = localStorage.getItem("access_token");
       const currentPath = router.pathname;
-      
+
       if (!token) {
         setUser(null);
         setLoading(false);
         if (!publicRoutes.includes(currentPath)) {
-          router.replace('/login');
+          router.replace("/login");
         }
         return;
       }
-  
+
       const response = await fetch(API_ENDPOINTS.users.me, {
-        method: 'GET',
+        method: "GET",
         headers: {
           ...defaultFetchOptions.headers,
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        }
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
       });
-  
+
       if (!response.ok) {
         if (response.status === 401) {
-          localStorage.removeItem('access_token');
+          localStorage.removeItem("access_token");
           setUser(null);
           if (!publicRoutes.includes(currentPath)) {
-            router.replace('/login');
+            router.replace("/login");
           }
         }
-        throw new Error('Failed to fetch user data');
+        throw new Error("Failed to fetch user data");
       }
-  
+
       const userData = await response.json();
       setUser(userData);
 
       // Kiểm tra role và điều hướng
-      if (userData.role === 'admin') {
-        // Nếu là admin và đang ở trang gốc "/" hoặc trang login/register
-        if (currentPath === '/' || publicRoutes.includes(currentPath)) {
-          router.replace('/admin');
-          return;
-        }
+      if (userData.role === "admin") {
         // Admin có thể truy cập tất cả các trang
+        if (publicRoutes.includes(currentPath)) {
+          router.replace("/");
+        }
         return;
       } else {
         // Nếu không phải admin và đang cố truy cập trang admin
-        if (currentPath.startsWith('/admin')) {
-          router.replace('/');
+        if (currentPath.startsWith("/admin")) {
+          router.replace("/");
           return;
         }
         // Nếu đang ở public route nhưng đã login thì đưa về trang chủ
         if (publicRoutes.includes(currentPath)) {
-          router.replace('/');
+          router.replace("/");
         }
       }
-  
     } catch (error) {
-      console.error('Auth check error:', error);
+      console.error("Auth check error:", error);
       setUser(null);
       if (!publicRoutes.includes(router.pathname)) {
-        router.replace('/login');
+        router.replace("/login");
       }
     } finally {
       setLoading(false);
     }
   };
-  
 
   const logout = () => {
-    localStorage.removeItem('access_token');
+    localStorage.removeItem("access_token");
     setUser(null);
-    router.push('/login');
+    router.push("/login");
   };
 
   useEffect(() => {
@@ -170,10 +166,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, loading, isAuthenticated, isLoading, checkAuth, logout }}>
+    <AuthContext.Provider
+      value={{ user, loading, isAuthenticated, isLoading, checkAuth, logout }}
+    >
       {children}
     </AuthContext.Provider>
   );
 }
 
-export const useAuth = () => useContext(AuthContext); 
+export const useAuth = () => useContext(AuthContext);

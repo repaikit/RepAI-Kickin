@@ -243,25 +243,35 @@ class ChallengeManager:
                     "kicked_win": 1, 
                     "total_kicked": 1, 
                     "total_point": 1, 
-                    "remaining_matches": -1,
                     "available_skill_points": 1  # Add 1 skill point for winning
                 }
+                # Only decrease remaining_matches if not VIP
+                if not winner.get("is_vip", False):
+                    update_fields["$inc"]["remaining_matches"] = -1
             else:
                 update_fields["$inc"] = {
                     "keep_win": 1, 
                     "total_keep": 1, 
                     "total_point": 1, 
-                    "remaining_matches": -1,
                     "available_skill_points": 1  # Add 1 skill point for winning
                 }
+                # Only decrease remaining_matches if not VIP
+                if not winner.get("is_vip", False):
+                    update_fields["$inc"]["remaining_matches"] = -1
             await db.users.update_one({"_id": ObjectId(winner_id)}, update_fields)
 
             # Update loser's stats
             loser_update_fields = {"$push": {"match_history": match_history}}
             if winner_id == kicker_id:
-                loser_update_fields["$inc"] = {"total_keep": 1, "remaining_matches": -1}
+                loser_update_fields["$inc"] = {"total_keep": 1}
+                # Only decrease remaining_matches if not VIP
+                if not loser.get("is_vip", False):
+                    loser_update_fields["$inc"]["remaining_matches"] = -1
             else:
-                loser_update_fields["$inc"] = {"total_kicked": 1, "remaining_matches": -1}
+                loser_update_fields["$inc"] = {"total_kicked": 1}
+                # Only decrease remaining_matches if not VIP
+                if not loser.get("is_vip", False):
+                    loser_update_fields["$inc"]["remaining_matches"] = -1
             await db.users.update_one({"_id": ObjectId(loser_id)}, loser_update_fields)
 
             # Update levels for winner

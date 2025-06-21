@@ -40,11 +40,8 @@ class InMemoryCacheMiddleware(BaseHTTPMiddleware):
             try:
                 # Handle StreamingResponse
                 if isinstance(response, StreamingResponse):
-                    body = b""
-                    async for chunk in response.body_iterator:
-                        body += chunk
-                    content = body.decode()
-                    media_type = response.media_type
+                    # Skip caching for streaming responses
+                    return response
                 else:
                     content = response.body.decode()
                     media_type = response.media_type

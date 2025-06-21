@@ -41,10 +41,14 @@ export const API_ENDPOINTS = {
       get: (userId: string) => `${API_BASE_URL}/api/admin/users/${userId}`,
       update: (userId: string) => `${API_BASE_URL}/api/admin/users/${userId}`,
       delete: (userId: string) => `${API_BASE_URL}/api/admin/users/${userId}`,
-      activate: (userId: string) => `${API_BASE_URL}/api/admin/users/${userId}/activate`,
-      deactivate: (userId: string) => `${API_BASE_URL}/api/admin/users/${userId}/deactivate`,
-      makeAdmin: (userId: string) => `${API_BASE_URL}/api/admin/users/${userId}/make-admin`,
-      removeAdmin: (userId: string) => `${API_BASE_URL}/api/admin/users/${userId}/remove-admin`,
+      activate: (userId: string) =>
+        `${API_BASE_URL}/api/admin/users/${userId}/activate`,
+      deactivate: (userId: string) =>
+        `${API_BASE_URL}/api/admin/users/${userId}/deactivate`,
+      makeAdmin: (userId: string) =>
+        `${API_BASE_URL}/api/admin/users/${userId}/make-admin`,
+      removeAdmin: (userId: string) =>
+        `${API_BASE_URL}/api/admin/users/${userId}/remove-admin`,
     },
     codes: {
       list: `${API_BASE_URL}/api/admin/codes`,
@@ -57,13 +61,17 @@ export const API_ENDPOINTS = {
       create: `${API_BASE_URL}/api/admin/nfts`,
       update: (nftId: string) => `${API_BASE_URL}/api/admin/nfts/${nftId}`,
       delete: (nftId: string) => `${API_BASE_URL}/api/admin/nfts/${nftId}`,
-      activate: (nftId: string) => `${API_BASE_URL}/api/admin/nfts/${nftId}/activate`,
-      deactivate: (nftId: string) => `${API_BASE_URL}/api/admin/nfts/${nftId}/deactivate`,
+      activate: (nftId: string) =>
+        `${API_BASE_URL}/api/admin/nfts/${nftId}/activate`,
+      deactivate: (nftId: string) =>
+        `${API_BASE_URL}/api/admin/nfts/${nftId}/deactivate`,
       collections: {
         list: `${API_BASE_URL}/api/admin/nfts/collections`,
         create: `${API_BASE_URL}/api/admin/nfts/collection`,
-        update: (collectionId: string) => `${API_BASE_URL}/api/admin/nfts/collection/${collectionId}`,
-        delete: (collectionId: string) => `${API_BASE_URL}/api/admin/nfts/collection/${collectionId}`,
+        update: (collectionId: string) =>
+          `${API_BASE_URL}/api/admin/nfts/collection/${collectionId}`,
+        delete: (collectionId: string) =>
+          `${API_BASE_URL}/api/admin/nfts/collection/${collectionId}`,
       },
     },
     dashboardStats: `${API_BASE_URL}/api/admin/dashboard-stats`,
@@ -153,7 +161,8 @@ export const API_ENDPOINTS = {
   },
 
   nft: {
-    getNFTs: (walletAddress: string) => `${API_BASE_URL}/api/nfts?address=${walletAddress}`,
+    getNFTs: (walletAddress: string) =>
+      `${API_BASE_URL}/api/nfts?address=${walletAddress}`,
   },
 
   upgradeToPro: `${API_BASE_URL}/api/upgrade-to-pro`,
@@ -167,11 +176,11 @@ export const API_ENDPOINTS = {
 
   goalkeeper_bot: {
     me: `${API_BASE_URL}/api/goalkeeper/me`,
-    feed:    `${API_BASE_URL}/api/goalkeeper/feed`,
-    point:   `${API_BASE_URL}/api/goalkeeper/point`,
-    reset:   `${API_BASE_URL}/api/goalkeeper/reset`,
-    update:  `${API_BASE_URL}/api/goalkeeper/update`,
-    catch:   `${API_BASE_URL}/api/goalkeeper/catch`,
+    feed: `${API_BASE_URL}/api/goalkeeper/feed`,
+    point: `${API_BASE_URL}/api/goalkeeper/point`,
+    reset: `${API_BASE_URL}/api/goalkeeper/reset`,
+    update: `${API_BASE_URL}/api/goalkeeper/update`,
+    catch: `${API_BASE_URL}/api/goalkeeper/catch`,
   },
 
   vip: {
