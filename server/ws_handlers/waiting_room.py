@@ -482,7 +482,12 @@ class WaitingRoomManager:
         
         elif message_type == "get_user_list":
             users = self.get_online_users()
-            await websocket.send_json({"type": "user_list", "users": users})
+            # Nếu user là VIP và có yêu cầu random minh bạch, trả về random_info (dummy, vì random thực hiện ở challenge_handler)
+            user_info = self.online_users.get(user_id, {})
+            random_info = None
+            if user_info.get("is_vip", False):
+                random_info = {"note": "Random đối thủ/skill sẽ được minh bạch bằng Chainlink VRF khi vào trận"}
+            await websocket.send_json({"type": "user_list", "users": users, "random_info": random_info})
         
         elif message_type == "ping":
             await websocket.send_json({"type": "pong"})

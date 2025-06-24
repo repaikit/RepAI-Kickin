@@ -123,6 +123,8 @@ export const API_ENDPOINTS = {
 
     upgradeToPro: `${API_BASE_URL}/api/upgrade-to-pro`,
     incrementNftMinted: `${API_BASE_URL}/api/users/increment-nft-minted`,
+
+    matchHistory: `${API_BASE_URL}/api/me/match-history`,
   },
 
   // Skills APIs

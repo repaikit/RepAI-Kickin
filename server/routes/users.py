@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Request, Depends, Body
+from fastapi import APIRouter, HTTPException, Request, Depends, Body, Query
 from typing import Optional, List
 from models.user import User, UserCreate, UserUpdate, TokenResponse, GoogleAuthRequest
 from database.database import get_users_collection, get_skills_collection, get_database
@@ -912,3 +912,26 @@ async def upgrade_to_pro(request: Request):
     )
 
     return {"success": True, "message": "Successfully upgraded to PRO!"}
+
+@router.get("/me/match-history")
+async def get_my_match_history(request: Request, limit: int = Query(20, ge=1, le=100), skip: int = Query(0, ge=0)):
+    """
+    Lấy lịch sử trận đấu của user hiện tại (có phân trang)
+    """
+    user = getattr(request.state, "user", None)
+    if not user:
+        raise HTTPException(status_code=401, detail="Not authorized")
+    match_history = user.get("match_history", [])
+    total = len(match_history)
+    # Sắp xếp mới nhất trước
+    match_history = sorted(match_history, key=lambda x: x.get("timestamp", ""), reverse=True)
+    paged = match_history[skip:skip+limit]
+    return {
+        "success": True,
+        "data": {
+            "history": paged,
+            "total": total,
+            "limit": limit,
+            "skip": skip
+        }
+    }

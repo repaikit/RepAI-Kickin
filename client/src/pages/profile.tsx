@@ -30,6 +30,14 @@ import {
   EyeOff,
   Lock,
   RefreshCw,
+  Loader2,
+  Shuffle,
+  KeyRound,
+  CheckCircle2,
+  XCircle,
+  User2,
+  BadgeDollarSign,
+  Info,
 } from "lucide-react";
 import {
   Dialog,
@@ -56,18 +64,20 @@ import Overview from "@/components/profile/Overview";
 import Statistics from "@/components/profile/Statistics";
 import Upgrades from "@/components/profile/Upgrades";
 import Settings from "@/components/profile/Settings";
-import WeeklyLoginStats from '@/components/WeeklyLoginStats';
+import WeeklyLoginStats from "@/components/WeeklyLoginStats";
 import XConnection from "@/components/TwitterConnection";
 
 import axios from "axios";
 
-import GoalkeeperBot, { BotGoalkeeper } from "@/components/profile/GoalkeeperBot";
+import GoalkeeperBot, {
+  BotGoalkeeper,
+} from "@/components/profile/GoalkeeperBot";
 
 // Add Reward interface for type safety
 interface Reward {
-  type: 'skill' | 'remaining_matches';
+  type: "skill" | "remaining_matches";
   value: string | number;
-  skill_type?: 'kicker' | 'goalkeeper';
+  skill_type?: "kicker" | "goalkeeper";
   skill_name?: string;
   skill_value?: number;
 }
@@ -129,34 +139,43 @@ export default function Profile() {
   const [botLoading, setBotLoading] = useState(true);
   const [botError, setBotError] = useState<string | null>(null);
 
-useEffect(() => {
-  const fetchBot = async () => {
-    const token = localStorage.getItem("access_token");
-    if (!token) {
-      setBotError("Bạn chưa đăng nhập.");
-      setBotLoading(false);
-      return;
-    }
-    try {
-      const res = await axios.get<BotGoalkeeper>(API_ENDPOINTS.goalkeeper_bot.me, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      setBot(res.data);
-    } catch (err: any) {
-    const message =
-      err.response?.data?.detail ||
-      err.response?.data?.message ||
-      err.message ||
-      "Lỗi không xác định từ server.";
-    setBotError(message);
-      setBotError(err);
-    } finally {
-      setBotLoading(false);
-    }
-  };
-  fetchBot();
-}, []);
-// tải bot khi component mount
+  const [matchHistory, setMatchHistory] = useState<any[]>([]);
+  const [isLoadingHistory, setIsLoadingHistory] = useState(false);
+  const [historyPage, setHistoryPage] = useState(1);
+  const [historyTotal, setHistoryTotal] = useState(0);
+  const HISTORY_PAGE_SIZE = 20;
+
+  useEffect(() => {
+    const fetchBot = async () => {
+      const token = localStorage.getItem("access_token");
+      if (!token) {
+        setBotError("Bạn chưa đăng nhập.");
+        setBotLoading(false);
+        return;
+      }
+      try {
+        const res = await axios.get<BotGoalkeeper>(
+          API_ENDPOINTS.goalkeeper_bot.me,
+          {
+            headers: { Authorization: `Bearer ${token}` },
+          }
+        );
+        setBot(res.data);
+      } catch (err: any) {
+        const message =
+          err.response?.data?.detail ||
+          err.response?.data?.message ||
+          err.message ||
+          "Lỗi không xác định từ server.";
+        setBotError(message);
+        setBotError(err);
+      } finally {
+        setBotLoading(false);
+      }
+    };
+    fetchBot();
+  }, []);
+  // tải bot khi component mount
   const [isLoadingRedeem, setLoadingRedeem] = useState(false);
   const router = useRouter();
 
@@ -213,8 +232,9 @@ useEffect(() => {
       let name = formData.name;
       let wallet = formData.wallet;
       if (overrideData) {
-        if (typeof overrideData.name === 'string') name = overrideData.name;
-        if (typeof overrideData.wallet === 'string') wallet = overrideData.wallet;
+        if (typeof overrideData.name === "string") name = overrideData.name;
+        if (typeof overrideData.wallet === "string")
+          wallet = overrideData.wallet;
       }
       const dataToSend = { name, wallet };
 
@@ -493,9 +513,36 @@ useEffect(() => {
     if (user?.evm_address) {
       fetchNFTs(user.evm_address);
     } else {
-      
     }
   }, [user?.evm_address]);
+
+  useEffect(() => {
+    if (!user) return;
+    const fetchHistory = async () => {
+      setIsLoadingHistory(true);
+      try {
+        const token = localStorage.getItem("access_token");
+        const res = await fetch(
+          `${
+            API_ENDPOINTS.users.matchHistory
+          }?limit=${HISTORY_PAGE_SIZE}&skip=${
+            (historyPage - 1) * HISTORY_PAGE_SIZE
+          }`,
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+        const data = await res.json();
+        if (data.success) {
+          setMatchHistory(data.data.history);
+          setHistoryTotal(data.data.total);
+        }
+      } catch (e) {
+        toast.error("Không thể tải lịch sử trận đấu");
+      } finally {
+        setIsLoadingHistory(false);
+      }
+    };
+    fetchHistory();
+  }, [user, historyPage]);
 
   return (
     <>
@@ -511,7 +558,11 @@ useEffect(() => {
             </div>
             <div className="mt-4 flex justify-center space-x-2">
               {[...Array(5)].map((_, i) => (
-                <Sparkles key={i} className="w-6 h-6 text-pink-400 animate-spin" style={{ animationDelay: `${i * 0.2}s` }} />
+                <Sparkles
+                  key={i}
+                  className="w-6 h-6 text-pink-400 animate-spin"
+                  style={{ animationDelay: `${i * 0.2}s` }}
+                />
               ))}
             </div>
           </div>
@@ -526,7 +577,7 @@ useEffect(() => {
               Mystery Box Opened!
             </div>
             <div className="text-lg text-white mt-2">
-              {lastBoxReward.type === 'skill'
+              {lastBoxReward.type === "skill"
                 ? `+ New ${lastBoxReward.skill_type} skill: ${lastBoxReward.skill_name} (${lastBoxReward.skill_value} pts)`
                 : `+${lastBoxReward.value} Matches!`}
             </div>
@@ -542,7 +593,9 @@ useEffect(() => {
       ) : !isAuthenticated || !user ? (
         <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-slate-900 via-pink-900 to-black">
           <div className="text-6xl mb-4">🔒</div>
-          <p className="text-xl text-pink-100">Please log in to view your profile.</p>
+          <p className="text-xl text-pink-100">
+            Please log in to view your profile.
+          </p>
         </div>
       ) : (
         <div className="min-h-screen flex flex-col bg-gradient-to-br from-slate-900 via-pink-900 to-black">
@@ -577,9 +630,11 @@ useEffect(() => {
                         <Pencil className="h-6 w-6 text-white" />
                       </div>
                     </div>
-                    
+
                     <div className="absolute -bottom-2 -right-2 bg-pink-400 rounded-full p-1">
-                      <span className="text-xs font-bold text-black px-1">{currentLevel}</span>
+                      <span className="text-xs font-bold text-black px-1">
+                        {currentLevel}
+                      </span>
                     </div>
                   </div>
 
@@ -654,43 +709,66 @@ useEffect(() => {
                   <WeeklyLoginStats />
                 </div>
               </div>
-              
+
               {/* Mobile Weekly Stats (Shown only on mobile) */}
               <div className="lg:hidden mb-6">
                 <WeeklyLoginStats />
               </div>
-              
+
               {/* Main Content Area */}
               <div className="lg:col-span-3 lg:col-start-2">
                 {/* X Connection Card */}
                 <div className="mb-6">
-                  <XConnection userId={user?._id || ''} />
+                  <XConnection userId={user?._id || ""} />
                 </div>
 
                 {/* Tabs Navigation */}
-                <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-                  <TabsList className="grid w-full grid-cols-4 mb-6 bg-black/20 backdrop-blur-sm border-pink-500/20">
-                    <TabsTrigger value="overview" className="flex items-center space-x-2 data-[state=active]:bg-gradient-to-r data-[state=active]:from-pink-500 data-[state=active]:to-rose-500 data-[state=active]:text-white text-pink-100">
+                <Tabs
+                  value={activeTab}
+                  onValueChange={setActiveTab}
+                  className="w-full"
+                >
+                  <TabsList className="grid w-full grid-cols-5 mb-6 bg-black/20 backdrop-blur-sm border-pink-500/20">
+                    <TabsTrigger
+                      value="overview"
+                      className="flex items-center space-x-2 data-[state=active]:bg-gradient-to-r data-[state=active]:from-pink-500 data-[state=active]:to-rose-500 data-[state=active]:text-white text-pink-100"
+                    >
                       <Target className="w-4 h-4" />
                       <span className="hidden sm:inline">Overview</span>
                     </TabsTrigger>
-                    <TabsTrigger value="stats" className="flex items-center space-x-2 data-[state=active]:bg-gradient-to-r data-[state=active]:from-pink-500 data-[state=active]:to-rose-500 data-[state=active]:text-white text-pink-100">
+                    <TabsTrigger
+                      value="stats"
+                      className="flex items-center space-x-2 data-[state=active]:bg-gradient-to-r data-[state=active]:from-pink-500 data-[state=active]:to-rose-500 data-[state=active]:text-white text-pink-100"
+                    >
                       <TrendingUp className="w-4 h-4" />
                       <span className="hidden sm:inline">Statistics</span>
                     </TabsTrigger>
-                    <TabsTrigger value="upgrades" className="flex items-center space-x-2 data-[state=active]:bg-gradient-to-r data-[state=active]:from-pink-500 data-[state=active]:to-rose-500 data-[state=active]:text-white text-pink-100">
+                    <TabsTrigger
+                      value="upgrades"
+                      className="flex items-center space-x-2 data-[state=active]:bg-gradient-to-r data-[state=active]:from-pink-500 data-[state=active]:to-rose-500 data-[state=active]:text-white text-pink-100"
+                    >
                       <Crown className="w-4 h-4" />
                       <span className="hidden sm:inline">Upgrades</span>
                     </TabsTrigger>
-                    <TabsTrigger value="settings" className="flex items-center space-x-2 data-[state=active]:bg-gradient-to-r data-[state=active]:from-pink-500 data-[state=active]:to-rose-500 data-[state=active]:text-white text-pink-100">
+                    <TabsTrigger
+                      value="settings"
+                      className="flex items-center space-x-2 data-[state=active]:bg-gradient-to-r data-[state=active]:from-pink-500 data-[state=active]:to-rose-500 data-[state=active]:text-white text-pink-100"
+                    >
                       <SettingsIcon className="w-4 h-4" />
                       <span className="hidden sm:inline">Settings</span>
+                    </TabsTrigger>
+                    <TabsTrigger
+                      value="history"
+                      className="flex items-center space-x-2 data-[state=active]:bg-gradient-to-r data-[state=active]:from-pink-500 data-[state=active]:to-rose-500 data-[state=active]:text-white text-pink-100"
+                    >
+                      <Shuffle className="w-4 h-4" />
+                      <span className="hidden sm:inline">Match History</span>
                     </TabsTrigger>
                   </TabsList>
 
                   {/* Tab Contents */}
                   <TabsContent value="overview">
-                    <Overview 
+                    <Overview
                       user={user}
                       currentPoint={currentPoint}
                       nextMilestone={nextMilestone}
@@ -698,13 +776,16 @@ useEffect(() => {
                       handleLevelUp={handleLevelUp}
                       handleMysteryBox={handleMysteryBox}
                     />
-                  <GoalkeeperBot bot={bot} loading={botLoading} error={botError} />
-
+                    <GoalkeeperBot
+                      bot={bot}
+                      loading={botLoading}
+                      error={botError}
+                    />
                   </TabsContent>
                   {/* goalkeeper card */}
 
                   <TabsContent value="stats">
-                    <Statistics 
+                    <Statistics
                       user={user}
                       isLoadingNFTs={isLoadingNFTs}
                       nftCount={nftCount}
@@ -715,7 +796,7 @@ useEffect(() => {
                   </TabsContent>
 
                   <TabsContent value="upgrades">
-                    <Upgrades 
+                    <Upgrades
                       user={user}
                       proInviteCode={proInviteCode}
                       vipInviteCode={vipInviteCode}
@@ -730,7 +811,7 @@ useEffect(() => {
                   </TabsContent>
 
                   <TabsContent value="settings">
-                    <Settings 
+                    <Settings
                       user={user}
                       isEditing={isEditing}
                       setIsEditing={setIsEditing}
@@ -753,6 +834,194 @@ useEffect(() => {
                       isDecoding={isDecoding}
                       logout={logout}
                     />
+                  </TabsContent>
+
+                  <TabsContent value="history">
+                    <div className="bg-white/80 rounded-xl shadow-lg p-4">
+                      <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
+                        <Shuffle className="w-5 h-5 text-pink-500" />
+                        Match History
+                      </h2>
+                      {isLoadingHistory ? (
+                        <div className="flex items-center gap-2 text-pink-600">
+                          <Loader2 className="animate-spin" />
+                          Đang tải...
+                        </div>
+                      ) : matchHistory.length === 0 ? (
+                        <div className="text-gray-500 italic">
+                          Chưa có trận đấu nào.
+                        </div>
+                      ) : (
+                        <div className="overflow-x-auto">
+                          <table className="min-w-full text-sm rounded-xl overflow-hidden">
+                            <thead>
+                              <tr className="bg-gradient-to-r from-pink-100 to-rose-100 text-center">
+                                <th className="px-2 py-2">Thời gian</th>
+                                <th className="px-2 py-2">Kicker</th>
+                                <th className="px-2 py-2">Goalkeeper</th>
+                                <th className="px-2 py-2">Kết quả</th>
+                                <th className="px-2 py-2">Skill</th>
+                                <th className="px-2 py-2">Random Info</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {matchHistory.map((m, idx) => {
+                                const isMeKicker = m.kicker_id === user._id;
+                                const isMeGoalkeeper =
+                                  m.goalkeeper_id === user._id;
+                                const isWinner = m.winner_id === user._id;
+                                const rowBg =
+                                  idx % 2 === 0 ? "bg-white" : "bg-rose-50";
+                                return (
+                                  <tr
+                                    key={idx}
+                                    className={`${rowBg} border-b hover:bg-pink-50 transition-all ${
+                                      isWinner ? "!bg-green-50" : ""
+                                    }`}
+                                  >
+                                    <td className="px-2 py-1 whitespace-nowrap text-center">
+                                      {m.timestamp
+                                        ? format(
+                                            new Date(m.timestamp),
+                                            "dd/MM/yyyy HH:mm"
+                                          )
+                                        : "-"}
+                                    </td>
+                                    <td className="px-2 py-1 text-center">
+                                      {isMeKicker ? (
+                                        <span className="font-bold text-pink-600 flex items-center justify-center gap-1">
+                                          <User2 className="inline w-4 h-4" />
+                                          Bạn
+                                        </span>
+                                      ) : (
+                                        m.kicker_name || m.kicker_id
+                                      )}
+                                    </td>
+                                    <td className="px-2 py-1 text-center">
+                                      {isMeGoalkeeper ? (
+                                        <span className="font-bold text-pink-600 flex items-center justify-center gap-1">
+                                          <User2 className="inline w-4 h-4" />
+                                          Bạn
+                                        </span>
+                                      ) : (
+                                        m.goalkeeper_name || m.goalkeeper_id
+                                      )}
+                                    </td>
+                                    <td className="px-2 py-1 text-center">
+                                      {isWinner ? (
+                                        <span className="text-green-600 font-bold flex items-center justify-center gap-1">
+                                          <CheckCircle2 className="inline w-4 h-4" />
+                                          Thắng
+                                        </span>
+                                      ) : (
+                                        <span className="text-red-600 font-bold flex items-center justify-center gap-1">
+                                          <XCircle className="inline w-4 h-4" />
+                                          Thua
+                                        </span>
+                                      )}
+                                    </td>
+                                    <td className="px-2 py-1 text-center">
+                                      {m.kicker_skill}{" "}
+                                      <span className="text-gray-400">/</span>{" "}
+                                      {m.goalkeeper_skill}
+                                    </td>
+                                    <td className="px-2 py-1 text-center">
+                                      {m.vrf_random_role !== undefined ||
+                                      m.vrf_random_kicker_skill !== undefined ||
+                                      m.vrf_random_goalkeeper_skill !==
+                                        undefined ? (
+                                        <div className="flex items-center justify-center">
+                                          <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-gradient-to-r from-pink-200 to-rose-100 text-pink-900 font-semibold shadow-sm border border-pink-300 cursor-pointer group relative">
+                                            <BadgeDollarSign className="w-4 h-4 text-pink-500 mr-1" />
+                                            <span>
+                                              {m.vrf_random_role !==
+                                                undefined &&
+                                                `R:${m.vrf_random_role} `}
+                                              {m.vrf_random_kicker_skill !==
+                                                undefined &&
+                                                `K:${m.vrf_random_kicker_skill} `}
+                                              {m.vrf_random_goalkeeper_skill !==
+                                                undefined &&
+                                                `G:${m.vrf_random_goalkeeper_skill}`}
+                                            </span>
+                                            <Info className="w-3 h-3 text-pink-400 ml-1 group-hover:opacity-100 opacity-60" />
+                                            <span className="absolute left-1/2 -translate-x-1/2 top-full mt-2 z-10 hidden group-hover:block bg-white text-xs text-gray-700 rounded shadow-lg px-3 py-2 whitespace-nowrap border border-pink-200">
+                                              <div className="mb-1 font-bold text-pink-600">
+                                                Random Info
+                                              </div>
+                                              {m.vrf_random_role !==
+                                                undefined && (
+                                                <div>
+                                                  Role:{" "}
+                                                  <b>{m.vrf_random_role}</b>
+                                                </div>
+                                              )}
+                                              {m.vrf_random_kicker_skill !==
+                                                undefined && (
+                                                <div>
+                                                  Kicker:{" "}
+                                                  <b>
+                                                    {m.vrf_random_kicker_skill}
+                                                  </b>
+                                                </div>
+                                              )}
+                                              {m.vrf_random_goalkeeper_skill !==
+                                                undefined && (
+                                                <div>
+                                                  Keeper:{" "}
+                                                  <b>
+                                                    {
+                                                      m.vrf_random_goalkeeper_skill
+                                                    }
+                                                  </b>
+                                                </div>
+                                              )}
+                                              <div className="mt-1 text-gray-400">
+                                                Powered by Chainlink VRF
+                                              </div>
+                                            </span>
+                                          </span>
+                                        </div>
+                                      ) : (
+                                        <span className="text-gray-300">-</span>
+                                      )}
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                          {/* Pagination */}
+                          <div className="flex justify-end mt-2 gap-2">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              disabled={historyPage === 1}
+                              onClick={() =>
+                                setHistoryPage((p) => Math.max(1, p - 1))
+                              }
+                            >
+                              Trước
+                            </Button>
+                            <span className="text-sm py-1">
+                              Trang {historyPage} /{" "}
+                              {Math.ceil(historyTotal / HISTORY_PAGE_SIZE)}
+                            </span>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              disabled={
+                                historyPage >=
+                                Math.ceil(historyTotal / HISTORY_PAGE_SIZE)
+                              }
+                              onClick={() => setHistoryPage((p) => p + 1)}
+                            >
+                              Sau
+                            </Button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
                   </TabsContent>
                 </Tabs>
               </div>

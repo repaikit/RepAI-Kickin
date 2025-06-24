@@ -115,4 +115,40 @@ class ChainlinkVRF:
             random_num = random.randint(100000, 999999)
             code = f"{prefix}-{datetime.utcnow().strftime('%Y%m%d')}-{random_num}"
             codes.append(code)
-        return codes 
+        return codes
+
+    async def get_random_int(self, max_value: int) -> int:
+        """
+        Sinh số nguyên ngẫu nhiên [0, max_value) sử dụng Chainlink VRF
+        Nếu lỗi sẽ fallback về random local
+        """
+        try:
+            key_hash = os.getenv('VRF_KEY_HASH')
+            sub_id = int(os.getenv('VRF_SUB_ID', '1'))
+            min_confirmations = 3
+            callback_gas_limit = 100000
+            num_words = 1
+
+            nonce = self.w3.eth.get_transaction_count(self.account.address)
+            tx = self.vrf_contract.functions.requestRandomWords(
+                key_hash,
+                sub_id,
+                min_confirmations,
+                callback_gas_limit,
+                num_words
+            ).build_transaction({
+                'from': self.account.address,
+                'nonce': nonce,
+                'gas': 300000,
+                'gasPrice': self.w3.eth.gas_price
+            })
+            signed_tx = self.account.sign_transaction(tx)
+            tx_hash = self.w3.eth.send_raw_transaction(signed_tx.rawTransaction)
+            receipt = self.w3.eth.wait_for_transaction_receipt(tx_hash)
+            random_numbers = self._process_vrf_response(receipt)
+            if random_numbers and max_value > 0:
+                return random_numbers[0] % max_value
+            else:
+                return random.randint(0, max_value - 1)
+        except Exception as e:
+            return random.randint(0, max_value - 1) 
