@@ -22,25 +22,37 @@ export default function AIChatPopup() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showVipForm, setShowVipForm] = useState(false);
 
-  const handleSendMessage = (e: React.FormEvent) => {
-    // Explicitly type event
+  const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
     if (inputMessage.trim()) {
       // Add user message to state
-      setMessages([...messages, { text: inputMessage, sender: "user" }]);
-
-      // Simulate AI response (replace with actual API call)
-      setTimeout(() => {
+      setMessages((prev) => [...prev, { text: inputMessage, sender: "user" }]);
+      setInputMessage("");
+      try {
+        const token = localStorage.getItem("access_token");
+        const res = await fetch(API_ENDPOINTS.chat.eliza, {
+          method: "POST",
+          headers: {
+            ...defaultFetchOptions.headers,
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+          body: JSON.stringify({ message: inputMessage }),
+        });
+        const data = await res.json();
+        if (data.success) {
+          setMessages((prev) => [...prev, { text: data.reply, sender: "ai" }]);
+        } else {
+          setMessages((prev) => [
+            ...prev,
+            { text: "Xin lỗi, có lỗi xảy ra khi xử lý!", sender: "ai" },
+          ]);
+        }
+      } catch (error) {
         setMessages((prev) => [
           ...prev,
-          {
-            text: `This is an automatic response to: "${inputMessage}"`,
-            sender: "ai",
-          },
+          { text: "Xin lỗi, không thể kết nối server!", sender: "ai" },
         ]);
-      }, 1000);
-
-      setInputMessage("");
+      }
     }
   };
 

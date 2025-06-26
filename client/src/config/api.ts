@@ -160,6 +160,7 @@ export const API_ENDPOINTS = {
   // Chat APIs
   chat: {
     getHistory: `${API_BASE_URL}/api/chat/history`,
+    eliza: `${API_BASE_URL}/api/chat/eliza`,
   },
 
   nft: {

@@ -1,12 +1,15 @@
-from fastapi import APIRouter, Request, HTTPException
+from fastapi import APIRouter, Request, HTTPException, Body
 from database.database import get_chat_messages_collection, get_users_collection
 from bson import ObjectId
 from utils.logger import api_logger
 from datetime import datetime
 from utils.time_utils import to_vietnam_time, VIETNAM_TZ
 import pytz
+from utils.eliza import Eliza
 
 router = APIRouter()
+
+eliza_bot = Eliza()
 
 @router.get("/history")
 async def get_chat_history(request: Request, limit: int = 50):
@@ -107,4 +110,16 @@ async def get_chat_history(request: Request, limit: int = 50):
 
     except Exception as e:
         api_logger.error(f"[Chat] Error in get_chat_history handler: {e}")
-        raise HTTPException(status_code=500, detail="Internal server error") 
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+@router.post("/eliza")
+async def eliza_chat(request: Request, message: str = Body(..., embed=True)):
+    """
+    Nhận message từ client, trả về phản hồi từ Eliza chatbot
+    """
+    try:
+        response = eliza_bot.respond(message)
+        return {"success": True, "reply": response}
+    except Exception as e:
+        api_logger.error(f"[Eliza] Error: {e}")
+        raise HTTPException(status_code=500, detail="Lỗi xử lý Eliza chatbot") 
