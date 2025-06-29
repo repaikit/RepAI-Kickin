@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -11,10 +11,12 @@ import {
   Sparkles,
   Send,
   Wallet,
-  Check
+  Check,
+  ExternalLink
 } from 'lucide-react';
 import { API_ENDPOINTS, defaultFetchOptions } from '@/config/api';
 import { toast } from "sonner";
+import { useAccount, useConnect, useDisconnect } from 'wagmi';
 import { useWallet } from '@/hooks/useWallet';
 import {
   Dialog,
@@ -23,6 +25,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { ConnectButton } from '@rainbow-me/rainbowkit';
 
 interface UpgradesProps {
   user: any;
@@ -51,11 +54,10 @@ export default function Upgrades({
 }: UpgradesProps) {
   const [transferAddress, setTransferAddress] = useState('');
   const [transferTokenId, setTransferTokenId] = useState('');
-
+  const { address, isConnected } = useAccount();
+  const { connect, connectors } = useConnect();
+  const { disconnect } = useDisconnect();
   const {
-    connect,
-    connectors,
-    address,
     isBaseNetwork,
     isPending,
     mintError,
@@ -94,6 +96,53 @@ export default function Upgrades({
       toast.error('Upgrade failed.');
     }
   };
+
+  // Update wallet address to backend when address changes
+  useEffect(() => {
+    const updateWalletToBackend = async (walletAddress: string) => {
+      try {
+        const token = localStorage.getItem('access_token');
+        if (!token) {
+          console.log('No access token found');
+          return;
+        }
+        const response = await fetch(API_ENDPOINTS.users.updateProfile, {
+          method: 'PATCH',
+          headers: {
+            ...defaultFetchOptions.headers,
+            'Authorization': `Bearer ${token}`,
+          },
+          body: JSON.stringify({ wallet: walletAddress }),
+        });
+        if (response.ok) {
+          toast.success('Wallet address updated successfully!');
+          handleUpdateProfile({ wallet: walletAddress });
+        } else {
+          const data = await response.json();
+          console.error('Failed to update wallet:', data);
+          toast.error(data.detail || 'Failed to update wallet address');
+        }
+      } catch (error) {
+        console.error('Error updating wallet:', error);
+        toast.error('Failed to update wallet address');
+      }
+    };
+    if (isConnected && address && address !== user?.wallet) {
+      updateWalletToBackend(address);
+    }
+  }, [isConnected, address, user?.wallet, handleUpdateProfile]);
+
+  // Get display wallet address
+  const getDisplayWalletAddress = () => {
+    if (address) return address;
+    if (user?.wallet) return user.wallet;
+    return null;
+  };
+  const displayWalletAddress = getDisplayWalletAddress();
+
+  // Check if user already has a wallet in database
+  const hasWalletInDatabase = user?.wallet && user.wallet.length > 0;
+  const needsWalletConnection = !hasWalletInDatabase && !isConnected;
 
   return (
     <div className="space-y-6">
@@ -207,6 +256,83 @@ export default function Upgrades({
         </Card>
       </div>
 
+      {/* Wallet Connection Card */}
+      <Card className="bg-white/80 backdrop-blur-sm border-0 shadow-lg">
+        <CardHeader>
+          <CardTitle className="flex items-center space-x-2">
+            <Wallet className="w-5 h-5" />
+            <span>Wallet Connection</span>
+          </CardTitle>
+          <CardDescription>Connect your wallet to enable NFT features and cross-chain minting</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-4">
+            {needsWalletConnection ? (
+              <div className="space-y-4">
+                <div className="p-4 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg border border-blue-100">
+                  <div className="flex items-center space-x-3 mb-2">
+                    <Wallet className="w-5 h-5 text-blue-600" />
+                    <span className="font-semibold">Connect Your Wallet</span>
+                  </div>
+                  <p className="text-sm text-gray-600 mb-3">
+                    Connect your wallet to enable NFT features and cross-chain minting
+                  </p>
+                  <ConnectButton />
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <div className="p-4 bg-gradient-to-r from-green-50 to-emerald-50 rounded-lg border border-green-100">
+                  <div className="flex items-center space-x-3 mb-2">
+                    <Check className="w-5 h-5 text-green-600" />
+                    <span className="font-semibold">
+                      {isConnected ? 'Wallet Connected' : 'Wallet Available'}
+                    </span>
+                  </div>
+                  <div className="flex items-center space-x-2 mb-3">
+                    <Wallet className="w-4 h-4 text-gray-500" />
+                    <span className="font-mono text-sm bg-gray-100 px-2 py-1 rounded">
+                      {displayWalletAddress?.slice(0, 6)}...{displayWalletAddress?.slice(-4)}
+                    </span>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => displayWalletAddress && navigator.clipboard.writeText(displayWalletAddress)}
+                      className="h-6 w-6 p-0"
+                    >
+                      <ExternalLink className="w-3 h-3" />
+                    </Button>
+                  </div>
+                  {isConnected && !isBaseNetwork && (
+                    <div className="text-sm text-orange-600 mb-2">
+                      ⚠️ Please switch to Base network for NFT operations
+                    </div>
+                  )}
+                  <div className="flex gap-2">
+                    {isConnected && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => disconnect()}
+                      >
+                        Disconnect
+                      </Button>
+                    )}
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => displayWalletAddress && window.open(`https://basescan.org/address/${displayWalletAddress}`, '_blank')}
+                    >
+                      View on Explorer
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+
       {/* Additional Upgrade Options */}
       <Card className="bg-white/80 backdrop-blur-sm border-0 shadow-lg">
         <CardHeader>
@@ -241,17 +367,9 @@ export default function Upgrades({
               <p className="text-sm text-gray-600 mb-3">
                 Mint exclusive NFTs with your achievements
               </p>
-              {!address ? (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="w-full"
-                  onClick={() => connect({ connector: connectors[0] })}
-                >
-                  <Wallet className="w-4 h-4 mr-2" />
-                  Connect Wallet
-                </Button>
-              ) : !isBaseNetwork ? (
+              {needsWalletConnection ? (
+                <ConnectButton />
+              ) : !isBaseNetwork && isConnected ? (
                 <Button
                   size="sm"
                   variant="outline"
@@ -262,10 +380,6 @@ export default function Upgrades({
                 </Button>
               ) : (
                 <div className="space-y-3">
-                  <div className="flex items-center mb-2">
-                    <Wallet className="w-4 h-4 mr-2" />
-                    <span className="font-mono text-xs">{address}</span>
-                  </div>
                   <Button
                     size="sm"
                     variant="outline"
@@ -305,7 +419,9 @@ export default function Upgrades({
                 </div>
               )}
               {mintError && (
-                <p className="text-sm text-red-500 mt-2">{mintError}</p>
+                <p className="text-sm text-red-500 mt-2">
+                  {typeof mintError === 'string' ? mintError : JSON.stringify(mintError)}
+                </p>
               )}
             </div>
           </div>

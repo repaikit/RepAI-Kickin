@@ -12,6 +12,10 @@ export default function LoginRoute() {
     const token = params.get('token');
     if (token) {
       localStorage.setItem('access_token', token);
+      const refreshToken = params.get('refresh_token');
+      if (refreshToken) {
+        localStorage.setItem('refresh_token', refreshToken);
+      }
       checkAuth().then(() => {
         router.push('/');
       });

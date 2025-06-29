@@ -4,6 +4,11 @@ from database.database import get_users_collection
 from starlette.middleware.base import BaseHTTPMiddleware
 import os
 from bson import ObjectId
+import logging
+from datetime import datetime
+
+# Configure logging
+logger = logging.getLogger(__name__)
 
 SECRET_KEY = os.getenv("JWT_KEY", "your-very-secret-key")
 ALGORITHM = "HS256"
@@ -16,6 +21,7 @@ PUBLIC_ROUTES = [
     "/api/auth/google/callback",
     "/api/auth/google/register",
     "/api/auth/google/login",
+    "/api/auth/refresh",  # Thêm route refresh token
     "/api/guest", 
     "/health", 
     "/metrics", 
@@ -28,6 +34,8 @@ PUBLIC_ROUTES = [
     "/api/leaderboard/monthly",
     "/api/auth/verify-email",
     "/api/x/callback",
+    "/api/victory_nft/test-service",
+    "/api/victory_nft/supported-chains",
 ]
 
 # Danh sách các API chỉ dành cho admin
@@ -70,27 +78,53 @@ class JWTAuthMiddleware(BaseHTTPMiddleware):
         # Kiểm tra token cho các route còn lại
         auth_header = request.headers.get("Authorization")
         if not auth_header or not auth_header.startswith("Bearer "):
+            logger.warning(f"Missing or invalid Authorization header for {request.url.path}")
             raise HTTPException(status_code=401, detail="Not authorized to access this resource")
 
         token = auth_header.replace("Bearer ", "")
         try:
             data = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+            if not data or not isinstance(data, dict):
+                logger.warning(f"Decoded JWT is None or not a dict for {request.url.path}")
+                raise HTTPException(status_code=401, detail="Invalid or expired token")
+            
+            # Check if user ID exists in token
+            if not data.get("_id"):
+                logger.warning(f"Token missing user ID for {request.url.path}")
+                raise HTTPException(status_code=401, detail="Invalid token format")
+            
+            # Check if token is expired
+            if data.get("exp") and data["exp"] < datetime.utcnow().timestamp():
+                logger.warning(f"Token expired for user {data.get('_id')} accessing {request.url.path}")
+                raise HTTPException(status_code=401, detail="Token expired")
+            
+            # Check if this is a refresh token being used as access token
+            if data.get("type") == "refresh":
+                logger.warning(f"Refresh token used as access token for {request.url.path}")
+                raise HTTPException(status_code=401, detail="Invalid token type")
+            
             users_collection = await get_users_collection()
             # Convert _id to ObjectId for MongoDB query
             user = await users_collection.find_one({"_id": ObjectId(data["_id"])})
             if not user:
-                raise HTTPException(status_code=401, detail="Not authorized to access this resource")
+                logger.warning(f"User not found in database: {data.get('_id')}")
+                raise HTTPException(status_code=401, detail="User not found")
 
             # Kiểm tra quyền admin cho các route admin
             if any(request.url.path.startswith(route) for route in ADMIN_ROUTES):
                 if user.get("role") != "admin":
+                    logger.warning(f"Non-admin user {data.get('_id')} trying to access admin route {request.url.path}")
                     raise HTTPException(status_code=403, detail="Admin privileges required")
 
             request.state.user = user
             request.state.token = token
-        except JWTError:
+            logger.debug(f"Successfully authenticated user {data.get('_id')} for {request.url.path}")
+            
+        except JWTError as e:
+            logger.warning(f"JWT decode error for {request.url.path}: {str(e)}")
             raise HTTPException(status_code=401, detail="Invalid token")
         except Exception as e:
+            logger.error(f"Unexpected error in JWT middleware for {request.url.path}: {str(e)}")
             raise HTTPException(status_code=401, detail=str(e))
 
         response = await call_next(request)

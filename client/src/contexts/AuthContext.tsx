@@ -70,6 +70,7 @@ interface AuthContextType {
   isLoading: boolean;
   checkAuth: () => Promise<void>;
   logout: () => void;
+  refreshTokens: () => Promise<boolean>;
 }
 
 const AuthContext = createContext<AuthContextType>({
@@ -79,6 +80,7 @@ const AuthContext = createContext<AuthContextType>({
   isLoading: true,
   checkAuth: async () => {},
   logout: () => {},
+  refreshTokens: async () => false,
 });
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
@@ -88,6 +90,39 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const publicRoutes = ["/login", "/register", "/verify-email"];
   const isAuthenticated = !!user;
   const isLoading = loading;
+
+  const refreshTokens = async (): Promise<boolean> => {
+    try {
+      const refresh_token = localStorage.getItem("refresh_token");
+      if (!refresh_token) {
+        return false;
+      }
+
+      const response = await fetch(API_ENDPOINTS.users.refresh, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${refresh_token}`,
+        },
+      });
+
+      if (!response.ok) {
+        localStorage.removeItem("access_token");
+        localStorage.removeItem("refresh_token");
+        return false;
+      }
+
+      const data = await response.json();
+      localStorage.setItem("access_token", data.access_token);
+      localStorage.setItem("refresh_token", data.refresh_token);
+      return true;
+    } catch (error) {
+      console.error("Token refresh failed:", error);
+      localStorage.removeItem("access_token");
+      localStorage.removeItem("refresh_token");
+      return false;
+    }
+  };
 
   const checkAuth = async () => {
     try {
@@ -114,7 +149,31 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       if (!response.ok) {
         if (response.status === 401) {
+          // Thử refresh token
+          const refreshSuccess = await refreshTokens();
+          if (refreshSuccess) {
+            // Thử lại request với token mới
+            const newToken = localStorage.getItem("access_token");
+            const retryResponse = await fetch(API_ENDPOINTS.users.me, {
+              method: "GET",
+              headers: {
+                ...defaultFetchOptions.headers,
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${newToken}`,
+              },
+            });
+
+            if (retryResponse.ok) {
+              const userData = await retryResponse.json();
+              setUser(userData);
+              setLoading(false);
+              return;
+            }
+          }
+          
+          // Nếu refresh thất bại, logout
           localStorage.removeItem("access_token");
+          localStorage.removeItem("refresh_token");
           setUser(null);
           if (!publicRoutes.includes(currentPath)) {
             router.replace("/login");
@@ -157,6 +216,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const logout = () => {
     localStorage.removeItem("access_token");
+    localStorage.removeItem("refresh_token");
     setUser(null);
     router.push("/login");
   };
@@ -167,7 +227,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <AuthContext.Provider
-      value={{ user, loading, isAuthenticated, isLoading, checkAuth, logout }}
+      value={{ user, loading, isAuthenticated, isLoading, checkAuth, logout, refreshTokens }}
     >
       {children}
     </AuthContext.Provider>

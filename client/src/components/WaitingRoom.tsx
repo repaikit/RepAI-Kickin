@@ -12,6 +12,12 @@ import BotCard from "./BotCard";
 import { API_ENDPOINTS, defaultFetchOptions } from "@/config/api";
 import { useWebSocket } from "@/hooks/useWebSocket";
 import AutoPlayVIP from "./AutoPlayVIP";
+import { useVictoryNFT } from "@/hooks/useVictoryNFT";
+import { Progress } from "@/components/ui/progress";
+import { Trophy, Gift } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { useAccount } from 'wagmi';
+import { useWallet } from '@/hooks/useWallet';
 
 interface OnlineUser {
   id: string;
@@ -63,6 +69,11 @@ interface ChallengeResultMessage {
   match_stats: any;
 }
 
+const AVAILABLE_CHAINS = [
+  { id: 'base-sepolia', name: 'Base Sepolia', description: 'Ethereum L2 Testnet' },
+  { id: 'avalanche-fuji', name: 'Avalanche Fuji', description: 'Avalanche Testnet' }
+];
+
 export default function WaitingRoom() {
   const { user } = useAuth();
   const [onlineUsers, setOnlineUsers] = useState<OnlineUser[]>([]);
@@ -88,6 +99,20 @@ export default function WaitingRoom() {
     goalkeeper_skills: [],
   });
   const [users, setUsers] = useState<User[]>([]);
+  const { 
+    isEligible, 
+    nextMilestone, 
+    progress, 
+    isMinting, 
+    mintVictoryNFT, 
+    hasJustReachedMilestone,
+    getVictoryStats 
+  } = useVictoryNFT(user);
+  const [selectedChain, setSelectedChain] = useState<string | null>(null);
+  const [showChainModal, setShowChainModal] = useState(false);
+  const { address } = useAccount();
+  const { connect, connectors, isConnecting } = useWallet(user);
+  const [showConnectWallet, setShowConnectWallet] = useState(false);
 
   const {
     sendMessage,
@@ -357,6 +382,132 @@ export default function WaitingRoom() {
     console.log("Online Users:", onlineUsers);
     console.log("Filtered VIP Users:", filteredUsers);
   }, [onlineUsers, activeTab]);
+
+  // Check for Victory NFT milestone when match result is shown
+  useEffect(() => {
+    if (matchResult && user && hasJustReachedMilestone()) {
+      toast.success(`🎉 Congratulations! You've reached ${nextMilestone} wins! You can now mint a Victory NFT!`);
+    }
+  }, [matchResult, user, hasJustReachedMilestone, nextMilestone]);
+
+  // Fetch chain from backend on mount
+  useEffect(() => {
+    if (user?._id) {
+      fetch(`/api/victory_nft/get-chain?user_id=${user._id}`)
+        .then(res => res.json())
+        .then(data => {
+          if (data?.chain_id) setSelectedChain(data.chain_id);
+        });
+    }
+  }, [user?._id]);
+
+  // Khi user sắp milestone (9/10, 19/20...), hiện popup chọn chain nếu chưa chọn
+  useEffect(() => {
+    if (!user) return;
+    const totalWins = (user.kicked_win || 0) + (user.keep_win || 0);
+    if (totalWins > 0 && totalWins % 10 === 9 && !selectedChain) {
+      setShowChainModal(true);
+    }
+  }, [user, selectedChain]);
+
+  // Khi user đạt milestone, tự động mint NFT nếu đã chọn chain và đã connect wallet
+  useEffect(() => {
+    if (!user) return;
+    const totalWins = (user.kicked_win || 0) + (user.keep_win || 0);
+    // Nếu vừa đạt milestone
+    if (matchResult && hasJustReachedMilestone()) {
+      // Nếu chưa chọn chain, hiện popup chọn chain
+      if (!selectedChain) {
+        setShowChainModal(true);
+        return;
+      }
+      // Nếu chưa connect wallet, hiện popup connect wallet
+      if (!address) {
+        setShowConnectWallet(true);
+        return;
+      }
+      // Đủ điều kiện, tự động gọi mint
+      mintVictoryNFT(selectedChain ?? undefined);
+      toast.success(`Minting Victory NFT on ${AVAILABLE_CHAINS.find(c => c.id === selectedChain)?.name}`);
+    }
+  }, [matchResult, user, selectedChain, hasJustReachedMilestone, mintVictoryNFT, address]);
+
+  // Hàm lưu chain lên backend
+  const saveChainToBackend = async (chainId: string) => {
+    if (!user?._id) return;
+    await fetch('/api/victory_nft/set-chain', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ user_id: user._id, chain_id: chainId })
+    });
+    setSelectedChain(chainId);
+  };
+
+  // UI popup chọn chain
+  const renderChainModal = () => (
+    <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50 z-50 p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md animate-fade-in border-2 border-yellow-300 overflow-hidden">
+        <div className="p-6">
+          <h2 className="text-xl font-bold mb-4 text-yellow-800 flex items-center gap-2">
+            <span>Chọn blockchain để mint Victory NFT milestone tiếp theo</span>
+          </h2>
+          <Select value={selectedChain ?? undefined} onValueChange={async (val) => {
+            await saveChainToBackend(val);
+            setShowChainModal(false);
+          }}>
+            <SelectTrigger className="w-full mb-4">
+              <SelectValue placeholder="Chọn blockchain" />
+            </SelectTrigger>
+            <SelectContent>
+              {AVAILABLE_CHAINS.map((chain) => (
+                <SelectItem key={chain.id} value={chain.id}>
+                  <div className="flex flex-col">
+                    <span className="font-medium">{chain.name}</span>
+                    <span className="text-xs text-gray-500">{chain.description}</span>
+                  </div>
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <button
+            className="mt-4 px-6 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg font-semibold text-base w-full"
+            onClick={() => setShowChainModal(false)}
+          >
+            Đóng
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+
+  // UI popup connect wallet
+  const renderConnectWalletModal = () => (
+    <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50 z-50 p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md animate-fade-in border-2 border-blue-300 overflow-hidden">
+        <div className="p-6">
+          <h2 className="text-xl font-bold mb-4 text-blue-800 flex items-center gap-2">
+            <span>Kết nối ví để mint Victory NFT</span>
+          </h2>
+          {connectors.map((connector) => (
+            <button
+              key={connector.id}
+              className="w-full mb-2 px-6 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg font-semibold text-base"
+              onClick={() => connect({ connector })}
+              disabled={isConnecting}
+            >
+              Kết nối với {connector.name}
+            </button>
+          ))}
+          <button
+            className="mt-4 px-6 py-2 bg-gray-300 hover:bg-gray-400 text-gray-800 rounded-lg font-semibold text-base w-full"
+            onClick={() => setShowConnectWallet(false)}
+          >
+            Đóng
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 
   if (!user) {
     return null;
@@ -728,6 +879,10 @@ export default function WaitingRoom() {
           const opponentStats = isWinner
             ? matchResult.match_stats.loser
             : matchResult.match_stats.winner;
+          
+          const victoryStats = getVictoryStats();
+          const showVictoryNFT = isWinner && hasJustReachedMilestone();
+          
           return (
             <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-40 z-50 transition-all p-4">
               <div className="bg-white p-0 rounded-xl md:rounded-2xl shadow-2xl w-full max-w-lg text-center animate-fade-in border border-gray-200 overflow-hidden">
@@ -746,6 +901,48 @@ export default function WaitingRoom() {
                   >
                     {isWinner ? "Victory" : "Defeat"}
                   </h2>
+                  
+                  {/* Victory NFT Section */}
+                  {showVictoryNFT && (
+                    <div className="mb-6 p-4 bg-gradient-to-r from-yellow-100 to-orange-100 rounded-lg border-2 border-yellow-300">
+                      <div className="flex items-center justify-center mb-3">
+                        <Trophy className="w-8 h-8 text-yellow-600 mr-2" />
+                        <h3 className="text-xl font-bold text-yellow-800">
+                          🎉 Victory NFT Unlocked!
+                        </h3>
+                      </div>
+                      <p className="text-sm text-yellow-700 mb-4">
+                        You've reached {victoryStats.totalWins} wins! Mint your exclusive Victory NFT on Avalanche Fuji.
+                      </p>
+                      
+                      <div className="mb-4">
+                        <div className="flex justify-between text-sm mb-1">
+                          <span>Progress to next NFT:</span>
+                          <span>{victoryStats.winsToNextMilestone} wins left</span>
+                        </div>
+                        <Progress value={progress} className="h-2" />
+                      </div>
+                      
+                      <Button
+                        onClick={() => mintVictoryNFT(selectedChain ?? undefined)}
+                        disabled={isMinting}
+                        className="w-full bg-gradient-to-r from-yellow-500 to-orange-500 hover:from-yellow-600 hover:to-orange-600 text-white font-semibold"
+                      >
+                        {isMinting ? (
+                          <div className="flex items-center">
+                            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                            Minting NFT...
+                          </div>
+                        ) : (
+                          <div className="flex items-center">
+                            <Gift className="w-4 h-4 mr-2" />
+                            Mint Victory NFT
+                          </div>
+                        )}
+                      </Button>
+                    </div>
+                  )}
+                  
                   <div className="mb-6 md:mb-8">
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 md:gap-6 text-base md:text-lg text-left">
                       <div>
@@ -827,6 +1024,25 @@ export default function WaitingRoom() {
                           </span>
                         </div>
                       )}
+                      
+                      {/* Victory Progress */}
+                      {isWinner && (
+                        <div className="col-span-1 sm:col-span-2">
+                          <div className="flex items-center justify-between">
+                            <span className="text-gray-500">Victory Progress:</span>
+                            <span className="font-semibold text-black">
+                              {victoryStats.totalWins} wins
+                            </span>
+                          </div>
+                          <div className="mt-2">
+                            <div className="flex justify-between text-xs mb-1">
+                              <span>Next NFT at {victoryStats.nextMilestone} wins</span>
+                              <span>{victoryStats.winsToNextMilestone} left</span>
+                            </div>
+                            <Progress value={victoryStats.progress} className="h-2" />
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </div>
                   <button
@@ -841,6 +1057,8 @@ export default function WaitingRoom() {
           );
         })()}
       <AutoPlayVIP onMatchResult={setMatchResult} />
+      {showChainModal && renderChainModal()}
+      {showConnectWallet && renderConnectWalletModal()}
     </div>
   );
 }

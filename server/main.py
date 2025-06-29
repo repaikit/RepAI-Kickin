@@ -4,7 +4,9 @@ from pathlib import Path
 
 # Add the parent directory to Python path
 ROOT_DIR = Path(__file__).resolve().parent
+PARENT_DIR = ROOT_DIR.parent
 sys.path.append(str(ROOT_DIR))
+sys.path.append(str(PARENT_DIR))
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -13,6 +15,7 @@ from contextlib import asynccontextmanager
 
 # Import routers using absolute imports
 from routes import users, skills, ws_handlers, mystery_box, bot, chat, cache, leaderboard, GoogleAuthenticate, nft, x, invite_codes_vip, admin
+from routes.victory_nft import router as victory_nft_router
 from middleware.database import database_middleware, DatabaseMiddleware
 from middleware.rate_limit import RateLimitMiddleware
 from middleware.cache import InMemoryCacheMiddleware
@@ -150,6 +153,7 @@ app.include_router(x.router, prefix="/api/x", tags=["x"])
 app.include_router(invite_codes_vip.router, prefix="/api/vip", tags=["vip"])
 # Include admin routes
 app.include_router(admin.router, prefix="/api/admin", tags=["admin"])
+app.include_router(victory_nft_router, prefix="/api", tags=["victory_nft"])
 
 # Include VRF status routes
 app.include_router(vrf_status_router, prefix="/api", tags=["vrf"])

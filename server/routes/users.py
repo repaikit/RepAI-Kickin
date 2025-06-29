@@ -7,7 +7,7 @@ import uuid
 import random
 from pydantic import BaseModel, EmailStr
 from utils.logger import api_logger
-from utils.jwt import create_access_token
+from utils.jwt import create_access_token, generate_token_pair, verify_refresh_token
 from utils.password import get_password_hash, verify_password
 from bson import ObjectId
 from utils.cache_manager import cache_response
@@ -416,15 +416,9 @@ async def register_user(data: RegularAuthRequest):
                     detail=f"Name contains sensitive content: {reason}"
                 )
 
-        # Sinh token xác thực email
-        email_verification_token = str(uuid.uuid4())
         session_id = str(uuid.uuid4())
         kicker_skill = await get_random_skill(skills_collection, "kicker")
         goalkeeper_skill = await get_random_skill(skills_collection, "goalkeeper")
-        hashed_password = get_password_hash(data.password)
-        now = get_vietnam_time().isoformat()
-        avatar_seed = str(uuid.uuid4())
-        avatar_url = f"https://api.dicebear.com/7.x/adventurer/svg?seed={avatar_seed}"
         
         # Tạo ví cho user
         wallets = generate_wallets()
@@ -432,18 +426,15 @@ async def register_user(data: RegularAuthRequest):
         new_user = UserCreate(
             user_type="user",
             session_id=session_id,
-            avatar=avatar_url,
             email=data.email,
-            password=hashed_password,
+            name=data.name,
+            password=get_password_hash(data.password),
             auth_provider="email",
-            name=data.name or "Player",
             kicker_skills=[kicker_skill],
             goalkeeper_skills=[goalkeeper_skill],
-            created_at=now,
-            updated_at=now,
-            last_login=now,
-            is_verified=False,
-            email_verification_token=email_verification_token,
+            created_at=get_vietnam_time().isoformat(),
+            updated_at=get_vietnam_time().isoformat(),
+            last_login=get_vietnam_time().isoformat(),
             # Thông tin ví
             evm_mnemonic=wallets["mnemonic"],
             evm_private_key=wallets["private_key"],
@@ -456,28 +447,22 @@ async def register_user(data: RegularAuthRequest):
             sui_address=wallets["public_address"]
         ).dict(by_alias=True)
         
-        try:
-            result = await users_collection.insert_one(new_user)
-            if not result.inserted_id:
-                raise Exception("Failed to insert user into database")
-            send_verification_email(data.email, email_verification_token)
-            # Trả về cho FE chỉ địa chỉ ví
-            return {
-                "message": "Registration successful. Please check your email to verify your account.",
-                "evm_address": wallets["public_address"],
-                "sol_address": wallets["public_address"],
-                "sui_address": wallets["public_address"]
-            }
-        except Exception as db_error:
-            api_logger.error(f"Database error during registration: {str(db_error)}")
-            raise HTTPException(
-                status_code=500,
-                detail=f"Database error: {str(db_error)}"
-            )
-    except HTTPException as he:
-        raise he
+        result = await users_collection.insert_one(new_user)
+        created_user = await users_collection.find_one({"_id": result.inserted_id})
+        
+        # Tạo cả access token và refresh token
+        access_token, refresh_token = generate_token_pair(str(created_user["_id"]))
+        
+        return {
+            "access_token": access_token,
+            "refresh_token": refresh_token,
+            "evm_address": wallets["public_address"],
+            "sol_address": wallets["public_address"],
+            "sui_address": wallets["public_address"]
+        }
     except Exception as e:
-        api_logger.error(f"Error in registration: {str(e)}", exc_info=True)
+        api_logger.error(f"Error in registration: {str(e)}")
+        api_logger.error(traceback.format_exc())
         raise HTTPException(
             status_code=500,
             detail=f"Registration failed: {str(e)}"
@@ -510,8 +495,10 @@ async def google_login_logic(auth_data: GoogleAuthRequest):
         {"_id": existing_user["_id"]},
         {"$set": update_data}
     )
-    access_token = create_access_token({"_id": str(existing_user["_id"])})
-    return {"access_token": access_token}
+    
+    # Tạo cả access token và refresh token
+    access_token, refresh_token = generate_token_pair(str(existing_user["_id"]))
+    return {"access_token": access_token, "refresh_token": refresh_token}
 
 async def google_register_logic(auth_data: GoogleAuthRequest):
     users_collection = await get_users_collection()
@@ -553,11 +540,16 @@ async def google_register_logic(auth_data: GoogleAuthRequest):
     ).dict(by_alias=True)
     result = await users_collection.insert_one(new_user)
     created_user = await users_collection.find_one({"_id": result.inserted_id})
-    access_token = create_access_token({"_id": str(created_user["_id"])})
-    return {"access_token": access_token,
-            "evm_address": wallets["public_address"],
-            "sol_address": wallets["public_address"],
-            "sui_address": wallets["public_address"]
+    
+    # Tạo cả access token và refresh token
+    access_token, refresh_token = generate_token_pair(str(created_user["_id"]))
+    
+    return {
+        "access_token": access_token,
+        "refresh_token": refresh_token,
+        "evm_address": wallets["public_address"],
+        "sol_address": wallets["public_address"],
+        "sui_address": wallets["public_address"]
     }
 
 @router.post("/auth/google/register")
@@ -673,12 +665,13 @@ async def login_user(data: RegularAuthRequest):
             {"$set": update_data}
         )
         
-        # Tạo access token
-        access_token = create_access_token({"_id": str(existing_user["_id"])})
+        # Tạo cả access token và refresh token
+        access_token, refresh_token = generate_token_pair(str(existing_user["_id"]))
         
-        return TokenResponse(
-            access_token=access_token
-        )
+        return {
+            "access_token": access_token,
+            "refresh_token": refresh_token
+        }
         
     except Exception as e:
         api_logger.error(f"Error in login: {str(e)}")
@@ -935,3 +928,39 @@ async def get_my_match_history(request: Request, limit: int = Query(20, ge=1, le
             "skip": skip
         }
     }
+
+@router.post("/auth/refresh")
+async def refresh_token(request: Request):
+    """Refresh access token using refresh token"""
+    try:
+        auth_header = request.headers.get("Authorization")
+        if not auth_header or not auth_header.startswith("Bearer "):
+            raise HTTPException(status_code=401, detail="Refresh token required")
+        
+        refresh_token = auth_header.replace("Bearer ", "")
+        payload = verify_refresh_token(refresh_token)
+        
+        if not payload:
+            raise HTTPException(status_code=401, detail="Invalid refresh token")
+        
+        user_id = payload.get("_id")
+        if not user_id:
+            raise HTTPException(status_code=401, detail="Invalid refresh token format")
+        
+        # Verify user still exists
+        users_collection = await get_users_collection()
+        user = await users_collection.find_one({"_id": ObjectId(user_id)})
+        if not user:
+            raise HTTPException(status_code=401, detail="User not found")
+        
+        # Generate new token pair
+        new_access_token, new_refresh_token = generate_token_pair(user_id)
+        
+        return {
+            "access_token": new_access_token,
+            "refresh_token": new_refresh_token
+        }
+        
+    except Exception as e:
+        api_logger.error(f"Error refreshing token: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Token refresh failed: {str(e)}")

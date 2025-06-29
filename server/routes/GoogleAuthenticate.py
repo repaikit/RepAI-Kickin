@@ -52,21 +52,28 @@ async def auth_google_callback(request: Request):
         )
         try:
             login_response = await google_login_logic(auth_data)
-            token = login_response["access_token"]
+            access_token = login_response["access_token"]
+            refresh_token = login_response.get("refresh_token", "")
         except HTTPException as e:
             logger.error(f"Google login failed: {str(e)}")
             logger.error(traceback.format_exc())
             if getattr(e, 'status_code', None) == 404:
                 try:
                     register_response = await google_register_logic(auth_data)
-                    token = register_response["access_token"]
+                    access_token = register_response["access_token"]
+                    refresh_token = register_response.get("refresh_token", "")
                 except Exception as reg_e:
                     logger.error(f"Google register failed: {str(reg_e)}")
                     logger.error(traceback.format_exc())
                     raise
             else:
                 raise
-        redirect_url = f"{FRONTEND_URL}/login?token={token}"
+        
+        # Tạo redirect URL với cả access token và refresh token
+        redirect_url = f"{FRONTEND_URL}/login?token={access_token}"
+        if refresh_token:
+            redirect_url += f"&refresh_token={refresh_token}"
+        
         logger.info(f"Redirecting to: {redirect_url}")
         return RedirectResponse(redirect_url)
     except Exception as e:

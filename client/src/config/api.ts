@@ -125,6 +125,8 @@ export const API_ENDPOINTS = {
     incrementNftMinted: `${API_BASE_URL}/api/users/increment-nft-minted`,
 
     matchHistory: `${API_BASE_URL}/api/me/match-history`,
+
+    refresh: "/api/users/refresh",
   },
 
   // Skills APIs
@@ -191,6 +193,14 @@ export const API_ENDPOINTS = {
       `${API_BASE_URL}/api/vip/verify-code?code=${code}`,
     redeemCode: (code: string) =>
       `${API_BASE_URL}/api/vip/redeem-code?code=${code}`,
+  },
+
+  victory_nft: {
+    history: `${API_BASE_URL}/api/victory_nft/history`,
+    stats: `${API_BASE_URL}/api/victory_nft/stats`,
+    leaderboard: `${API_BASE_URL}/api/victory_nft/leaderboard`,
+    supported_chains: `${API_BASE_URL}/api/victory_nft/supported-chains`,
+    mint_cross_chain: `${API_BASE_URL}/api/victory_nft/mint-cross-chain`,
   },
 };
 

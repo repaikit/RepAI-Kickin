@@ -1,0 +1,40 @@
+{
+  "name": "victory-nft-deployment",
+  "version": "1.0.0",
+  "description": "Deployment scripts for Victory NFT contract on Avalanche Fuji",
+  "main": "index.js",
+  "scripts": {
+    "compile": "hardhat compile",
+    "deploy:fuji": "hardhat run scripts/deploy.js --network fuji",
+    "deploy:base": "hardhat run scripts/deploy.js --network baseSepolia",
+    "deploy:ccip:fuji": "hardhat run scripts/deploy-ccip.js --network fuji",
+    "deploy:ccip:base": "hardhat run scripts/deploy-ccip.js --network baseSepolia",
+    "verify:fuji": "hardhat verify --network fuji",
+    "verify:base": "hardhat verify --network baseSepolia",
+    "test": "hardhat test",
+    "test:mint": "hardhat run scripts/test-mint.js --network fuji",
+    "test:ccip": "hardhat run scripts/test-ccip.js --network fuji",
+    "clean": "hardhat clean"
+  },
+  "keywords": [
+    "nft",
+    "avalanche",
+    "hardhat",
+    "solidity",
+    "blockchain",
+    "chainlink",
+    "ccip"
+  ],
+  "author": "Kickin Team",
+  "license": "MIT",
+  "devDependencies": {
+    "@nomicfoundation/hardhat-toolbox": "^4.0.0",
+    "@nomicfoundation/hardhat-verify": "^2.0.0",
+    "dotenv": "^16.3.1",
+    "hardhat": "^2.19.0"
+  },
+  "dependencies": {
+    "@chainlink/contracts-ccip": "^1.6.0",
+    "@openzeppelin/contracts": "^4.9.5"
+  }
+}
