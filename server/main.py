@@ -27,6 +27,10 @@ from tasks.scheduler import setup_scheduler
 from routes.bot_goalkeeper_route import router as bot_goalkeeper_router
 from routes.invite_codes_vip import setup_vip_codes
 
+# Import VRF startup
+from startup_vrf import startup_vrf, check_vrf_health
+from routes.vrf_status import router as vrf_status_router
+
 import time
 import asyncio
 from prometheus_client import Counter, Histogram, generate_latest, CONTENT_TYPE_LATEST
@@ -57,6 +61,15 @@ async def lifespan(app: FastAPI):
         api_logger.info("Initializing database connection...")
         await init_db()
         api_logger.info("Database connection successful")
+        
+        # Initialize VRF system
+        api_logger.info("Starting VRF system initialization...")
+        vrf_instance = await startup_vrf()
+        if vrf_instance:
+            api_logger.info("VRF system initialized successfully")
+        else:
+            api_logger.warning("VRF system initialization failed, will use fallback")
+        
         init_metrics()
         setup_scheduler()
         api_logger.info("Application startup completed")
@@ -138,6 +151,9 @@ app.include_router(invite_codes_vip.router, prefix="/api/vip", tags=["vip"])
 # Include admin routes
 app.include_router(admin.router, prefix="/api/admin", tags=["admin"])
 
+# Include VRF status routes
+app.include_router(vrf_status_router, prefix="/api", tags=["vrf"])
+
 @app.middleware("http")
 async def metrics_middleware(request: Request, call_next):
     start_time = time.time()
@@ -186,10 +202,14 @@ async def root():
 
 @app.get("/health")
 async def health_check():
+    # Check VRF health
+    vrf_health = await check_vrf_health()
+    
     return {
         "status": "healthy",
         "version": "1.0.0",
-        "environment": "production" if not settings.DEBUG else "development"
+        "environment": "production" if not settings.DEBUG else "development",
+        "vrf_system": vrf_health
     }
 
 @app.on_event("startup")

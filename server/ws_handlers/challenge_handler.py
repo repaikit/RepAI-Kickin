@@ -16,6 +16,29 @@ from fastapi.responses import JSONResponse
 from utils.level_utils import get_total_point_for_level, get_basic_level, get_legend_level, get_vip_level, update_user_levels
 import asyncio
 from utils.chainlink_vrf import ChainlinkVRF
+from config.vrf_config import VRF_BATCH_CONFIG, USER_VRF_CONFIG, RANDOM_TYPE_CONFIG
+from utils.vrf_utils import should_use_vrf_for_user, log_vrf_decision, get_user_type
+from utils.vrf_initializer import vrf_initializer, get_vrf_status
+
+_vrf_instance = None
+
+async def get_vrf_instance():
+    """
+    Hàm này khởi tạo đối tượng ChainlinkVRF một lần duy nhất khi cần.
+    Sử dụng VRF Initializer để pre-warm cache ngay từ đầu.
+    """
+    global _vrf_instance
+    if _vrf_instance is None:
+        api_logger.info("Getting VRF instance from initializer...")
+        _vrf_instance = await vrf_initializer.get_vrf_instance_async()
+        
+        # Cấu hình batch manager với settings từ config
+        _vrf_instance.batch_manager.batch_size = VRF_BATCH_CONFIG["batch_size"]
+        _vrf_instance.batch_manager.cache_size = VRF_BATCH_CONFIG["cache_size"]
+        _vrf_instance.batch_manager.min_interval = VRF_BATCH_CONFIG["min_interval"]
+        
+        api_logger.info("VRF instance configured successfully")
+    return _vrf_instance
 
 # Level-related constants
 LEVEL_MILESTONES_BASIC = [0, 100, 300, 600, 1000, 1500, 2100, 2800, 3600, 4500, 5500, 6600, 7800, 9100, 10500, 12000, 13600, 15300, 17100, 19000, 21000, 23100, 25300, 27600, 30000, 32500, 35100, 37800, 40600, 43500, 46500, 49600, 52800, 56100, 59500, 63000, 66600, 70300, 74100, 78000, 82000, 86100, 90300, 94600, 99000, 103500, 108100, 112800, 117600, 122500, 127500, 132600, 137800, 143100, 148500, 154000, 159600, 165300, 171100, 177000, 183000, 189100, 195300, 201600, 208000, 214500, 221100, 227800, 234600, 241500, 248500, 255600, 262800, 270100, 277500, 285000, 292600, 300300, 308100, 316000, 324000, 332100, 340300, 348600, 357000, 365500, 374100, 382800, 391600, 400500, 409500, 418600, 427800, 437100, 446500, 456000, 465600, 475300, 485100, 495000]
@@ -184,22 +207,43 @@ class ChallengeManager:
             return
 
         if accepted:
-            # Randomly assign roles
-            roles = ["kicker", "goalkeeper"]
-            # Nếu 1 trong 2 là VIP thì dùng VRF để random roles
+            # --- LOGIC GÁN VAI TRÒ ĐÃ SỬA ---
             from_user_is_vip = from_user.get("is_vip", False)
             to_user_is_vip = to_user.get("is_vip", False)
+            print(f"[Challenge] from_user_is_vip: {from_user_is_vip}, to_user_is_vip: {to_user_is_vip}")
             vrf_random_role = None
-            if from_user_is_vip or to_user_is_vip:
+            
+            # Kiểm tra xem có VIP nào tham gia không
+            has_vip_participant = from_user_is_vip or to_user_is_vip
+            
+            if has_vip_participant:
+                # Có VIP tham gia - sử dụng VRF cho role assignment
+                chainlink_vrf = await get_vrf_instance()
                 vrf_random_role = await chainlink_vrf.get_random_int(2)
                 kicker_id = from_id if vrf_random_role == 0 else to_id
                 goalkeeper_id = to_id if vrf_random_role == 0 else from_id
+                
+                # Log quyết định VRF
+                from_user_type = get_user_type(from_user)
+                to_user_type = get_user_type(to_user)
+                print(f"[Challenge] VRF role assignment for VIP match: {vrf_random_role}")
+                print(f"[Challenge] From user: {from_user.get('name', 'Anonymous')} ({from_user_type})")
+                print(f"[Challenge] To user: {to_user.get('name', 'Anonymous')} ({to_user_type})")
             else:
+                # Không có VIP - Basic/PRO Player dùng random thường
+                roles = ["kicker", "goalkeeper"]
                 random.shuffle(roles)
                 kicker_id = from_id if roles[0] == "kicker" else to_id
                 goalkeeper_id = to_id if roles[0] == "kicker" else from_id
+                
+                # Log quyết định local random
+                from_user_type = get_user_type(from_user)
+                to_user_type = get_user_type(to_user)
+                print(f"[Challenge] Local random role assignment for Basic/PRO match")
+                print(f"[Challenge] From user: {from_user.get('name', 'Anonymous')} ({from_user_type})")
+                print(f"[Challenge] To user: {to_user.get('name', 'Anonymous')} ({to_user_type})")
 
-            # Randomly select one skill from each player's corresponding skill list
+            # Lấy thông tin người chơi sau khi đã gán vai trò
             kicker = await db.users.find_one({"_id": ObjectId(kicker_id)})
             goalkeeper = await db.users.find_one({"_id": ObjectId(goalkeeper_id)})
 
@@ -209,24 +253,45 @@ class ChallengeManager:
             if not kicker_skills or not goalkeeper_skills:
                 return
 
-            # Nếu là VIP thì dùng VRF để random skill
-            kicker_skill_idx = None
-            goalkeeper_skill_idx = None
+            # --- LOGIC CHỌN SKILL ĐÃ SỬA ---
             vrf_random_kicker_skill = None
             vrf_random_goalkeeper_skill = None
-            if kicker.get("is_vip", False):
+            selected_kicker_skill = ""
+            selected_goalkeeper_skill = ""
+
+            # Logic cho Kicker - CHỈ VIP MỚI DÙNG VRF
+            kicker_should_use_vrf = should_use_vrf_for_user(kicker, "skill_selection")
+            if kicker_should_use_vrf:
+                # VIP Kicker sử dụng VRF
+                chainlink_vrf = await get_vrf_instance()
                 kicker_skill_idx = await chainlink_vrf.get_random_int(len(kicker_skills))
                 selected_kicker_skill = kicker_skills[kicker_skill_idx]
                 vrf_random_kicker_skill = kicker_skill_idx
+                
+                # Log quyết định VRF
+                log_vrf_decision(kicker, "skill_selection", True, f"Selected skill index: {kicker_skill_idx}")
             else:
+                # Basic/PRO Kicker dùng random thường
                 selected_kicker_skill = random.choice(kicker_skills)
-            if goalkeeper.get("is_vip", False):
+                log_vrf_decision(kicker, "skill_selection", False, "Basic/PRO user - using local random")
+
+            # Logic cho Goalkeeper - CHỈ VIP MỚI DÙNG VRF
+            goalkeeper_should_use_vrf = should_use_vrf_for_user(goalkeeper, "skill_selection")
+            if goalkeeper_should_use_vrf:
+                # VIP Goalkeeper sử dụng VRF
+                chainlink_vrf = await get_vrf_instance()
                 goalkeeper_skill_idx = await chainlink_vrf.get_random_int(len(goalkeeper_skills))
                 selected_goalkeeper_skill = goalkeeper_skills[goalkeeper_skill_idx]
                 vrf_random_goalkeeper_skill = goalkeeper_skill_idx
+                
+                # Log quyết định VRF
+                log_vrf_decision(goalkeeper, "skill_selection", True, f"Selected skill index: {goalkeeper_skill_idx}")
             else:
+                # Basic/PRO Goalkeeper dùng random thường
                 selected_goalkeeper_skill = random.choice(goalkeeper_skills)
+                log_vrf_decision(goalkeeper, "skill_selection", False, "Basic/PRO user - using local random")
 
+            # --- PHẦN CÒN LẠI CỦA HÀM GIỮ NGUYÊN ---
             # Get kicker skill details from skills collection to check counter
             skills_collection = await get_skills_collection()
             kicker_skill_details = await skills_collection.find_one({"name": selected_kicker_skill})
@@ -234,21 +299,19 @@ class ChallengeManager:
             # Determine winner based on skill counter
             winner_id = None
             if kicker_skill_details and kicker_skill_details.get("counter") == selected_goalkeeper_skill:
-                # If goalkeeper's skill is a counter to kicker's skill, goalkeeper wins
                 winner_id = goalkeeper_id
             else:
-                # Otherwise kicker wins
                 winner_id = kicker_id
 
-            # Update match statistics and points
+            # (Toàn bộ phần xử lý kết quả, cập nhật DB, gửi message... giữ nguyên như cũ)
+            # ...
             winner = await db.users.find_one({"_id": ObjectId(winner_id)})
             loser_id = goalkeeper_id if winner_id == kicker_id else kicker_id
             loser = await db.users.find_one({"_id": ObjectId(loser_id)})
 
-            # Create match history record
             match_history = {
-                "match_id": str(ObjectId()),  # Generate new ObjectId for match
-                "timestamp": get_vietnam_time().isoformat(),  # Format as ISO string
+                "match_id": str(ObjectId()),
+                "timestamp": get_vietnam_time().isoformat(),
                 "kicker_id": kicker_id,
                 "goalkeeper_id": goalkeeper_id,
                 "kicker_skill": selected_kicker_skill,
@@ -257,11 +320,11 @@ class ChallengeManager:
                 "winner_role": "kicker" if winner_id == kicker_id else "goalkeeper",
                 "loser_id": loser_id,
                 "loser_role": "goalkeeper" if winner_id == kicker_id else "kicker",
-                # Lưu lại số random minh bạch nếu có
                 "vrf_random_role": vrf_random_role,
                 "vrf_random_kicker_skill": vrf_random_kicker_skill,
                 "vrf_random_goalkeeper_skill": vrf_random_goalkeeper_skill
             }
+
 
             # Update winner's stats and check for level up
             update_fields = {
@@ -423,7 +486,7 @@ class ChallengeManager:
             })
 
             await manager.broadcast_user_list()
-
+        
         else:
             # Notify the challenger that the challenge was declined
             decline_message = {
@@ -582,4 +645,4 @@ async def level_up(user_id: str):
     return {"level": new_level, "is_pro": is_pro, "legend_level": legend_level, "vip_level": vip_level, "total_point_for_level": total_point_for_level}
 
 # Khởi tạo VRF instance toàn cục
-chainlink_vrf = ChainlinkVRF() 
+# chainlink_vrf = ChainlinkVRF() 

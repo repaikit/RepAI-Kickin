@@ -5,11 +5,9 @@ from utils.logger import api_logger
 from datetime import datetime
 from utils.time_utils import to_vietnam_time, VIETNAM_TZ
 import pytz
-from utils.eliza import Eliza
+from utils.gemini_service import gemini_service
 
 router = APIRouter()
-
-eliza_bot = Eliza()
 
 @router.get("/history")
 async def get_chat_history(request: Request, limit: int = 50):
@@ -115,11 +113,15 @@ async def get_chat_history(request: Request, limit: int = 50):
 @router.post("/eliza")
 async def eliza_chat(request: Request, message: str = Body(..., embed=True)):
     """
-    Nhận message từ client, trả về phản hồi từ Eliza chatbot
+    Nhận message từ client, trả về phản hồi từ Gemini AI
     """
     try:
-        response = eliza_bot.respond(message)
+        # Lấy user_id từ request state nếu có
+        user = getattr(request.state, "user", None)
+        user_id = str(user.get("_id")) if user else None
+        
+        response = gemini_service.get_response(message, user_id)
         return {"success": True, "reply": response}
     except Exception as e:
-        api_logger.error(f"[Eliza] Error: {e}")
-        raise HTTPException(status_code=500, detail="Lỗi xử lý Eliza chatbot") 
+        api_logger.error(f"[Gemini] Error: {e}")
+        raise HTTPException(status_code=500, detail="Lỗi xử lý Gemini AI") 

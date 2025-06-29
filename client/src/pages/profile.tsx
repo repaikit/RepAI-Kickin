@@ -845,21 +845,21 @@ export default function Profile() {
                       {isLoadingHistory ? (
                         <div className="flex items-center gap-2 text-pink-600">
                           <Loader2 className="animate-spin" />
-                          Đang tải...
+                          Loading...
                         </div>
                       ) : matchHistory.length === 0 ? (
                         <div className="text-gray-500 italic">
-                          Chưa có trận đấu nào.
+                          No matches yet.
                         </div>
                       ) : (
                         <div className="overflow-x-auto">
                           <table className="min-w-full text-sm rounded-xl overflow-hidden">
                             <thead>
                               <tr className="bg-gradient-to-r from-pink-100 to-rose-100 text-center">
-                                <th className="px-2 py-2">Thời gian</th>
+                                <th className="px-2 py-2">Time</th>
                                 <th className="px-2 py-2">Kicker</th>
                                 <th className="px-2 py-2">Goalkeeper</th>
-                                <th className="px-2 py-2">Kết quả</th>
+                                <th className="px-2 py-2">Result</th>
                                 <th className="px-2 py-2">Skill</th>
                                 <th className="px-2 py-2">Random Info</th>
                               </tr>
@@ -891,7 +891,7 @@ export default function Profile() {
                                       {isMeKicker ? (
                                         <span className="font-bold text-pink-600 flex items-center justify-center gap-1">
                                           <User2 className="inline w-4 h-4" />
-                                          Bạn
+                                          You
                                         </span>
                                       ) : (
                                         m.kicker_name || m.kicker_id
@@ -901,7 +901,7 @@ export default function Profile() {
                                       {isMeGoalkeeper ? (
                                         <span className="font-bold text-pink-600 flex items-center justify-center gap-1">
                                           <User2 className="inline w-4 h-4" />
-                                          Bạn
+                                          You
                                         </span>
                                       ) : (
                                         m.goalkeeper_name || m.goalkeeper_id
@@ -911,12 +911,12 @@ export default function Profile() {
                                       {isWinner ? (
                                         <span className="text-green-600 font-bold flex items-center justify-center gap-1">
                                           <CheckCircle2 className="inline w-4 h-4" />
-                                          Thắng
+                                          Win
                                         </span>
                                       ) : (
                                         <span className="text-red-600 font-bold flex items-center justify-center gap-1">
                                           <XCircle className="inline w-4 h-4" />
-                                          Thua
+                                          Lose
                                         </span>
                                       )}
                                     </td>
@@ -1001,10 +1001,10 @@ export default function Profile() {
                                 setHistoryPage((p) => Math.max(1, p - 1))
                               }
                             >
-                              Trước
+                              Previous
                             </Button>
                             <span className="text-sm py-1">
-                              Trang {historyPage} /{" "}
+                              Page {historyPage} /{" "}
                               {Math.ceil(historyTotal / HISTORY_PAGE_SIZE)}
                             </span>
                             <Button
@@ -1016,7 +1016,7 @@ export default function Profile() {
                               }
                               onClick={() => setHistoryPage((p) => p + 1)}
                             >
-                              Sau
+                              Next
                             </Button>
                           </div>
                         </div>
