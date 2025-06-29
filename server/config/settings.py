@@ -8,7 +8,7 @@ load_dotenv()
 
 class Settings(BaseSettings):
     # Application settings
-    DEBUG: bool = os.getenv("DEBUG", "False").lower() == "true"
+    DEBUG: bool = os.getenv("DEBUG", "True").lower() == "true"
     ENVIRONMENT: str = os.getenv("ENVIRONMENT", "development")
     
     # API settings
@@ -20,8 +20,17 @@ class Settings(BaseSettings):
         "http://localhost:3000",
         "https://kickin.olym3.com",
         "https://rep-ai-kickin.vercel.app",
-        "https://kickin.repai.vn/"
+        "https://kickin.repai.vn/",
+        "https://kickin-wow.repai.vn"
     ]
+
+    # Victory NFT Configuration
+    AVALANCHE_FUJI_NFT_CONTRACT: str = os.getenv("AVALANCHE_FUJI_NFT_CONTRACT", "0x0200B2469eEF9713F7Ae8226D1BDee838B42676e")
+    BASE_SEPOLIA_NFT_CONTRACT: str = os.getenv("BASE_SEPOLIA_NFT_CONTRACT", "0xe0aBf4b49eFBA23C5888cF19E8a8033e03893CEc")
+    AVALANCHE_FUJI_RPC_URL: str = os.getenv("AVALANCHE_FUJI_RPC_URL", "https://api.avax-test.network/ext/bc/C/rpc")
+    BASE_SEPOLIA_RPC_URL: str = os.getenv("BASE_SEPOLIA_RPC_URL", "https://sepolia.base.org")
+    CCIP_PRIVATE_KEY: str = os.getenv("CCIP_PRIVATE_KEY", "")
+    PRIVATE_KEY: str = os.getenv("PRIVATE_KEY", "")
     
     # Database settings
     MONGODB_URL: str = os.getenv("MONGODB_URL", "mongodb+srv://localhost:27017")

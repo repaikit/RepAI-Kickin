@@ -72,6 +72,7 @@ import axios from "axios";
 import GoalkeeperBot, {
   BotGoalkeeper,
 } from "@/components/profile/GoalkeeperBot";
+import VictoryNFT from "@/components/profile/VictoryNFT";
 
 // Add Reward interface for type safety
 interface Reward {
@@ -785,14 +786,17 @@ export default function Profile() {
                   {/* goalkeeper card */}
 
                   <TabsContent value="stats">
-                    <Statistics
-                      user={user}
-                      isLoadingNFTs={isLoadingNFTs}
-                      nftCount={nftCount}
-                      copiedWallet={copiedWallet}
-                      handleCopyWallet={handleCopyWallet}
-                      fetchNFTs={fetchNFTs}
-                    />
+                    <div className="space-y-6">
+                      <Statistics
+                        user={user}
+                        isLoadingNFTs={isLoadingNFTs}
+                        nftCount={nftCount}
+                        copiedWallet={copiedWallet}
+                        handleCopyWallet={handleCopyWallet}
+                        fetchNFTs={fetchNFTs}
+                      />
+                      <VictoryNFT user={user} />
+                    </div>
                   </TabsContent>
 
                   <TabsContent value="upgrades">

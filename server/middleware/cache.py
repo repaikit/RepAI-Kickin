@@ -38,13 +38,17 @@ class InMemoryCacheMiddleware(BaseHTTPMiddleware):
         # Only cache successful GET requests
         if request.method == "GET" and response.status_code == 200:
             try:
-                # Handle StreamingResponse
+                # Handle different response types
                 if isinstance(response, StreamingResponse):
                     # Skip caching for streaming responses
                     return response
-                else:
+                elif hasattr(response, 'body'):
+                    # Handle regular responses with body
                     content = response.body.decode()
                     media_type = response.media_type
+                else:
+                    # Skip caching for other response types
+                    return response
 
                 # Store in cache
                 if len(self.cache) >= self.maxsize:
@@ -60,5 +64,7 @@ class InMemoryCacheMiddleware(BaseHTTPMiddleware):
                 }
             except Exception as e:
                 api_logger.error(f"Cache error: {str(e)}")
+                # Don't fail the request due to cache errors
+                pass
 
         return response 

@@ -14,7 +14,21 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 
     async def dispatch(self, request: Request, call_next):
         # Skip rate limiting for certain paths
-        if request.url.path in ["/docs", "/redoc", "/openapi.json"]:
+        excluded_paths = [
+            "/docs", 
+            "/redoc", 
+            "/openapi.json",
+            "/metrics",
+            "/health",
+            "/api/ws",
+            "/api/chat/history",
+            "/api/skills/type/kicker",
+            "/api/skills/type/goalkeeper",
+            "/api/bot/skills",
+            "/api/me"
+        ]
+        
+        if request.url.path in excluded_paths or request.url.path.startswith("/api/ws"):
             return await call_next(request)
 
         # Get client IP
@@ -27,8 +41,9 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             if current_time - req_time < 60
         ]
 
-        # Check rate limit
-        if len(self.requests[client_ip]) >= settings.RATE_LIMIT_PER_MINUTE:
+        # Check rate limit (increased to 200 requests per minute)
+        rate_limit = 200  # Increased from 60
+        if len(self.requests[client_ip]) >= rate_limit:
             api_logger.warning(f"Rate limit exceeded for IP: {client_ip}")
             raise HTTPException(
                 status_code=429,

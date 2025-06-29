@@ -1,4 +1,6 @@
-import { WagmiConfig, createConfig, http } from 'wagmi';
+import '@rainbow-me/rainbowkit/styles.css';
+import { getDefaultConfig, RainbowKitProvider } from '@rainbow-me/rainbowkit';
+import { WagmiProvider } from 'wagmi';
 import { base } from 'wagmi/chains';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Toaster } from "sonner";
@@ -9,12 +11,11 @@ import { AuthProvider } from '@/contexts/AuthContext';
 import AIChatPopup from "@/components/AIChatPopup";
 import { useEffect, useState } from "react";
 
-// Create wagmi config
-const config = createConfig({
+// Use RainbowKit's default config to support all wallets
+const config = getDefaultConfig({
+  appName: 'Kickin Game',
+  projectId: '325fbe143f7ef647abd49c4a299b304a', // TODO: Replace with your real WalletConnect projectId from https://cloud.walletconnect.com/
   chains: [base],
-  transports: {
-    [base.id]: http()
-  }
 });
 
 // Create React Query client
@@ -36,17 +37,19 @@ function MyApp({ Component, pageProps }: AppProps) {
   }
 
   return (
-    <WagmiConfig config={config}>
+    <WagmiProvider config={config}>
       <QueryClientProvider client={queryClient}>
-        <TooltipProvider>
-          <Toaster position="bottom-right" richColors />
-          <AuthProvider>
-            <Component {...pageProps} />
-            <AIChatPopup />
-          </AuthProvider>
-        </TooltipProvider>
+        <RainbowKitProvider>
+          <TooltipProvider>
+            <Toaster position="bottom-right" richColors />
+            <AuthProvider>
+              <Component {...pageProps} />
+              <AIChatPopup />
+            </AuthProvider>
+          </TooltipProvider>
+        </RainbowKitProvider>
       </QueryClientProvider>
-    </WagmiConfig>
+    </WagmiProvider>
   );
 }
 

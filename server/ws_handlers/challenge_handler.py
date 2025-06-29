@@ -16,6 +16,7 @@ from fastapi.responses import JSONResponse
 from utils.level_utils import get_total_point_for_level, get_basic_level, get_legend_level, get_vip_level, update_user_levels
 import asyncio
 from utils.chainlink_vrf import ChainlinkVRF
+from services.ccip_service import ccip_service
 
 # Level-related constants
 LEVEL_MILESTONES_BASIC = [0, 100, 300, 600, 1000, 1500, 2100, 2800, 3600, 4500, 5500, 6600, 7800, 9100, 10500, 12000, 13600, 15300, 17100, 19000, 21000, 23100, 25300, 27600, 30000, 32500, 35100, 37800, 40600, 43500, 46500, 49600, 52800, 56100, 59500, 63000, 66600, 70300, 74100, 78000, 82000, 86100, 90300, 94600, 99000, 103500, 108100, 112800, 117600, 122500, 127500, 132600, 137800, 143100, 148500, 154000, 159600, 165300, 171100, 177000, 183000, 189100, 195300, 201600, 208000, 214500, 221100, 227800, 234600, 241500, 248500, 255600, 262800, 270100, 277500, 285000, 292600, 300300, 308100, 316000, 324000, 332100, 340300, 348600, 357000, 365500, 374100, 382800, 391600, 400500, 409500, 418600, 427800, 437100, 446500, 456000, 465600, 475300, 485100, 495000]
@@ -203,10 +204,23 @@ class ChallengeManager:
             kicker = await db.users.find_one({"_id": ObjectId(kicker_id)})
             goalkeeper = await db.users.find_one({"_id": ObjectId(goalkeeper_id)})
 
+            # Check if users exist
+            if not kicker or not goalkeeper:
+                api_logger.error(f"User not found: kicker_id={kicker_id}, goalkeeper_id={goalkeeper_id}")
+                await websocket.send_json({
+                    "type": "error",
+                    "message": "One of the users not found."
+                })
+                return
+
             kicker_skills = kicker.get("kicker_skills", [])
             goalkeeper_skills = goalkeeper.get("goalkeeper_skills", [])
 
             if not kicker_skills or not goalkeeper_skills:
+                await websocket.send_json({
+                    "type": "error",
+                    "message": "Missing required skills for the match."
+                })
                 return
 
             # Nếu là VIP thì dùng VRF để random skill
@@ -274,7 +288,6 @@ class ChallengeManager:
                     "total_point": 1, 
                     "available_skill_points": 1  # Add 1 skill point for winning
                 }
-                # Only decrease remaining_matches if not VIP
                 if not winner.get("is_vip", False):
                     update_fields["$inc"]["remaining_matches"] = -1
             else:
@@ -284,10 +297,36 @@ class ChallengeManager:
                     "total_point": 1, 
                     "available_skill_points": 1  # Add 1 skill point for winning
                 }
-                # Only decrease remaining_matches if not VIP
                 if not winner.get("is_vip", False):
                     update_fields["$inc"]["remaining_matches"] = -1
             await db.users.update_one({"_id": ObjectId(winner_id)}, update_fields)
+
+            # Get updated user data
+            updated_winner = await db.users.find_one({"_id": ObjectId(winner_id)})
+            updated_loser = await db.users.find_one({"_id": ObjectId(loser_id)})
+
+            # --- SỬA LOGIC MINT NFT ---
+            # Tính milestone trước và sau khi update
+            previous_total_win = winner.get("kicked_win", 0) + winner.get("keep_win", 0)
+            previous_milestone = previous_total_win // 10
+            total_win = updated_winner.get("kicked_win", 0) + updated_winner.get("keep_win", 0)
+            current_milestone = total_win // 10
+
+            if current_milestone > previous_milestone and current_milestone > 0:
+                try:
+                    player_address = updated_winner.get("wallet") or updated_winner.get("evm_address")
+                    player_name = updated_winner.get("name", "Anonymous Player")
+                    if player_address:
+                        milestone_wins = current_milestone * 10
+                        api_logger.info(f"Player {player_name} reached milestone {current_milestone} ({milestone_wins} wins), triggering Victory NFT mint")
+                        asyncio.create_task(
+                            self._mint_victory_nft_async(player_address, milestone_wins, player_name, winner_id)
+                        )
+                    else:
+                        api_logger.warning(f"Player {winner_id} has no wallet address for Victory NFT minting")
+                except Exception as e:
+                    api_logger.error(f"Failed to initiate Victory NFT mint for player {winner_id}: {str(e)}")
+            # --- END SỬA LOGIC MINT NFT ---
 
             # Update loser's stats
             loser_update_fields = {"$push": {"match_history": match_history}}
@@ -326,6 +365,15 @@ class ChallengeManager:
             # Get updated user data
             updated_winner = await db.users.find_one({"_id": ObjectId(winner_id)})
             updated_loser = await db.users.find_one({"_id": ObjectId(loser_id)})
+
+            # Check if users still exist after update
+            if not updated_winner or not updated_loser:
+                api_logger.error(f"User not found after update: winner_id={winner_id}, loser_id={loser_id}")
+                await websocket.send_json({
+                    "type": "error",
+                    "message": "Error updating user data."
+                })
+                return
 
             # Prepare match result message
             result_message = {
@@ -368,33 +416,6 @@ class ChallengeManager:
             # Send result to both players
             await self.send_message(active_connections, kicker_id, result_message)
             await self.send_message(active_connections, goalkeeper_id, result_message)
-
-            # Update user levels first
-            total_win = updated_winner.get("kicked_win", 0) + updated_winner.get("keep_win", 0)
-            new_level = get_basic_level(total_win)
-            is_pro = new_level >= 100
-            if is_pro:
-                new_level = 100
-                legend_level = get_legend_level(total_win)
-            else:
-                legend_level = 0
-            vip_amount = updated_winner.get("vip_amount", 0)
-            vip_level = get_vip_level(vip_amount)
-
-            # Update all user data in database
-            await db.users.update_one(
-                {"_id": ObjectId(winner_id)},
-                {"$set": {
-                    "level": new_level,
-                    "is_pro": is_pro,
-                    "legend_level": legend_level,
-                    "vip_level": vip_level
-                }}
-            )
-
-            # Wait a bit longer to ensure database updates are complete
-            import time as _time
-            await asyncio.sleep(0.5)
 
             # Now fetch fresh data for leaderboard
             from ws_handlers.waiting_room import manager
@@ -450,6 +471,70 @@ class ChallengeManager:
                 await active_connections[user_id].send_json(message)
             except Exception as e:
                 api_logger.error(f"Error sending message to {user_id}: {str(e)}")
+
+    async def _mint_victory_nft_async(self, player_address: str, total_wins: int, player_name: str, user_id: str, source_chain_id: int = 84532, destination_chain_id: int = 43113):
+        """Mint Victory NFT asynchronously when player reaches milestone (cross-chain via CCIP)"""
+        try:
+            # Import ccip_service
+            from services.ccip_service import ccip_service
+            
+            # Check if player is eligible for NFT (reuse logic from victory_nft_service if needed)
+            # For now, check milestone logic here
+            if total_wins < 10 or total_wins % 10 != 0:
+                api_logger.info(f"Player {player_name} not eligible for Victory NFT: Wins must be a multiple of 10")
+                return
+            
+            # Mint the Victory NFT cross-chain
+            result = await ccip_service.mint_victory_nft(
+                player_address, 
+                total_wins, 
+                player_name,
+                source_chain_id,
+                destination_chain_id
+            )
+            
+            if result["success"]:
+                api_logger.info(f"Victory NFT cross-chain mint SUCCESS: {result['source_chain']} → {result['destination_chain']} for {player_name} ({player_address}) with {total_wins} wins. Message ID: {result['message_id']}")
+                
+                # Log to database
+                try:
+                    from database.database import get_database
+                    from utils.time_utils import get_vietnam_time
+                    db = await get_database()
+                    victory_mint = {
+                        "player_address": player_address,
+                        "total_wins": total_wins,
+                        "milestone": result.get("milestone", total_wins // 10),
+                        "message_id": result["message_id"],
+                        "destination_chain": result["destination_chain"],
+                        "contract_address": result["destination_contract"],
+                        "minted_at": get_vietnam_time().isoformat(),
+                        "status": "minted"
+                    }
+                    await db.victory_nfts.insert_one(victory_mint)
+                    api_logger.info(f"Victory NFT logged to database for player {player_name}")
+                except Exception as e:
+                    api_logger.error(f"Failed to log Victory NFT to database: {str(e)}")
+                
+                # Send notification to player about NFT mint
+                try:
+                    from ws_handlers.waiting_room import manager
+                    await manager.send_personal_message({
+                        "type": "victory_nft_minted",
+                        "message": f"🎉 Congratulations! Your Victory NFT has been minted cross-chain on {result['destination_chain']}!",
+                        "total_wins": total_wins,
+                        "milestone": result.get("milestone", total_wins // 10),
+                        "message_id": result["message_id"],
+                        "source_chain": result["source_chain"],
+                        "destination_chain": result["destination_chain"],
+                        "explorer_url": f"https://testnet.snowtrace.io/tx/{result['message_id']}" if result['destination_chain'] == "Avalanche Fuji" else f"https://sepolia.basescan.org/tx/{result['message_id']}"
+                    }, user_id)
+                except Exception as e:
+                    api_logger.error(f"Failed to send Victory NFT notification to user {user_id}: {str(e)}")
+            else:
+                api_logger.error(f"Failed to mint Victory NFT cross-chain for {player_name} ({player_address}): {result.get('error', 'Unknown error')}")
+        except Exception as e:
+            api_logger.error(f"Error in _mint_victory_nft_async for user {user_id}: {str(e)}")
 
     def calculate_reward(self, user):
         total_point = user.get('total_point', 0)
