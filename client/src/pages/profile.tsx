@@ -473,40 +473,45 @@ export default function Profile() {
 
   const fetchNFTs = async (walletAddress: string | undefined) => {
     if (!walletAddress) return;
-
     setIsLoadingNFTs(true);
     try {
-      const token = localStorage.getItem("access_token");
-      if (!token) {
-        toast.error("No access token found");
-        return;
-      }
-
-      const response = await fetch(API_ENDPOINTS.nft.getNFTs(walletAddress), {
-        ...defaultFetchOptions,
-        headers: {
-          ...defaultFetchOptions.headers,
-          Authorization: `Bearer ${token}`,
-        },
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.detail || "Failed to fetch NFTs");
-      }
-
+      const response = await fetch(
+        `https://api.opensea.io/api/v1/assets?owner=${walletAddress}&order_direction=desc&offset=0&limit=50`,
+        {
+          headers: {
+            "X-API-KEY": "2f6f419a083c46de9d83ce3dbe7db601",
+          },
+        }
+      );
       const data = await response.json();
-
-      setNftCount(data.total_nfts);
+      setNftCount(data.assets?.length || 0);
     } catch (error) {
       console.error("Error fetching NFTs:", error);
-      toast.error(
-        error instanceof Error
-          ? error.message
-          : "Failed to fetch NFT information"
-      );
+      setNftCount(0);
     } finally {
       setIsLoadingNFTs(false);
+    }
+  };
+
+  const reloadMatchHistory = async () => {
+    if (!user) return;
+    setIsLoadingHistory(true);
+    setHistoryPage(1); // Reset về trang đầu tiên
+    try {
+      const token = localStorage.getItem("access_token");
+      const res = await fetch(
+        `${API_ENDPOINTS.users.matchHistory}?limit=${HISTORY_PAGE_SIZE}&skip=0`,
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      const data = await res.json();
+      if (data.success) {
+        setMatchHistory(data.data.history);
+        setHistoryTotal(data.data.total);
+      }
+    } catch (e) {
+      toast.error("Failed to reload match history");
+    } finally {
+      setIsLoadingHistory(false);
     }
   };
 
@@ -852,8 +857,24 @@ export default function Profile() {
                           Loading...
                         </div>
                       ) : matchHistory.length === 0 ? (
-                        <div className="text-gray-500 italic">
-                          No matches yet.
+                        <div className="flex flex-col items-center justify-center py-8 space-y-4">
+                          <div className="text-gray-500 italic text-center">
+                            No matches yet.
+                          </div>
+                          <Button
+                            onClick={reloadMatchHistory}
+                            disabled={isLoadingHistory}
+                            variant="outline"
+                            size="sm"
+                            className="flex items-center gap-2"
+                          >
+                            {isLoadingHistory ? (
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                            ) : (
+                              <RefreshCw className="w-4 h-4" />
+                            )}
+                            Reload
+                          </Button>
                         </div>
                       ) : (
                         <div className="overflow-x-auto">

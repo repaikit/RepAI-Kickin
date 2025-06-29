@@ -26,29 +26,29 @@ export default function Statistics({
   const [isLoading, setIsLoading] = useState(false);
   const [hasLoaded, setHasLoaded] = useState(false);
 
-  // Hàm mới để fetch NFTs
-  const handleFetchNFTs = useCallback(async (walletAddress: string | undefined) => {
-    if (!walletAddress) return;
+  // // Hàm mới để fetch NFTs
+  // const handleFetchNFTs = useCallback(async (walletAddress: string | undefined) => {
+  //   if (!walletAddress) return;
     
-    try {
-      setIsLoading(true);
-      const response = await fetchUserNFTs(walletAddress);
-      setLocalNFTCount(response.total_nfts);
-      setHasLoaded(true);
-    } catch (error) {
-      console.error('Error fetching NFTs:', error);
-      setLocalNFTCount(null);
-    } finally {
-      setIsLoading(false);
-    }
-  }, []);
+  //   try {
+  //     setIsLoading(true);
+  //     const response = await fetchUserNFTs(walletAddress);
+  //     setLocalNFTCount(response.total_nfts);
+  //     setHasLoaded(true);
+  //   } catch (error) {
+  //     console.error('Error fetching NFTs:', error);
+  //     setLocalNFTCount(null);
+  //   } finally {
+  //     setIsLoading(false);
+  //   }
+  // }, []);
 
   // Fetch NFTs chỉ một lần khi component mount
-  useEffect(() => {
-    if (user?.evm_address && !hasLoaded) {
-      handleFetchNFTs(user.evm_address);
-    }
-  }, [user?.evm_address, hasLoaded, handleFetchNFTs]);
+  // useEffect(() => {
+  //   if (user?.evm_address && !hasLoaded) {
+  //     handleFetchNFTs(user.evm_address);
+  //   }
+  // }, [user?.evm_address, hasLoaded, handleFetchNFTs]);
 
   return (
     <div className="space-y-6">
@@ -88,36 +88,6 @@ export default function Statistics({
             <CardTitle>Account Information</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="flex justify-between items-center">
-              <span className="text-gray-600">Wallet:</span>
-              <div className="flex items-center space-x-2">
-                <span className="font-mono text-sm">{user?.wallet ? `${user.wallet.slice(0, 6)}...${user.wallet.slice(-4)}` : 'N/A'}</span>
-                {user?.wallet && user.wallet !== 'N/A' && (
-                  <Button 
-                    variant="ghost" 
-                    size="sm" 
-                    onClick={() => handleCopyWallet(user.wallet, 'wallet')}
-                    className="px-2 py-0 h-auto"
-                  >
-                    {copiedWallet === 'wallet' ? (
-                      <span className="text-green-600 text-xs">Copied!</span>
-                    ) : (
-                      <Copy className="h-4 w-4" />
-                    )}
-                  </Button>
-                )}
-                {user?.evm_address && (
-                  <div className="flex items-center space-x-1 text-sm text-gray-500">
-                    <span>•</span>
-                    {isLoading ? (
-                      <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-gray-600"></div>
-                    ) : (
-                      <span className="font-semibold">{localNFTCount !== null ? `${localNFTCount} NFTs` : 'N/A'}</span>
-                    )}
-                  </div>
-                )}
-              </div>
-            </div>
             {user?.created_at && (
               <div className="flex justify-between">
                 <span className="text-gray-600">Member Since:</span>
@@ -130,27 +100,7 @@ export default function Statistics({
                 <span className="font-semibold">{format(new Date(user.last_activity), 'MMM dd, yyyy')}</span>
               </div>
             )}
-            <div className="flex justify-between items-center">
-              <span className="text-gray-600">NFTs in Wallet:</span>
-              <div className="flex items-center space-x-2">
-                {isLoading ? (
-                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-gray-600"></div>
-                ) : (
-                  <span className="font-semibold">{localNFTCount !== null ? localNFTCount : 'N/A'}</span>
-                )}
-                {user?.evm_address && (
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => handleFetchNFTs(user.evm_address)}
-                    className="p-1"
-                    disabled={isLoading}
-                  >
-                    <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
-                  </Button>
-                )}
-              </div>
-            </div>
+
           </CardContent>
         </Card>
       </div>
