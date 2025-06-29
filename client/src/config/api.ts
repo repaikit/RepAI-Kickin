@@ -4,13 +4,13 @@ const isDevelopment = process.env.NODE_ENV === "development";
 // Base URL for API calls
 export const API_BASE_URL = isDevelopment
   ? "http://localhost:5000"
-  : process.env.NEXT_PUBLIC_API_URL || "";
+  : process.env.NEXT_PUBLIC_API_URL || "https://kickin-wow.repai.vn";
 
 console.log("bạn đang kết nối tới" + API_BASE_URL);
 // WebSocket URL
 export const WS_BASE_URL = isDevelopment
   ? "ws://localhost:5000"
-  : process.env.NEXT_PUBLIC_WS_URL || "";
+  : process.env.NEXT_PUBLIC_WS_URL || "wss://kickin-wow.repai.vn";
 
 // API endpoints
 export const API_ENDPOINTS = {
