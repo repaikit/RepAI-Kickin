@@ -1,62 +1,33 @@
-# Kickin Dashboard
-## 🔗 Live
-## 🔗 Live Demo
+### **How Kick'in Champ Solves the Problems (Updated with Specific Tech Stack)**
 
-👉 [Truy cập bản demo tại đây](https://kickin.olym3.com)
+**Kick'in Champ** is not just a concept but a tangible application that leverages a cutting-edge Web3 tech stack to definitively solve the shortcomings of traditional platforms.
 
-A modern dashboard application built with Next.js and Tailwind CSS.
+#### 1. The Problem: Opaque and Unfair Reward Systems
 
-## Getting Started
+- **Kick'in Champ's Solution:**
+  - **Smart Contracts on Avalanche Fuji:** All reward distributions are automated and transparent.
+  - **Integration of Chainlink VRF (Verifiable Random Function):** For any reward involving randomness (e.g., opening a reward crate), Kick'in Champ uses Chainlink VRF. This ensures the outcome is **provably fair and tamper-proof**, building absolute trust with the player base.
 
-### Prerequisites
+#### 2. The Problem: Limited Player Recognition
 
-- Node.js 18.x or later
-- npm 9.x or later
+- **Kick'in Champ's Solution:**
+  - **NFT Minting on Avalanche Fuji:** All in-game achievements, like winning a tournament, are minted as unique NFTs **directly on the Avalanche Fuji network**. This leverages Avalanche's high speed and low transaction costs for a seamless user experience.
+  - **Integration of Chainlink CCIP (Cross-Chain Interoperability Protocol):** This is the game-changer. After minting their NFT on Avalanche Fuji, users can leverage Chainlink CCIP to securely **bridge their achievement NFT to the Base Sepolia network**. This unlocks immense value, allowing players to trade their NFTs on Base-native marketplaces, showcase them in different galleries or dApps on Base, and significantly increase the liquidity and utility of their achievements.
 
-### Installation
+#### 3. The Problem: Centralized Control and Lack of Ownership
 
-1. Install dependencies in the root directory:
-```bash
-npm install
-```
+- **Kick'in Champ's Solution:**
+  - By allowing users to **mint an asset on one chain (Avalanche)** and **move it to another (Base)**, Kick'in Champ delivers the ultimate proof of true ownership. Your assets are not locked into a single ecosystem. You have full control to decide where your digital assets live and how they are used.
 
-2. Install dependencies in the client directory:
-```bash
-cd client
-npm install
-cd ..
-```
+### **Technical Foundation and Implementation Status**
 
-### Development
+- **Primary Operational Network:** **Avalanche Fuji Testnet**.
+- **Cross-Chain Capability:** Bridging NFTs from Avalanche Fuji to the **Base Sepolia Testnet** via **Chainlink CCIP**.
 
-To run the development server:
+### **Updated Summary Table**
 
-```bash
-npm run dev
-```
-
-This will start the Next.js development server. Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
-
-### Building for Production
-
-To build the application for production:
-
-```bash
-npm run build
-```
-
-### Running Production Build
-
-To start the production server:
-
-```bash
-npm run start
-```
-
-## Project Structure
-
-- `client/` - Next.js frontend application
-  - `src/` - Source code
-  - `public/` - Static assets
-  - `components/` - React components
-  - `app/` - Next.js app directory 
+| Problem                    | Kick'in Champ's Solution                                                 | Integrated Technology                                                           |
+| :------------------------- | :----------------------------------------------------------------------- | :------------------------------------------------------------------------------ |
+| **Opaque, Unfair Rewards** | Transparent, automated, and provably fair random rewards.                | Smart Contracts, **Chainlink VRF**                                              |
+| **Limited Recognition**    | Achievements become valuable, verifiable, and cross-chain portable NFTs. | **NFT Minting on Avalanche Fuji**, **Chainlink CCIP** to bridge to Base Sepolia |
+| **Centralized Control**    | Users truly own and can move their digital assets across blockchains.    | NFTs + **Chainlink CCIP**                                                       |
